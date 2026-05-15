@@ -42,11 +42,17 @@
 
 | 순서 |        구분        |         산출물         |                   Plugin                    | 버전     |
 | :-: | :--------------: | :-----------------: | :-----------------------------------------: | :----- |
-|  1  |  Plan / 자연어 → DB | `_blueprint.yaml`   | `andrej-karpathy-rdb-skill`                 | v0.1.1 |
-|  2  |  Blueprint → DDL | `db/migrations/`    | `andrej-karpathy-rdb-ddl`                   | v0.1.2 |
+|  1  |  Plan / 자연어 → DB | `_blueprint.yaml`   | `andrej-karpathy-rdb-skill`                 | v0.2.0 |
+|  2  |  Blueprint → DDL | `db/migrations/`    | `andrej-karpathy-rdb-ddl`                   | v0.2.0 |
 |  3  |  DB → Java 백엔드   | `backend/`, `endpoints.json` | `andrej-karpathy-rdb-mybatis`     | v0.1.4 |
 |  4  |  Endpoints → 화면  | `out/nxui/...`      | `andrej-karpathy-rdb-nexacro`               | v0.1.0 |
 |  4' | Spring + nx 골격   | scaffold            | `/nexacro-fullstack-starter` (외부)           | v0.6.0 |
+
+> **v0.2.0 (2026-05-15) 변경점**: Karpathy 복리식 축적 메커니즘 도입.
+> - Stage 1: `wiki/learn-log.md` 신규 + `/karpathy-rdb contribute <도메인>` 명령으로 프로젝트 지식을 글로벌 카탈로그(`~/.karpathy-rdb/catalog/`)로 역류
+> - Stage 1: blueprint entity `extends:` 문법으로 글로벌 base entity 재사용
+> - Stage 2: `catalogs/preset-catalog.yaml` 외부화 + 글로벌 카탈로그 자동 병합 (`PRESETS` 자동 확장)
+> - 하위 호환 유지 (`version: 1` blueprint, 기존 호출부 무변경). 상세: [`docs/superpowers/specs/2026-05-15-karpathy-alignment-review.md`](./superpowers/specs/2026-05-15-karpathy-alignment-review.md)
 
 ### 1.2 사전 준비
 

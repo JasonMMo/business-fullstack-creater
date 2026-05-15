@@ -1,0 +1,599 @@
+# business-fullstack-creater 사용자 가이드
+
+> 업무별 fullstack 코드 생성 파이프라인. "고객관리 업무 개발환경 만들어줘." 한 마디로
+> nexacroN + Spring Boot 3.5 + PostgreSQL 기반 3-tier 프로젝트를 war 형태로 만들어내는
+> 4-stage 코드 생성 도구 모음입니다.
+
+본 문서는 **Quick Start walkthrough** + **Stage별 reference** + **트러블슈팅**을
+한 곳에 모은 통합 가이드입니다.
+
+- 설계: [`docs/superpowers/specs/`](./superpowers/specs/)
+- 플랜:  [`docs/superpowers/plans/`](./superpowers/plans/)
+- 요구기능 원문: [`needs/business-fullstack-creater 플러그인 요구기능.md`](../needs/business-fullstack-creater%20%ED%94%8C%EB%9F%AC%EA%B7%B8%EC%9D%B8%20%EC%9A%94%EA%B5%AC%EA%B8%B0%EB%8A%A5.md)
+- Stage 3↔4 핸드오프 계약: [`needs/Plugin참조/3. Middle+Frontend - Stage 3→4 nexacro 핸드오프 계약.md`](../needs/Plugin%EC%B0%B8%EC%A1%B0/3.%20Middle%2BFrontend%20-%20Stage%203%E2%86%924%20nexacro%20%ED%95%B8%EB%93%9C%EC%98%A4%ED%94%84%20%EA%B3%84%EC%95%BD.md)
+
+---
+
+## 1. 개요 (5분)
+
+### 1.1 무엇을 만드는가 — 4-stage 파이프라인 한눈에
+
+```
+┌───────────────────┐    ┌────────────────┐    ┌──────────────────┐    ┌──────────────────┐
+│ Stage 1           │    │ Stage 2        │    │ Stage 3          │    │ Stage 4          │
+│ rdb-skill         │ →  │ rdb-ddl        │ →  │ rdb-mybatis      │ →  │ rdb-nexacro      │
+│ (Plan)            │    │ (Backend DB)   │    │ (Middle Java)    │    │ (Frontend xfdl)  │
+└───────────────────┘    └────────────────┘    └──────────────────┘    └──────────────────┘
+   wiki / 자연어            _blueprint.yaml         _blueprint.yaml         _blueprint.yaml
+        ↓                         ↓               + db/migrations/             + endpoints.json
+   _blueprint.yaml          db/migrations/         ↓                            ↓
+                            entities/              backend/ (Java)              out/nxui/_form_/
+                                                   endpoints.json               out/nxui/_datasets_/
+                                                                                out/patches/
+                                                                                ↓
+                                                   ┌────────────────────────────┴─────┐
+                                                   │ Stage 4'                          │
+                                                   │ /nexacro-fullstack-starter        │
+                                                   │ (외부 plugin, scaffold)            │
+                                                   └────────────────────────────┬─────┘
+                                                                                 ↓
+                                                                         war (deployable)
+```
+
+| 순서 |        구분        |         산출물         |                   Plugin                    | 버전     |
+| :-: | :--------------: | :-----------------: | :-----------------------------------------: | :----- |
+|  1  |  Plan / 자연어 → DB | `_blueprint.yaml`   | `andrej-karpathy-rdb-skill`                 | v0.1.1 |
+|  2  |  Blueprint → DDL | `db/migrations/`    | `andrej-karpathy-rdb-ddl`                   | v0.1.2 |
+|  3  |  DB → Java 백엔드   | `backend/`, `endpoints.json` | `andrej-karpathy-rdb-mybatis`     | v0.1.4 |
+|  4  |  Endpoints → 화면  | `out/nxui/...`      | `andrej-karpathy-rdb-nexacro`               | v0.1.0 |
+|  4' | Spring + nx 골격   | scaffold            | `/nexacro-fullstack-starter` (외부)           | v0.6.0 |
+
+### 1.2 사전 준비
+
+**런타임:**
+- Python 3.11+
+- JDK 17 (Spring Boot 3.5 + jakarta lane)
+- Maven 3.9+
+- PostgreSQL 14+ *(또는 HSQLDB embedded — Stage 3 기본)*
+
+**개발 도구:**
+- Claude Code (slash command 실행용)
+- nexacro N v24 라이선스 *(런타임에서 NexacroResult 직렬화 시 필요)*
+- nexacro Studio *(xfdl 화면 미리보기 / project build 시)*
+
+**선택 plugin:**
+```
+/plugin marketplace add JasonMMo/nexacro-claude-skills
+/plugin install nexacro-fullstack-starter@nexacro-claude-skills
+/plugin install nexacro-claude-skills@nexacro-claude-skills
+```
+
+**plugin 4종 설치 확인:**
+```powershell
+Test-Path D:\AI\workspace\andrej-karpathy-rdb-skill
+Test-Path D:\AI\workspace\andrej-karpathy-rdb-ddl
+Test-Path D:\AI\workspace\andrej-karpathy-rdb-mybatis
+Test-Path D:\AI\workspace\andrej-karpathy-rdb-nexacro
+```
+
+---
+
+## 2. Quick Start — 고객관리 시스템 만들기 (15분)
+
+다음 walkthrough는 "고객관리 업무 개발환경 만들어줘." 시나리오를 4-stage 파이프라인으로
+처음부터 끝까지 통과시켜 war 산출물 직전까지 가는 과정입니다. 기준 디렉터리는
+`D:\AI\workspace\customer-mgmt`로 가정합니다.
+
+### 2.1 작업 디렉터리 생성
+
+```powershell
+New-Item -ItemType Directory -Force D:\AI\workspace\customer-mgmt | Out-Null
+cd D:\AI\workspace\customer-mgmt
+```
+
+### 2.2 Stage 1 — Blueprint 생성 (rdb-skill)
+
+자연어 요구사항을 입력하면 도메인/엔티티/관계가 추출되어 `_blueprint.yaml`로 저장됩니다.
+
+```
+/karpathy-rdb init customer-management --preset 고객관리
+/karpathy-rdb ingest 고객은 이메일이 unique 하고 여러 주소를 등록할 수 있다. 고객 등급은 일반/우수/VIP 셋 중 하나.
+/karpathy-rdb compile
+```
+
+산출물:
+```
+wiki/
+├── domains/
+├── entities/
+│   ├── customer.md
+│   ├── customer_address.md
+│   └── customer_grade.md
+└── _blueprint.yaml          ← 다음 단계의 입력
+```
+
+**Blueprint 검증:** `_blueprint.yaml`의 모든 컬럼이 `nullable: true|false` 키를
+가지는지 확인하세요. 과거 버전의 `null:` 키는 YAML null 리터럴과 충돌하여
+NOT NULL이 누락되는 회귀가 있었습니다 (v0.1.1에서 수정됨).
+
+### 2.3 Stage 2 — DDL 생성 (rdb-ddl)
+
+Blueprint를 PostgreSQL DDL + Flyway migrations + JPA Entity로 컴파일합니다.
+
+```
+/rdb-ddl-compile ./wiki --out ./db --dialect postgres
+```
+
+산출물:
+```
+db/
+├── migrations/
+│   ├── V001__create_customer.sql
+│   ├── V002__create_customer_address.sql
+│   ├── V003__create_customer_grade.sql
+│   └── V004__seed.sql
+├── entities/
+│   ├── Customer.java
+│   ├── CustomerAddress.java
+│   └── CustomerGrade.java
+└── ddl-report.md
+```
+
+> HSQLDB embedded로 정합성만 확인하고 싶으면 `--dialect hsqldb`로 변경하세요.
+> Stage 3가 기본으로 사용하는 in-memory DB와 동일합니다.
+
+### 2.4 Stage 3 — Java 백엔드 (rdb-mybatis)
+
+Blueprint + migrations로부터 Controller / Service / Mapper / MyBatis XML을 생성하고,
+**Stage 4가 소비할 `endpoints.json`을 동시에 emit**합니다.
+
+```bash
+/karpathy-rdb-mybatis compile \
+  --blueprint ./wiki/_blueprint.yaml \
+  --ddl-dir   ./db/migrations \
+  --out       ./backend
+```
+
+산출물:
+```
+backend/
+├── src/main/java/com/nexacro/uiadapter/
+│   ├── controller/CustomerController.java
+│   ├── service/CustomerService.java
+│   ├── service/impl/CustomerServiceImpl.java
+│   ├── mapper/CustomerMapper.java
+│   └── domain/Customer.java
+├── src/main/resources/
+│   ├── schema.sql
+│   ├── data.sql
+│   └── mybatis/mapper/CustomerMapper.xml
+├── endpoints.json           ← Stage 4 입력
+└── mybatis-report.md
+```
+
+**Endpoints 미리보기:**
+```bash
+cat ./backend/endpoints.json
+```
+각 entity는 최소 `select_datalist_map` + `save_datalist_map` 두 메서드를 가지며,
+`http_path`는 `/uiadapter/<entity>/<method>` 패턴입니다.
+
+### 2.5 Stage 4 — nexacro 화면 (rdb-nexacro)
+
+Blueprint + endpoints.json으로 entity별 xfdl form, dsMenu seed, typedefinition patch를
+생성합니다.
+
+```bash
+python D:\AI\workspace\andrej-karpathy-rdb-nexacro\scripts\form_gen.py compile `
+  --blueprint .\wiki\_blueprint.yaml `
+  --endpoints .\backend\endpoints.json `
+  --out       .\frontend
+```
+
+산출물:
+```
+frontend/
+├── nxui/_form_/customer.xfdl
+├── nxui/_form_/customer_address.xfdl
+├── nxui/_form_/customer_grade.xfdl
+├── nxui/_datasets_/dsMenu.seed.xml
+├── patches/typedefinition.patch.xml
+└── docs/nexacro-report.md
+```
+
+폼 구조: 검색 패널(상단) + 편집 가능한 Grid(중단) + 액션 버튼(하단). PK 컬럼은
+자동으로 `edittype="none"` 처리되며, `*_yn`으로 끝나는 char(1) 컬럼은 Y/N Combo로
+렌더됩니다.
+
+### 2.6 통합 — scaffold + overlay → war
+
+마지막으로 외부 plugin `/nexacro-fullstack-starter`로 빈 프로젝트 골격을 만들고,
+Stage 3 + Stage 4 산출물을 그 위에 overlay합니다.
+
+```
+# (1) Stage 4' — 빈 scaffold
+/nexacro-fullstack-starter --jdk 17 --framework spring-boot --name customer-mgmt-app
+```
+
+```bash
+# (2) Stage 3 백엔드 overlay
+cp -r ./backend/src/main/java/com/nexacro/uiadapter/. \
+      ./customer-mgmt-app/src/main/java/com/nexacro/uiadapter/
+cp -r ./backend/src/main/resources/mybatis/. \
+      ./customer-mgmt-app/src/main/resources/mybatis/
+cp ./backend/src/main/resources/schema.sql ./customer-mgmt-app/src/main/resources/
+[ -f ./backend/src/main/resources/data.sql ] && \
+  cp ./backend/src/main/resources/data.sql ./customer-mgmt-app/src/main/resources/
+
+# (3) Stage 4 프런트 overlay
+bash D:/AI/workspace/andrej-karpathy-rdb-nexacro/scripts/overlay.sh \
+     ./frontend ./customer-mgmt-app
+
+# (4) 빌드 + 실행
+cd customer-mgmt-app
+mvn -q -DskipTests package
+mvn spring-boot:run
+```
+
+브라우저에서 `http://localhost:8080/uiadapter/`가 응답하면 정상.
+nexacro Studio로 `customer-mgmt-app/nxui/`를 열어 화면을 확인할 수 있습니다.
+
+`POST /uiadapter/customer/select_datalist_map`을 호출하여 NexacroResult 직렬화가
+성공하면 end-to-end 통과 (라이선스 설치 환경 필요).
+
+---
+
+## 3. Stage별 Reference
+
+### 3.1 andrej-karpathy-rdb-skill v0.1.1 — Plan
+
+**위치:** `D:\AI\workspace\andrej-karpathy-rdb-skill`
+
+**역할:** 자연어 / 도메인 wiki를 받아 도메인-엔티티-컬럼-관계 그래프를
+`_blueprint.yaml`로 정규화.
+
+**Slash commands:**
+
+| Command | 입력 | 동작 |
+| :-- | :-- | :-- |
+| `/karpathy-rdb init <name> --preset <preset>` | preset 키워드 | wiki scaffold 생성 |
+| `/karpathy-rdb ingest <text>` 또는 `--file <path>` | 자연어 / markdown | 엔티티/속성/관계 추출하여 wiki에 추가 |
+| `/karpathy-rdb compile` | wiki 디렉터리 | `_blueprint.yaml`로 컴파일 |
+
+**입력 형식:** 자연어 또는 YAML frontmatter가 있는 markdown wiki
+
+**출력 형식 (`_blueprint.yaml`):**
+```yaml
+version: 1
+project: customer-management
+domains:
+  - name: customer
+    entities: [customer, customer_address, customer_grade]
+entities:
+  - name: customer
+    columns:
+      - { name: customer_id, type: varchar(40), pk: true,  nullable: false }
+      - { name: email,       type: varchar(255),           nullable: false, unique: true }
+      - { name: grade_cd,    type: char(2),                nullable: false }
+      - { name: vip_yn,      type: char(1),                nullable: false }
+relations:
+  - { from: customer_address, to: customer, type: many-to-one, on: customer_id }
+validation:
+  passed: true
+```
+
+**핵심 규칙:**
+- 모든 컬럼은 `nullable: true|false` 키를 가져야 함 (`null:` 키는 deprecated)
+- `validation.passed: true` 여야 후속 Stage가 진행 가능 (Stage 4의 N001)
+
+---
+
+### 3.2 andrej-karpathy-rdb-ddl v0.1.2 — Backend DB
+
+**위치:** `D:\AI\workspace\andrej-karpathy-rdb-ddl`
+
+**역할:** Blueprint를 SQL DDL + Flyway migrations + JPA Entity로 컴파일.
+
+**Slash command:**
+```
+/rdb-ddl-compile <wiki_path> --out ./db --dialect postgres
+```
+
+| 옵션 | 값 | 설명 |
+| :-- | :-- | :-- |
+| `<wiki_path>` | required | Stage 1의 wiki 디렉터리 또는 `_blueprint.yaml` 직접 지정 |
+| `--out` | required | 출력 디렉터리 (예: `./db`) |
+| `--dialect` | `postgres` \| `hsqldb` | 기본 `postgres`. Stage 3 in-memory 검증용은 `hsqldb` |
+
+**출력:**
+```
+<out>/
+├── migrations/V001__create_*.sql, V002__..., V003__..., V004__seed.sql
+├── entities/<Entity>.java                  (JPA @Entity)
+└── ddl-report.md                           (생성 요약)
+```
+
+**Convention:**
+- migration 파일명은 Flyway 호환: `V<순번>__<설명>.sql`
+- `V004__seed.sql`은 Stage 1 blueprint에 `seed:` 블록이 있을 때만 생성
+- HSQLDB 방언은 임베디드 in-memory 검증을 위한 것으로 PG의 모든 타입을 지원하지 않음
+
+---
+
+### 3.3 andrej-karpathy-rdb-mybatis v0.1.4 — Middle Java
+
+**위치:** `D:\AI\workspace\andrej-karpathy-rdb-mybatis`
+
+**역할:** Blueprint + DDL을 받아 nexacro uiadapter 패턴의 Controller / Service /
+Mapper / MyBatis XML과 schema.sql을 emit. v0.1.4부터 **Stage 4용 endpoints.json도 함께 emit**.
+
+**Slash command:**
+```bash
+/karpathy-rdb-mybatis compile \
+  --blueprint <path>/_blueprint.yaml \
+  --ddl-dir   <path>/db/migrations \
+  --out       <path>/backend
+```
+
+| 옵션 | 설명 |
+| :-- | :-- |
+| `--blueprint` | Stage 1 산출 |
+| `--ddl-dir` | Stage 2 산출의 `migrations/` 경로 |
+| `--out` | 출력 backend 디렉터리 |
+| `--skip-compile` | Java 컴파일 검증 생략 (CI 빠른 실행용) |
+| `--dry-run` | 파일 emit만 하고 검증 단계 skip |
+
+**출력 트리:**
+```
+<out>/
+├── src/main/java/com/nexacro/uiadapter/
+│   ├── controller/<Entity>Controller.java
+│   ├── service/<Entity>Service.java
+│   ├── service/impl/<Entity>ServiceImpl.java
+│   ├── mapper/<Entity>Mapper.java
+│   └── domain/<Entity>.java
+├── src/main/resources/
+│   ├── schema.sql
+│   ├── data.sql                   (seed 있을 때만)
+│   └── mybatis/mapper/<Entity>Mapper.xml
+├── endpoints.json                 ← Stage 4 입력
+└── mybatis-report.md
+```
+
+**endpoints.json 스키마:**
+```json
+{
+  "version": 1,
+  "context_path": "/uiadapter",
+  "entities": [
+    {
+      "name": "customer",
+      "endpoint_base": "/customer",
+      "endpoints": [
+        { "method": "select_datalist_map", "http_path": "/uiadapter/customer/select_datalist_map" },
+        { "method": "save_datalist_map",   "http_path": "/uiadapter/customer/save_datalist_map" }
+      ]
+    }
+  ]
+}
+```
+- 각 entity는 `select_datalist_map` + `save_datalist_map` 두 메서드를 **반드시** 포함
+- import는 jakarta lane (`com.nexacro.uiadapter.jakarta.core.*`) — JDK17 / Spring Boot 3 전용
+
+---
+
+### 3.4 andrej-karpathy-rdb-nexacro v0.1.0 — Frontend xfdl
+
+**위치:** `D:\AI\workspace\andrej-karpathy-rdb-nexacro`
+
+**역할:** Blueprint + endpoints.json으로 entity별 nexacro xfdl form 생성.
+2-tier 레이아웃 (Search panel + editable Grid + action buttons).
+
+**CLI:**
+```bash
+python scripts/form_gen.py compile \
+  --blueprint <path>/_blueprint.yaml \
+  --endpoints <path>/endpoints.json \
+  --out       out/
+```
+
+**Flags:**
+
+| Flag | 설명 |
+| :-- | :-- |
+| `--blueprint` | required. Stage 1 산출 |
+| `--endpoints` | Stage 3 v0.1.4+ 산출 |
+| `--infer-endpoints` | endpoints.json 없을 때 blueprint로부터 합성 (Stage 3 미실행 시) |
+| `--out` | required. 출력 루트 |
+| `--frame packageN\|minimal` | 프레임 스타일. 기본 `packageN` (MDI) |
+| `--strict` | type fallback 발생 시 실패 |
+| `--force` | 기존 xfdl 덮어쓰기 (`<name>.xfdl.bak`로 백업 후) |
+
+**출력:**
+```
+<out>/
+├── nxui/_form_/<entity>.xfdl
+├── nxui/_datasets_/dsMenu.seed.xml
+├── patches/typedefinition.patch.xml
+└── docs/nexacro-report.md
+```
+
+**Validators (실패 시 exit code 1, stderr에 `[N00X ...]` 출력):**
+
+| ID | 체크 |
+| :-- | :-- |
+| N001 | blueprint version + `validation.passed: true` |
+| N002 | endpoints.json shape (version, 필수 method) |
+| N003 | blueprint ↔ endpoints entity 집합 일치 |
+| N004 | 모든 entity가 PK 컬럼 ≥ 1 |
+| N005 | 모든 entity가 검색 가능한 컬럼 ≥ 1 (PK 또는 NOT NULL) |
+| N006 | emit된 모든 XML이 well-formed |
+| N007 | overlay 충돌 가드 (`--force` 없이 기존 파일 덮어쓰기 시도) |
+
+**Type 매핑 (요약):**
+
+| PG 타입 | Dataset type | Grid edit | Search |
+| :-- | :-- | :-- | :-- |
+| `varchar(N)` | STRING (size=N) | Edit | Edit |
+| `char(1) ... _yn` (non-pk) | STRING | Combo (Y/N) | Combo |
+| `char(N)` | STRING (size=N) | Edit | Edit |
+| `int`, `bigint` | INT | MaskEdit | Edit |
+| `numeric(p,s)` | DECIMAL | MaskEdit | Edit |
+| `date`, `timestamp` | DATE | Calendar | Calendar |
+| `boolean` | STRING | Combo | Combo |
+| PK 컬럼 (모든 타입) | (위 동일) | none (readonly) | (해당 없음) |
+
+전체 매트릭스는 `references/type-mapping-matrix.md` 참조.
+
+---
+
+## 4. 통합 — Stage 3+4 → nexacro-fullstack-starter overlay
+
+핸드오프 계약 전문은 [`needs/Plugin참조/3. Middle+Frontend - Stage 3→4 nexacro 핸드오프 계약.md`](../needs/Plugin%EC%B0%B8%EC%A1%B0/3.%20Middle%2BFrontend%20-%20Stage%203%E2%86%924%20nexacro%20%ED%95%B8%EB%93%9C%EC%98%A4%ED%94%84%20%EA%B3%84%EC%95%BD.md) 참조.
+요점만 발췌:
+
+### 4.1 실행 순서 (반드시 이 순서)
+
+```
+[1] Stage 4' (nexacro-fullstack-starter)  →  빈 ./<PROJECT>/ scaffold 생성
+[2] Stage 3 (rdb-mybatis) overlay         →  src/main/java + resources/mybatis 덮어쓰기
+[3] Stage 4 (rdb-nexacro) overlay         →  nxui/_form_, _datasets_, patches 덮어쓰기
+[4] mvn package                           →  war 빌드
+```
+
+이유: Stage 4'는 `TARGET_DIR`이 존재하면 중단합니다. Stage 3은 `pom.xml` /
+`Application.java` / `config/`를 건드리지 않고 **도메인 코드만** 얹는 모델입니다.
+
+### 4.2 충돌 처리 정책
+
+| 파일 | 정책 |
+| :-- | :-- |
+| `BoardController.java` 등 scaffold sample | 유지 — Stage 3가 같은 이름의 entity를 만들지 않는 한 공존 |
+| `schema.sql`, `data.sql` | scaffold 본을 `*.scaffold.sql`로 백업 후 Stage 3 본으로 교체 |
+| `pom.xml`, `Application.java`, `config/*.java` | Stage 4' 본 그대로. Stage 3 미수정 |
+| `mybatis-config.xml`, `application.yml` | Stage 4' 본 그대로 |
+| `<entity>.xfdl` (Stage 4 → scaffold) | Stage 4의 `--force`로 덮어쓰기 + `.bak` 자동 생성 |
+| `typedefinition.xml` | 자동 merge 안 함 — `patches/typedefinition.patch.xml`을 수동/`typedefinition.merge.py`로 병합 |
+
+### 4.3 검증 체크리스트 (overlay 후)
+
+- [ ] `mvn -q -DskipTests compile` 성공
+- [ ] `src/main/java/com/nexacro/uiadapter/Application.java` 존재 (Stage 4' 보존)
+- [ ] `src/main/java/com/nexacro/uiadapter/controller/<Entity>Controller.java` 존재 (Stage 3)
+- [ ] `mybatis/mapper/<Entity>Mapper.xml`의 `namespace`가 `com.nexacro.uiadapter.mapper.<Entity>Mapper`와 일치
+- [ ] `schema.sql`의 NOT NULL 제약이 blueprint `nullable: false` 컬럼과 1:1 매핑
+- [ ] `mvn spring-boot:run` 후 `http://localhost:8080/uiadapter/` 응답
+- [ ] `POST /uiadapter/<entity>/select_datalist_map` → NexacroResult 직렬화 성공
+
+### 4.4 JDK / lane 매핑
+
+| Stage 3가 emit하는 import | 호환 Stage 4' runner |
+| :-- | :-- |
+| `com.nexacro.uiadapter.jakarta.core.*` | `boot-jdk17-jakarta` (Spring Boot 3 + JDK17) |
+| `com.nexacro.uiadapter.spring.core.*` (legacy) | `boot-jdk8-javax` (Spring Boot 2 + JDK8) — Stage 3 v0.1.4 미발행 |
+
+> 현재는 jakarta lane 만 생성합니다. javax/JDK8이 필요하면 Stage 3에 lane 파라미터
+> (`--lane jakarta|javax`) 도입이 필요 (후속 작업).
+
+---
+
+## 5. 트러블슈팅
+
+### 5.1 Stage 1 (rdb-skill)
+
+| 증상 | 원인 | 해결 |
+| :-- | :-- | :-- |
+| `_blueprint.yaml`의 컬럼이 NOT NULL 누락 | 구버전의 `null:` 키 (YAML null literal과 충돌) | v0.1.1로 업그레이드. 모든 컬럼이 `nullable:` 키를 사용해야 함 |
+| `validation.passed: false` | 관계 cycle / 필수 키 누락 / unknown type | `compile` 출력의 validation 섹션 확인 후 wiki 수정 |
+| 동일 entity가 wiki에 여러 번 ingest됨 | `ingest` 호출 시 중복 검사 안 함 | `wiki/entities/<name>.md` 직접 수정 또는 `init`으로 reset |
+
+### 5.2 Stage 2 (rdb-ddl)
+
+| 증상 | 원인 | 해결 |
+| :-- | :-- | :-- |
+| `V004__seed.sql` 없음 | blueprint에 `seed:` 블록 없음 | 정상 동작 |
+| `--dialect hsqldb`에서 일부 타입이 변환됨 | HSQLDB 미지원 타입의 fallback | `--dialect postgres`로 운영 DDL 생성 |
+| Java entity에 `@Id` 없음 | blueprint 컬럼에 `pk: true` 누락 | wiki에서 PK 컬럼 표기 후 재컴파일 |
+
+### 5.3 Stage 3 (rdb-mybatis)
+
+| 증상 | 원인 | 해결 |
+| :-- | :-- | :-- |
+| `endpoints.json` 없음 | Stage 3 v0.1.3 이하 사용 중 | v0.1.4 이상으로 업그레이드 (Phase 0 변경사항) |
+| `mvn compile` 실패: `package com.nexacro.uiadapter.jakarta.core does not exist` | uiadapter 의존성 누락 또는 javax lane 사용 중 | Stage 4' scaffold의 `pom.xml` 사용 — jakarta artifact가 들어 있음 |
+| Mapper namespace mismatch | Stage 4' scaffold sample mapper와 충돌 | overlay 시 Stage 3 본이 wins (덮어쓰기). namespace 수동 확인 |
+
+### 5.4 Stage 4 (rdb-nexacro)
+
+| Validator | 증상 | 해결 |
+| :-- | :-- | :-- |
+| **N001** | `[N001 blueprint validation.passed must be true]` | Stage 1로 돌아가 blueprint 수정 후 `compile` 재실행 |
+| **N002** | `[N002 endpoints.json not found ...]` 또는 `unsupported version` | Stage 3 v0.1.4+ 출력의 endpoints.json 경로 확인. 없으면 `--infer-endpoints` 사용 (Stage 3 산출 없을 때) |
+| **N003** | `[N003 entity sets diverge ...]` | blueprint와 endpoints의 entity 집합이 불일치. 둘 중 하나 동기화 |
+| **N004** | `[N004 entity 'X' has no PK column]` | blueprint에서 해당 entity의 PK 컬럼에 `pk: true` 표기 |
+| **N005** | `[N005 entity 'X' has no searchable columns]` | PK도 NOT NULL 컬럼도 없는 entity. 최소 1개 컬럼을 `nullable: false`로 |
+| **N006** | `[N006 malformed XML ...]` | 보통 템플릿 변경 후 발생. PR로 보고. 임시 회피 — 해당 entity만 제외 후 generate |
+| **N007** | `[N007 overlay conflict: ... exists — use --force]` | 의도적이면 `--force` 추가. xfdl이 `.bak`로 자동 백업됨 |
+
+**기타:**
+- `python scripts/form_gen.py: ModuleNotFoundError` → `PYTHONPATH=<repo>/scripts` 환경변수 설정 후 재실행
+- xfdl이 nexacro Studio에서 안 열림 → `nexacro-report.md`로 어떤 entity가 emit됐는지 확인. dsMenu seed가 실제 화면 ID와 매칭되는지 점검
+
+### 5.5 통합 (overlay + war)
+
+| 증상 | 해결 |
+| :-- | :-- |
+| `target.replace(target.with_suffix(target.suffix + ".bak"))` 후에도 N007 발생 | `.bak` 파일이 이미 존재. 수동으로 제거 후 `--force` 재시도 |
+| nexacro Studio에서 `dsMenu` 비어 있음 | `nxui/_datasets_/dsMenu.seed.xml`을 nexacro project에 import 했는지 확인 |
+| `typedefinition.xml`에 Service entry 없음 | `patches/typedefinition.patch.xml`이 자동 merge 안 됨. 수동 또는 `typedefinition.merge.py` 사용 |
+| `POST /uiadapter/...` → 500 license error | nexacro N v24 라이선스 미설치. 개발 환경엔 라이선스가 필요. 대안으로 plain JSON 응답 모드 검토 |
+
+---
+
+## 6. 다음 단계
+
+### 6.1 Stage 4 v0.1.1 로드맵 (final reviewer notes)
+
+- [ ] `_pascal()` 헬퍼를 `scripts/utils.py`로 추출 (3개 모듈에 중복)
+- [ ] `tests/_review_out2/` 정리 + `.gitignore`
+- [ ] `TypeMapperError`에 N008 코드 부여 + `form_gen.py`에서 catch
+- [ ] `keep_trailing_newline` 차이를 템플릿 헤더에 명시
+
+### 6.2 향후 추가 plugin (`/nexacro-claude-skills`)
+
+```
+/nexacro-data-format     ← Dataset 표준화
+/nexacro-form-maker      ← 화면 생성 보조
+/nexacro-project-maker   ← project 단위 scaffold
+/nexacro-build           ← build 자동화
+```
+
+### 6.3 후속 작업 (TBD)
+
+- Stage 3에 `--lane jakarta|javax` 도입 → Spring Boot 2 / JDK8 환경 호환
+- `/business-fullstack-creater scaffold` 슬래시 커맨드 — Stage 1→2→3→4+overlay 자동화
+- Overlay 단계 entity 충돌 감지 시 사용자 확인 prompt
+- nexacro 화면에 master-detail / popup 패턴 추가
+
+---
+
+## 참조
+
+- 요구기능 원문: [`needs/business-fullstack-creater 플러그인 요구기능.md`](../needs/business-fullstack-creater%20%ED%94%8C%EB%9F%AC%EA%B7%B8%EC%9D%B8%20%EC%9A%94%EA%B5%AC%EA%B8%B0%EB%8A%A5.md)
+- Stage 1 참조: [`needs/Plugin참조/1. Plan - andrej-karpathy-rdb-skill 구현.md`](../needs/Plugin%EC%B0%B8%EC%A1%B0/1.%20Plan%20-%20andrej-karpathy-rdb-skill%20%EA%B5%AC%ED%98%84.md)
+- Stage 2 참조: [`needs/Plugin참조/2. Backend - DB 스키마(DDL) 생성하기.md`](../needs/Plugin%EC%B0%B8%EC%A1%B0/2.%20Backend%20-%20DB%20%EC%8A%A4%ED%82%A4%EB%A7%88(DDL)%20%EC%83%9D%EC%84%B1%ED%95%98%EA%B8%B0.md)
+- Stage 3↔4 핸드오프: [`needs/Plugin참조/3. Middle+Frontend - Stage 3→4 nexacro 핸드오프 계약.md`](../needs/Plugin%EC%B0%B8%EC%A1%B0/3.%20Middle%2BFrontend%20-%20Stage%203%E2%86%924%20nexacro%20%ED%95%B8%EB%93%9C%EC%98%A4%ED%94%84%20%EA%B3%84%EC%95%BD.md)
+- 설계 문서: [`docs/superpowers/specs/`](./superpowers/specs/)
+- 구현 플랜: [`docs/superpowers/plans/`](./superpowers/plans/)
+
+| Plugin repo | 경로 |
+| :-- | :-- |
+| Stage 1 (rdb-skill) | `D:\AI\workspace\andrej-karpathy-rdb-skill` |
+| Stage 2 (rdb-ddl) | `D:\AI\workspace\andrej-karpathy-rdb-ddl` |
+| Stage 3 (rdb-mybatis) | `D:\AI\workspace\andrej-karpathy-rdb-mybatis` |
+| Stage 4 (rdb-nexacro) | `D:\AI\workspace\andrej-karpathy-rdb-nexacro` |
+| Stage 4' (외부) | `/nexacro-fullstack-starter` (`/plugin install`) |
+
+---
+
+*Last updated: 2026-05-15 — Stage 4 v0.1.0 release*

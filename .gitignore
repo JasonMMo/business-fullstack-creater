@@ -4,3 +4,6 @@ __pycache__/
 .smoke/
 .claude/settings.local.json
 nul
+tests/golden/*/db/
+tests/golden/*/_blueprint.yaml
+tests/golden/*/compile-report.md

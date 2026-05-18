@@ -3,30 +3,69 @@ import pathlib
 import pytest
 from scaffold_orchestrator import ScaffoldArgs, run_scaffold, StageFailure
 
+# Minimal .seed.md that _init_wiki_from_preset can parse to produce entities
+_MINIMAL_SEED = """\
+---
+preset: {preset}
+version: 1
+---
 
-def _make_fake_stage(tmp_path, name, scripts):
-    """scripts: dict[name -> python source]"""
+# {preset}
+
+```yaml
+type: entity
+name: item
+display: 항목
+domain: [{preset}]
+table: item
+status: draft
+columns:
+  - {{ name: id, type: bigserial, pk: true, nullable: false }}
+```
+"""
+
+
+def _make_fake_stage(tmp_path, name, scripts, presets=None):
+    """Create a fake sibling stage repo.
+
+    scripts : dict[filename -> python source] placed in <repo>/scripts/
+    presets : dict[preset_name -> seed_md_text] placed in
+              <repo>/.claude/skills/karpathy-rdb/presets/<name>.seed.md
+              (only relevant for stage1 / 'skill')
+    """
     repo = tmp_path / f"andrej-karpathy-rdb-{name}"
     (repo / "scripts").mkdir(parents=True)
     for fname, src in scripts.items():
         (repo / "scripts" / fname).write_text(src, encoding="utf-8")
+    if presets:
+        presets_dir = repo / ".claude" / "skills" / "karpathy-rdb" / "presets"
+        presets_dir.mkdir(parents=True)
+        for preset_name, seed_text in presets.items():
+            (presets_dir / f"{preset_name}.seed.md").write_text(
+                seed_text, encoding="utf-8"
+            )
     return repo
 
 
-def test_stage1_preset_writes_blueprint(tmp_path):
-    # fake stage1: rdb_index.py compile <wiki> writes _blueprint.yaml
+def _make_fake_s1(tmp_path, preset_name):
+    """Create a fake stage1 repo with a minimal preset and a compile-only rdb_index."""
     s1_src = (
         "import sys, pathlib\n"
-        "args = sys.argv[1:]\n"
-        "if args[0] == 'init':\n"
-        "    out = pathlib.Path(args[1]); out.mkdir(parents=True, exist_ok=True)\n"
-        "    (out / '_schema.md').write_text('---\\ntype: schema\\n---\\n')\n"
-        "elif args[0] == 'compile':\n"
-        "    out = pathlib.Path(args[1])\n"
-        "    (out / '_blueprint.yaml').write_text('version: 1\\nentities: []\\n')\n"
-        "    (out / 'compile-report.md').write_text('OK\\n')\n"
+        "wiki_dir = pathlib.Path(sys.argv[2])\n"
+        "(wiki_dir / '_blueprint.yaml').write_text('version: 1\\nentities: []\\n')\n"
+        "(wiki_dir / 'compile-report.md').write_text('OK\\n')\n"
     )
-    s1 = _make_fake_stage(tmp_path, "skill", {"rdb_index.py": s1_src})
+    seed = _MINIMAL_SEED.format(preset=preset_name)
+    return _make_fake_stage(
+        tmp_path, "skill",
+        {"rdb_index.py": s1_src},
+        presets={preset_name: seed},
+    )
+
+
+def test_stage1_preset_writes_blueprint(tmp_path):
+    # _init_wiki_from_preset writes entity files; fake rdb_index compile writes _blueprint.yaml
+    _make_fake_s1(tmp_path, "주문관리")
     for n in ("ddl", "mybatis", "nexacro"):
         _make_fake_stage(tmp_path, n, {})  # empty
     creator = tmp_path / "creater"; creator.mkdir()
@@ -44,18 +83,7 @@ def test_stage1_preset_writes_blueprint(tmp_path):
 
 
 def test_stage2_runs_after_stage1(tmp_path):
-    # fake stage1: same shape as test_stage1_preset_writes_blueprint
-    s1_src = (
-        "import sys, pathlib\n"
-        "args = sys.argv[1:]\n"
-        "if args[0] == 'init':\n"
-        "    out = pathlib.Path(args[1]); out.mkdir(parents=True, exist_ok=True)\n"
-        "    (out / '_schema.md').write_text('---\\ntype: schema\\n---\\n')\n"
-        "elif args[0] == 'compile':\n"
-        "    out = pathlib.Path(args[1])\n"
-        "    (out / '_blueprint.yaml').write_text('version: 1\\nentities: []\\n')\n"
-        "    (out / 'compile-report.md').write_text('OK\\n')\n"
-    )
+    _make_fake_s1(tmp_path, "t")
     # fake stage2: positional blueprint + --out OUT
     s2_src = (
         "import sys, pathlib\n"
@@ -64,7 +92,6 @@ def test_stage2_runs_after_stage1(tmp_path):
         "out.mkdir(parents=True, exist_ok=True)\n"
         "(out / 'ddl_create.sql').write_text('-- generated from ' + bp.name)\n"
     )
-    _make_fake_stage(tmp_path, "skill", {"rdb_index.py": s1_src})
     _make_fake_stage(tmp_path, "ddl",   {"ddl_compile.py": s2_src})
     for n in ("mybatis", "nexacro"):
         _make_fake_stage(tmp_path, n, {})
@@ -82,18 +109,7 @@ def test_stage2_runs_after_stage1(tmp_path):
 
 
 def test_stage3_runs_after_stage2(tmp_path):
-    # fake stage1
-    s1_src = (
-        "import sys, pathlib\n"
-        "args = sys.argv[1:]\n"
-        "if args[0] == 'init':\n"
-        "    out = pathlib.Path(args[1]); out.mkdir(parents=True, exist_ok=True)\n"
-        "    (out / '_schema.md').write_text('---\\ntype: schema\\n---\\n')\n"
-        "elif args[0] == 'compile':\n"
-        "    out = pathlib.Path(args[1])\n"
-        "    (out / '_blueprint.yaml').write_text('version: 1\\nentities: []\\n')\n"
-        "    (out / 'compile-report.md').write_text('OK\\n')\n"
-    )
+    _make_fake_s1(tmp_path, "t")
     # fake stage2: positional blueprint + --out OUT
     s2_src = (
         "import sys, pathlib\n"
@@ -111,7 +127,6 @@ def test_stage3_runs_after_stage2(tmp_path):
         "out.mkdir(parents=True, exist_ok=True)\n"
         "(out / 'mapper.xml').write_text('<mapper/>')\n"
     )
-    _make_fake_stage(tmp_path, "skill",   {"rdb_index.py": s1_src})
     _make_fake_stage(tmp_path, "ddl",     {"ddl_compile.py": s2_src})
     _make_fake_stage(tmp_path, "mybatis", {"compile.py": s3_src})
     _make_fake_stage(tmp_path, "nexacro", {})
@@ -130,17 +145,7 @@ def test_stage3_runs_after_stage2(tmp_path):
 
 def _make_fake_chain_stages(tmp_path):
     """Create fake stages 1-3 needed as prerequisites for stage4 tests."""
-    s1_src = (
-        "import sys, pathlib\n"
-        "args = sys.argv[1:]\n"
-        "if args[0] == 'init':\n"
-        "    out = pathlib.Path(args[1]); out.mkdir(parents=True, exist_ok=True)\n"
-        "    (out / '_schema.md').write_text('---\\ntype: schema\\n---\\n')\n"
-        "elif args[0] == 'compile':\n"
-        "    out = pathlib.Path(args[1])\n"
-        "    (out / '_blueprint.yaml').write_text('version: 1\\nentities: []\\n')\n"
-        "    (out / 'compile-report.md').write_text('OK\\n')\n"
-    )
+    _make_fake_s1(tmp_path, "t")
     s2_src = (
         "import sys, pathlib\n"
         "out = pathlib.Path(sys.argv[sys.argv.index('--out')+1])\n"
@@ -154,7 +159,6 @@ def _make_fake_chain_stages(tmp_path):
         "out.mkdir(parents=True, exist_ok=True)\n"
         "(out / 'mapper.xml').write_text('<mapper/>')\n"
     )
-    _make_fake_stage(tmp_path, "skill",   {"rdb_index.py": s1_src})
     _make_fake_stage(tmp_path, "ddl",     {"ddl_compile.py": s2_src})
     _make_fake_stage(tmp_path, "mybatis", {"compile.py": s3_src})
 
@@ -262,7 +266,8 @@ def test_scaffold_report_written_on_success(tmp_path):
     out = tmp_path / "out"
     args = ScaffoldArgs(
         domain="주문관리", domain_slug="order", wiki_mode="preset",
-        preset="주문관리", wiki_path=None, lane="nexacro",
+        preset="t",  # matches the preset in _make_fake_chain_stages/_make_fake_s1
+        wiki_path=None, lane="nexacro",
         default_pattern="D2", package="com.example.order", out_dir=out,
         creator_root=creator, stop_after_stage=4,
     )
@@ -281,25 +286,13 @@ def test_scaffold_report_written_on_success(tmp_path):
 
 def test_scaffold_report_written_on_failure(tmp_path):
     """When stage2 exits non-zero, scaffold-report.md is written with FAILED marker and StageFailure is raised."""
-    # stage1: normal
-    s1_src = (
-        "import sys, pathlib\n"
-        "args = sys.argv[1:]\n"
-        "if args[0] == 'init':\n"
-        "    out = pathlib.Path(args[1]); out.mkdir(parents=True, exist_ok=True)\n"
-        "    (out / '_schema.md').write_text('---\\ntype: schema\\n---\\n')\n"
-        "elif args[0] == 'compile':\n"
-        "    out = pathlib.Path(args[1])\n"
-        "    (out / '_blueprint.yaml').write_text('version: 1\\nentities: []\\n')\n"
-        "    (out / 'compile-report.md').write_text('OK\\n')\n"
-    )
+    _make_fake_s1(tmp_path, "주문관리")
     # stage2: exits 1 (simulates failure)
     s2_fail_src = (
         "import sys\n"
         "sys.stderr.write('ddl_compile error: invalid blueprint\\n')\n"
         "sys.exit(1)\n"
     )
-    _make_fake_stage(tmp_path, "skill", {"rdb_index.py": s1_src})
     _make_fake_stage(tmp_path, "ddl",   {"ddl_compile.py": s2_fail_src})
     for n in ("mybatis", "nexacro"):
         _make_fake_stage(tmp_path, n, {})

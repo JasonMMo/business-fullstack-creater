@@ -85,6 +85,26 @@ def _run_stage2(args, stage_paths, report):
     report.stage_durations_ms["stage2"] = dur
 
 
+def _run_stage3(args, stage_paths, report):
+    mybatis_out = args.out_dir / "3-mybatis"
+    mybatis_out.mkdir(parents=True, exist_ok=True)
+    s3 = stage_paths.stage3
+    bp = args.out_dir / "1-wiki" / "_blueprint.yaml"
+    ddl_dir = args.out_dir / "2-ddl"
+    dur, _ = _run(
+        [sys.executable, str(s3 / "scripts" / "compile.py"),
+         "compile",
+         "--blueprint", str(bp),
+         "--ddl-dir", str(ddl_dir),
+         "--out", str(mybatis_out),
+         "--lane", args.lane,
+         "--package", args.package],
+        cwd=s3, label="stage3.compile",
+    )
+    report.stages_run.append("stage3")
+    report.stage_durations_ms["stage3"] = dur
+
+
 def run_scaffold(args):
     if args.wiki_mode not in ("preset", "wiki"):
         raise ValueError("wiki_mode must be 'preset' or 'wiki'")
@@ -99,5 +119,8 @@ def run_scaffold(args):
     _run_stage2(args, stage_paths, report)
     if args.stop_after_stage <= 2:
         return report
-    # Stage 3/4 wired in later tasks
+    _run_stage3(args, stage_paths, report)
+    if args.stop_after_stage <= 3:
+        return report
+    # Stage 4 wired in later tasks
     return report

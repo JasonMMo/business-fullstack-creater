@@ -61,7 +61,7 @@ def _run_stage1(args, stage_paths, report):
         shutil.copytree(args.wiki_path, wiki_out)
         dur1 = 0
     else:
-        raise ValueError("wiki_mode must be 'preset' or 'wiki'")
+        assert args.wiki_mode in ("preset", "wiki"), "unreachable: validated in run_scaffold()"
     dur2, _ = _run(
         [sys.executable, str(s1 / "scripts" / "rdb_index.py"),
          "compile", str(wiki_out)],

@@ -61,6 +61,14 @@
 > - xfdl 폼이 단일 Service id 를 참조하도록 통일 (`SvcOrder::method`)
 > - 하위 호환 유지 — 신규 플래그 모두 default 값. 상세: [`docs/superpowers/specs/2026-05-18-v0.4-phase-e-me-gate.md`](./superpowers/specs/2026-05-18-v0.4-phase-e-me-gate.md)
 
+> **v0.4 Phase F (2026-05-18) 변경점**: Stage 5 target overlay 자동화.
+> - `scaffold_cli.py --target-project <dir>` 추가 — 4 stage 생성 직후 `/nexacro-fullstack-starter` 산출 base scaffold 위로 자동 overlay (Java + resources/mybatis + xfdl + frameLogin dsSample row + typedefinition `<Services>` entry)
+> - Java package 자동 rename: `com.example.<slug>` → `com.nexacro.uiadapter.<slug>` (`package`/`import`, MyBatis xml `namespace`/`type`/`resultType`/`parameterType`)
+> - `frameLogin.xfdl` dsSample 컬럼 schema mismatch 시 menu 단계만 skip + 사용자에게 실 ColumnInfo / 필요 컬럼 목록 안내 (다른 단계는 계속)
+> - 모든 수정 파일은 1회 `.bak` 백업 (idempotent — 재실행 시 row/Service 중복 추가 0)
+> - 충돌 시 `--overlay-force` 없으면 RuntimeError + 어느 파일과 충돌하는지 listing (변경 시작 전에 fail-fast)
+> - `--target-project` 미지정 시 Stage 5 skip (Phase D/E 하위 호환 100%). 상세: [`docs/superpowers/specs/2026-05-18-v0.4-phase-f-mf-gate.md`](./superpowers/specs/2026-05-18-v0.4-phase-f-mf-gate.md)
+
 ### 1.2 사전 준비
 
 **런타임:**
@@ -228,10 +236,47 @@ frontend/
 마지막으로 외부 plugin `/nexacro-fullstack-starter`로 빈 프로젝트 골격을 만들고,
 Stage 3 + Stage 4 산출물을 그 위에 overlay합니다.
 
-> v0.4 (Phase D) 부터 위 1~4 stage 는 `scripts/scaffold_cli.py` 1 회 호출로 묶입니다.
-> 본 절은 (a) 직접 4 stage 만 돌렸을 때 어떻게 base scaffold 위에 얹는지, 그리고
-> (b) `scaffold_cli.py` 가 자동 처리하는 항목 (data.sql wiring, 단일 Service, dialect)
-> 을 함께 설명합니다.
+> v0.4 Phase F 부터 위 1~4 stage **와** Stage 5 (target overlay) 가 `scripts/scaffold_cli.py`
+> 1 회 호출로 묶입니다. 권장 경로는 **(A) 자동 overlay** — `--target-project` 한 줄 추가.
+> 기존 수동 cp / `overlay.sh` 절차 **(B)** 는 fallback 으로 유지.
+
+**(A) 권장 — 자동 overlay (v0.4 Phase F):**
+
+```
+# (1) Stage 4' — 빈 scaffold (이미 있으면 skip)
+/nexacro-fullstack-starter --jdk 17 --framework spring-boot --name customer-mgmt-app
+```
+
+```powershell
+# (2) 1~5 stage 한 번에 — Stage 5 가 ./customer-mgmt-app 위로 overlay
+python scripts/scaffold_cli.py `
+  --domain "고객관리" --wiki-mode preset --preset 고객관리 `
+  --package com.example.customer --out ./customer-scaffold `
+  --dialect hsqldb --service-name Customer `
+  --target-project ./customer-mgmt-app
+```
+
+생성 후 자동으로:
+- `customer-mgmt-app/src/main/java/com/nexacro/uiadapter/customer/**/*.java` 배치 (`com.example.customer` → `com.nexacro.uiadapter.customer` 자동 rename)
+- `customer-mgmt-app/src/main/resources/{schema.sql, data.sql, mybatis/mapper/*.xml}` 배치 (xml `namespace`/`type`/`resultType`/`parameterType` 도 rename)
+- `customer-mgmt-app/nxui/packageN/customer/*.xfdl` 배치
+- `customer-mgmt-app/nxui/packageN/frame/frameLogin.xfdl` 의 `<Dataset id="dsSample">` 에 `BIZ_CUSTOMER` 그룹 + entity row 들 추가
+- `customer-mgmt-app/nxui/packageN/typedefinition.xml` 의 `<Services>` 에 `<Service prefixid="customer" ...>` 한 줄 추가
+
+```bash
+# (3) 빌드 + 실행
+cd customer-mgmt-app
+mvn -q -DskipTests package
+mvn spring-boot:run
+```
+
+> 충돌 시 `--overlay-force` 를 추가하세요 (기존 파일 `.bak` 백업 후 덮어쓰기). 기본은 fail-fast.
+> idempotent — 동일 명령 재실행 시 menu row / Service entry 중복 추가 없음, `.bak` 도 한 번만 생김.
+> `frameLogin.xfdl` 의 `dsSample` 컬럼이 본 도구가 요구하는 9개 (`level/groupId/menuId/menuNm/menuUrl/sortNo/upMenuId/useYn/auth`) 와 다르면 menu 단계만 skip + `scaffold-report.md` 에 실 ColumnInfo / 필요 컬럼 / missing 목록 출력 (Java/xfdl/typedef 단계는 계속).
+
+**(B) Fallback — 수동 cp / overlay.sh (Phase F 이전 방식):**
+
+`--target-project` 를 안 쓰거나 base scaffold 가 비표준 위치/구조일 때.
 
 ```
 # (1) Stage 4' — 빈 scaffold (latest v0.8.2)
@@ -254,20 +299,19 @@ cp ./backend/src/main/resources/schema.sql ./customer-mgmt-app/src/main/resource
 bash D:/AI/workspace/andrej-karpathy-rdb-nexacro/scripts/overlay.sh \
      ./frontend ./customer-mgmt-app
 
-# (4) 빌드 + 실행
+# (4) typedefinition.xml 수동 patch — patches/typedefinition.patch.xml 의 <Service .../> 한 줄을 base 의 <Services> 에 삽입
+
+# (5) 빌드 + 실행
 cd customer-mgmt-app
 mvn -q -DskipTests package
 mvn spring-boot:run
 ```
 
-> **scaffold_cli.py 사용 시 자동 처리되는 항목** (v0.4 Phase E):
-> - `--dialect hsqldb` → Stage 2 가 HSQLDB 방언 schema 와 seed 를 emit
-> - Stage 2 의 `seed/*.sql` → Stage 3 의 `--seed-dir` 로 자동 전달 → `data.sql` 생성
-> - `--service-name Order` → Stage 4 typedefinition 이 단일 `SvcOrder` 만 생성 (per-entity Service 분리 X)
->
-> 이 자동화는 **scaffold_cli.py 의 출력 트리 내부에서만** 적용됩니다. 위 (2)~(3) overlay 처럼
-> 별도 base scaffold (`customer-mgmt-app`) 로 옮기는 단계는 현재 수동입니다 (v0.4 시점).
-> Stage 5 (target overlay) 자동화는 v0.4 Phase F 로 검토 중.
+> **scaffold_cli.py 사용 시 자동 처리되는 항목** (v0.4 Phase E + F):
+> - Phase E: `--dialect hsqldb` → Stage 2 HSQLDB schema/seed
+> - Phase E: Stage 2 seed → Stage 3 `data.sql` 자동 wiring
+> - Phase E: `--service-name` → 단일 `SvcXxx` (per-entity Service 분리 X)
+> - Phase F: `--target-project` → base scaffold 위로 자동 overlay + Java package rename + menu inject + typedef merge
 
 브라우저에서 `http://localhost:8080/uiadapter/`가 응답하면 정상.
 nexacro Studio로 `customer-mgmt-app/nxui/`를 열어 화면을 확인할 수 있습니다.
@@ -483,6 +527,45 @@ python scripts/form_gen.py compile \
 
 ---
 
+### 3.5 scaffold_cli.py v0.4 — orchestrator + Stage 5 overlay
+
+**위치:** `D:\AI\workspace\business-fullstack-creater\scripts\scaffold_cli.py`
+
+**역할:** Stage 1~4 한 번에 실행 후 (Phase F) Stage 5 target overlay 까지 자동 수행.
+
+**Flags:**
+
+| Flag | 기본 | 설명 |
+| :-- | :-- | :-- |
+| `--domain <name>` | required | 도메인 라벨 (e.g. `"고객관리"`) |
+| `--wiki-mode preset\|wiki` | `preset` | wiki 입력 모드 |
+| `--preset <name>` | — | `--wiki-mode preset` 필수 |
+| `--wiki <path>` | — | `--wiki-mode wiki` 필수 |
+| `--lane nexacro\|vanilla` | `nexacro` | Stage 3 lane |
+| `--default-pattern D2\|F1\|C1` | — | Stage 4 entity 폼 패턴 fallback |
+| `--package <java.pkg>` | required | Spring base package (e.g. `com.example.order`). Stage 5 overlay 시 `com.nexacro.uiadapter.<slug>` 로 자동 rename |
+| `--out <dir>` | required | 출력 루트 (1-wiki / 2-ddl / 3-mybatis / 4-nexacro) |
+| `--stop-after-stage 1..5` | `5` | Stage 5 까지 실행 |
+| `--dialect postgres\|hsqldb` | `postgres` | Stage 2 SQL 방언 (Phase E) |
+| `--service-name <PascalCase>` | `domain_slug` PascalCase | 단일 Service id (Phase E) |
+| `--target-project <dir>` | — | **Phase F.** Stage 5 overlay 대상 (`/nexacro-fullstack-starter` 산출 root). 미지정 시 Stage 5 skip |
+| `--overlay-force` | `false` | **Phase F.** Stage 5 가 기존 파일 덮어쓰기 허용 (`.bak` 자동 생성). 기본은 충돌 시 fail-fast |
+
+**Stage 5 overlay 동작 요약:**
+
+1. **Java overlay + package rename** — `<out>/3-mybatis/src/main/java/com/example/<slug>/**/*.java` → `<target>/src/main/java/com/nexacro/uiadapter/<slug>/**/*.java`. `package`/`import` 선언 자동 rewrite.
+2. **Resources overlay** — `schema.sql` / `data.sql` 은 `.scaffold.bak` 백업 후 교체. MyBatis mapper xml 은 `namespace`/`type`/`resultType`/`parameterType` rewrite 후 복사.
+3. **xfdl form copy** — `<out>/4-nexacro/nxui/_form_/*.xfdl` → `<target>/nxui/packageN/<slug>/*.xfdl` (신규 prefix dir).
+4. **Menu inject** — `<target>/nxui/packageN/frame/frameLogin.xfdl` 의 `<Dataset id="dsSample">` 안에 도메인 그룹 row (`BIZ_<DOMAIN>`) + entity row (`BIZ_<DOMAIN>_<ENTITY>`) 추가. **컬럼 schema mismatch 시 menu 단계만 skip** (다른 단계 계속).
+5. **Typedef merge** — `<target>/nxui/packageN/typedefinition.xml` 의 `<Services>` 에 `<Service prefixid="<slug>" type="form" url="./<slug>/" cachelevel="session" version=""/>` 한 줄 삽입.
+6. **Report** — `<out>/scaffold-report.md` 의 `## Stage 5 overlay` 섹션에 copied/renamed/backed_up 카운트 + (있다면) menu schema-mismatch 경고 기록.
+
+**Idempotency:**
+- 동일 명령 2회 실행: menu row 중복 추가 0, Service entry 중복 0, `.bak` 파일 1개만 (one-shot 백업)
+- 단, 2회차는 java/xfdl 이 이미 존재 → `--overlay-force` 필요 (의도적)
+
+---
+
 ## 4. 통합 — Stage 3+4 → nexacro-fullstack-starter overlay
 
 핸드오프 계약 전문은 [`needs/Plugin참조/3. Middle+Frontend - Stage 3→4 nexacro 핸드오프 계약.md`](../needs/Plugin%EC%B0%B8%EC%A1%B0/3.%20Middle%2BFrontend%20-%20Stage%203%E2%86%924%20nexacro%20%ED%95%B8%EB%93%9C%EC%98%A4%ED%94%84%20%EA%B3%84%EC%95%BD.md) 참조.
@@ -502,24 +585,45 @@ python scripts/form_gen.py compile \
 
 ### 4.2 충돌 처리 정책
 
+v0.4 Phase F `--target-project` 사용 시 Stage 5 가 다음 정책으로 자동 적용:
+
 | 파일 | 정책 |
 | :-- | :-- |
-| `BoardController.java` 등 scaffold sample | 유지 — Stage 3가 같은 이름의 entity를 만들지 않는 한 공존 |
-| `schema.sql`, `data.sql` | scaffold 본을 `*.scaffold.sql`로 백업 후 Stage 3 본으로 교체 |
-| `pom.xml`, `Application.java`, `config/*.java` | Stage 4' 본 그대로. Stage 3 미수정 |
-| `mybatis-config.xml`, `application.yml` | Stage 4' 본 그대로 |
-| `<entity>.xfdl` (Stage 4 → scaffold) | Stage 4의 `--force`로 덮어쓰기 + `.bak` 자동 생성 |
-| `typedefinition.xml` | 자동 merge 안 함 — `patches/typedefinition.patch.xml` 의 `<Service id="Svc<Domain>" .../>` 한 줄을 base scaffold 의 `typedefinition.xml` `<Services>` 섹션에 수동 추가. v0.4 Phase E 부터 entity 별이 아닌 도메인당 1개 Service 만 생성. 자동 merge 도구는 Phase F 에서 검토 중. |
+| `src/main/java/com/nexacro/uiadapter/<slug>/{controller,service,service/impl,mapper,domain}/<Entity>*.java` | 존재 시 `.bak` 백업 후 덮어쓰기. `--overlay-force` 없으면 사전 conflict-scan 단계에서 RuntimeError + 충돌 파일 listing (변경 시작 전에 fail-fast) |
+| `src/main/resources/mybatis/mapper/<Entity>Mapper.xml` | 위 동일. xml 안의 `namespace`/`type`/`resultType`/`parameterType` 의 `com.example.<slug>` 도 `com.nexacro.uiadapter.<slug>` 로 자동 rewrite |
+| `src/main/resources/schema.sql` | base 본을 `schema.sql.scaffold.bak` 로 1회 백업 후 Stage 3 본으로 교체 |
+| `src/main/resources/data.sql` | 위 동일 (`data.sql.scaffold.bak`) |
+| `pom.xml`, `Application.java`, `config/*.java`, `application.yml` | **절대 수정 안 함** (Stage 4' 보존) |
+| `nxui/packageN/<slug>/<entity>.xfdl` | 신규 prefix dir 이므로 충돌 거의 없음. 존재 시 `.bak` (overlay-force 필요) |
+| `nxui/packageN/frame/frameLogin.xfdl` | 원본 `frameLogin.xfdl.bak` 1회 백업 후 in-place patch (`<Dataset id="dsSample">` 안의 `</Rows>` 직전에 도메인 row append). 동일 `menuId` 존재 시 skip (idempotent). **컬럼 schema mismatch 시** patch 하지 않고 실 ColumnInfo + 필요 컬럼 (`level/groupId/menuId/menuNm/menuUrl/sortNo/upMenuId/useYn/auth`) + missing 목록을 `scaffold-report.md` 에 사용자 메시지로 출력 후 menu 단계만 skip. Java/xfdl/typedef 단계는 계속 |
+| `nxui/packageN/typedefinition.xml` | 원본 `typedefinition.xml.bak` 1회 백업 후 `<Services>` 닫기 직전에 `<Service prefixid="<slug>" .../>` 한 줄 삽입. 동일 `prefixid` 존재 시 skip (idempotent) |
+
+(`--target-project` 미지정 시 Stage 5 skip → 위 정책 적용 안 됨. 수동 overlay 절차는 §2.6 (B) 참조.)
+
+> v0.4 Phase E 부터 entity 별이 아닌 도메인당 1개 Service 만 생성 (`SvcOrder` 단일 — `SvcOrderItem`/`SvcPayment` 분리 X).
 
 ### 4.3 검증 체크리스트 (overlay 후)
 
+**공통 (수동 / 자동 overlay 모두 해당):**
+
 - [ ] `mvn -q -DskipTests compile` 성공
 - [ ] `src/main/java/com/nexacro/uiadapter/Application.java` 존재 (Stage 4' 보존)
-- [ ] `src/main/java/com/nexacro/uiadapter/controller/<Entity>Controller.java` 존재 (Stage 3)
-- [ ] `mybatis/mapper/<Entity>Mapper.xml`의 `namespace`가 `com.nexacro.uiadapter.mapper.<Entity>Mapper`와 일치
+- [ ] `src/main/java/com/nexacro/uiadapter/<slug>/controller/<Entity>Controller.java` 존재 (Stage 3 + Phase F package rename 적용)
+- [ ] `mybatis/mapper/<Entity>Mapper.xml`의 `namespace`가 `com.nexacro.uiadapter.<slug>.mapper.<Entity>Mapper`와 일치
 - [ ] `schema.sql`의 NOT NULL 제약이 blueprint `nullable: false` 컬럼과 1:1 매핑
 - [ ] `mvn spring-boot:run` 후 `http://localhost:8080/uiadapter/` 응답
 - [ ] `POST /uiadapter/<entity>/select_datalist_map` → NexacroResult 직렬화 성공
+
+**Stage 5 자동 overlay (`--target-project` 사용 시 추가 확인):**
+
+- [ ] `scaffold-report.md`의 `stage5` 섹션에 `java_copied`, `resources_copied`, `xfdl_copied` 목록 출력
+- [ ] target의 모든 .java 파일이 `src/main/java/com/nexacro/uiadapter/<slug>/...` 아래 위치 (구버전 `com/example/...` 잔존 없음)
+- [ ] target `nxui/packageN/frame/frameLogin.xfdl`의 `dsSample` Rows에 도메인 그룹 (`BIZ_<DOMAIN>`) + entity 메뉴 row가 추가됨
+- [ ] target `nxui/packageN/typedefinition.xml`의 `<Services>` 블록에 `prefixid="<slug>"` Service entry 존재
+- [ ] target `nxui/packageN/<slug>/<Entity>.xfdl` 파일이 존재
+- [ ] 기존 `schema.sql` 가 있던 경우 `schema.sql.scaffold.bak` 백업 파일 생성됨 (1회만)
+- [ ] `frameLogin.xfdl.bak`, `typedefinition.xml.bak` 백업 파일 존재 (1회만 생성, 재실행해도 변경 없음)
+- [ ] `report["menu_warning"]` 가 `None` (schema mismatch 없음). 경고가 있으면 dsSample ColumnInfo 점검 필요 — §5.5 참조
 
 ### 4.4 JDK / lane 매핑
 
@@ -581,8 +685,19 @@ python scripts/form_gen.py compile \
 | :-- | :-- |
 | `target.replace(target.with_suffix(target.suffix + ".bak"))` 후에도 N007 발생 | `.bak` 파일이 이미 존재. 수동으로 제거 후 `--force` 재시도 |
 | nexacro Studio에서 `dsMenu` 비어 있음 | `nxui/_datasets_/dsMenu.seed.xml`을 nexacro project에 import 했는지 확인 |
-| `typedefinition.xml`에 Service entry 없음 | `patches/typedefinition.patch.xml` 이 자동 merge 되지 않음. v0.4 Phase E 기준 도메인당 한 줄 (`<Service id="Svc<Domain>" url="/uiadapter/<domain>" .../>`) 을 base scaffold 의 `<Services>` 블록 안에 수동 삽입. 자동 merge 스크립트는 미구현 (Phase F 후보) |
+| ~~`typedefinition.xml`에 Service entry 없음~~ | **v0.4 Phase F 부터 `--target-project` 사용 시 `typedef_merger`가 자동 삽입.** 수동 옵션은 §2.6 (B) 참조 |
 | `POST /uiadapter/...` → 500 license error | nexacro N v24 라이선스 미설치. 개발 환경엔 라이선스가 필요. 대안으로 plain JSON 응답 모드 검토 |
+
+**Stage 5 자동 overlay 전용 (v0.4 Phase F):**
+
+| 증상 | 원인 | 해결 |
+| :-- | :-- | :-- |
+| `RuntimeError: Stage 5 overlay would overwrite existing files (use --overlay-force to allow)` | target에 이미 동일 경로 파일이 존재 (이전 overlay 흔적 또는 수동 작성본) | 충돌 파일 list를 확인 — (1) 의도적 덮어쓰기면 `--overlay-force` 추가 (모든 충돌 파일이 `.bak` 백업됨), (2) 수동 작성본을 보존하려면 해당 파일을 target에서 삭제/이동 후 재시도 |
+| `report["menu_warning"]: ... dsSample column schema mismatch — menu injection skipped` | target `frameLogin.xfdl`의 `<Dataset id="dsSample">` `ColumnInfo`가 tool이 기대하는 9개 컬럼(level/groupId/menuId/menuNm/menuUrl/sortNo/upMenuId/useYn/auth)을 모두 포함하지 않음 | (1) 경고 메시지의 `missing` 컬럼 목록 확인 → frameLogin.xfdl에 해당 `<Column id="..." type="STRING" size="256"/>` 추가, 또는 (2) menu 단계만 수동 처리. 다른 step (java/resources/xfdl/typedef)은 정상 진행됨 |
+| `report["menu_warning"]: frameLogin.xfdl not found at ...` | target이 nexacro-fullstack-starter 기반이 아님, 또는 frame 디렉터리 구조가 다름 | menu 단계 건너뛰고 수동으로 dsSample Row 추가. 나머지 step은 정상 진행 |
+| `report["typedef_warning"]: typedefinition.xml not found at ...` | target에 `nxui/packageN/typedefinition.xml` 없음 | 수동으로 `<Service id="Svc<Pascal>" prefixid="<slug>" url="./<slug>/" .../>` 삽입 |
+| 재실행 후 메뉴 row가 중복됨 | (Phase F idempotency 보장에서 어긋남 — 발견 시 보고 요망) | `frameLogin.xfdl.bak`로 복원 후 `--target-project`만 재실행 (overlay_force 불필요). row 중복은 버그 후보 |
+| `.bak` 파일이 자동 정리되지 않음 | 의도된 정책 — `.bak` / `.scaffold.bak`은 사용자가 명시적으로 삭제할 때까지 유지 | 만족 후 수동 삭제 (`Remove-Item *.bak -Recurse`) |
 
 ---
 
@@ -726,4 +841,4 @@ python scripts/scaffold_cli.py --domain "주문관리" --wiki-mode preset --pres
 
 ---
 
-*Last updated: 2026-05-18 — v0.4 Phase E 완료 (HSQLDB dialect / 자동 data.sql wiring / 단일 Service / `--service-name`), M-E 4.8/5*
+*Last updated: 2026-05-18 — v0.4 Phase F 완료 (Stage 5 자동 overlay: `--target-project` / Java package rename / frameLogin dsSample 메뉴 주입 / typedefinition Service merge / `.bak` 멱등 백업), Phase E (HSQLDB dialect / 자동 data.sql wiring / 단일 Service / `--service-name`)도 포함 — M-E 4.8/5, M-F 진행 중*

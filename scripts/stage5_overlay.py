@@ -19,30 +19,40 @@ import typedef_merger
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _rewrite_java(text: str, domain_slug: str) -> tuple[str, bool]:
-    """Apply com.example.<slug> → com.nexacro.uiadapter.<slug> substitutions.
+def _rewrite_java(
+    text: str,
+    domain_slug: str,
+    source_pkg_prefix: str = "com.example",
+    target_pkg_prefix: str = "com.nexacro.uiadapter",
+) -> tuple[str, bool]:
+    """Apply <source_prefix>.<slug> → <target_prefix>.<slug> substitutions.
 
     Returns (new_text, changed).
     """
     old = text
     text = text.replace(
-        f"package com.example.{domain_slug}",
-        f"package com.nexacro.uiadapter.{domain_slug}",
+        f"package {source_pkg_prefix}.{domain_slug}",
+        f"package {target_pkg_prefix}.{domain_slug}",
     )
     text = text.replace(
-        f"import com.example.{domain_slug}.",
-        f"import com.nexacro.uiadapter.{domain_slug}.",
+        f"import {source_pkg_prefix}.{domain_slug}.",
+        f"import {target_pkg_prefix}.{domain_slug}.",
     )
     return text, text != old
 
 
-def _rewrite_xml(text: str, domain_slug: str) -> tuple[str, bool]:
+def _rewrite_xml(
+    text: str,
+    domain_slug: str,
+    source_pkg_prefix: str = "com.example",
+    target_pkg_prefix: str = "com.nexacro.uiadapter",
+) -> tuple[str, bool]:
     """Apply namespace/type/resultType/parameterType renames in mapper xml."""
     old = text
     for attr in ("namespace", "type", "resultType", "parameterType"):
         text = text.replace(
-            f'{attr}="com.example.{domain_slug}',
-            f'{attr}="com.nexacro.uiadapter.{domain_slug}',
+            f'{attr}="{source_pkg_prefix}.{domain_slug}',
+            f'{attr}="{target_pkg_prefix}.{domain_slug}',
         )
     return text, text != old
 
@@ -59,15 +69,28 @@ def _safe_backup(src: pathlib.Path, bak: pathlib.Path) -> bool:
 # Conflict scan
 # ---------------------------------------------------------------------------
 
-def _collect_java_targets(out_dir: pathlib.Path, target_dir: pathlib.Path, domain_slug: str) -> list[pathlib.Path]:
+def _collect_java_targets(
+    out_dir: pathlib.Path,
+    target_dir: pathlib.Path,
+    domain_slug: str,
+    source_pkg_prefix: str = "com.example",
+    target_pkg_prefix: str = "com.nexacro.uiadapter",
+) -> list[pathlib.Path]:
     """Return list of target paths for each .java file in 3-mybatis."""
-    src_root = out_dir / "3-mybatis" / "src" / "main" / "java" / "com" / "example" / domain_slug
+    src_root = out_dir / "3-mybatis" / "src" / "main" / "java"
+    for seg in source_pkg_prefix.split("."):
+        src_root = src_root / seg
+    src_root = src_root / domain_slug
     if not src_root.exists():
         return []
+    dest_root = target_dir / "src" / "main" / "java"
+    for seg in target_pkg_prefix.split("."):
+        dest_root = dest_root / seg
+    dest_root = dest_root / domain_slug
     targets = []
     for src_file in src_root.rglob("*.java"):
         rel = src_file.relative_to(src_root)
-        dest = target_dir / "src" / "main" / "java" / "com" / "nexacro" / "uiadapter" / domain_slug / rel
+        dest = dest_root / rel
         targets.append((src_file, dest))
     return targets
 
@@ -116,6 +139,8 @@ def run_overlay(
     service_pascal: str,
     blueprint_entities: list[dict],
     overlay_force: bool = False,
+    source_pkg_prefix: str = "com.example",
+    target_pkg_prefix: str = "com.nexacro.uiadapter",
 ) -> dict:
     """Overlay scaffold output onto target_dir.
 
@@ -146,7 +171,11 @@ def run_overlay(
     # -----------------------------------------------------------------------
     # Conflict-scan pass (Steps 1–3) — only when not forcing
     # -----------------------------------------------------------------------
-    java_pairs = _collect_java_targets(out_dir, target_dir, domain_slug)
+    java_pairs = _collect_java_targets(
+        out_dir, target_dir, domain_slug,
+        source_pkg_prefix=source_pkg_prefix,
+        target_pkg_prefix=target_pkg_prefix,
+    )
     resource_pairs = _collect_resource_targets(out_dir, target_dir)
     xfdl_pairs = _collect_xfdl_targets(out_dir, target_dir, domain_slug)
 
@@ -181,7 +210,11 @@ def run_overlay(
     # -----------------------------------------------------------------------
     for src_file, dest in java_pairs:
         text = src_file.read_text(encoding="utf-8")
-        new_text, changed = _rewrite_java(text, domain_slug)
+        new_text, changed = _rewrite_java(
+            text, domain_slug,
+            source_pkg_prefix=source_pkg_prefix,
+            target_pkg_prefix=target_pkg_prefix,
+        )
 
         if dest.exists() and overlay_force:
             bak = pathlib.Path(str(dest) + ".bak")
@@ -223,7 +256,11 @@ def run_overlay(
 
             dest.parent.mkdir(parents=True, exist_ok=True)
             text = src_file.read_text(encoding="utf-8")
-            new_text, _changed = _rewrite_xml(text, domain_slug)
+            new_text, _changed = _rewrite_xml(
+                text, domain_slug,
+                source_pkg_prefix=source_pkg_prefix,
+                target_pkg_prefix=target_pkg_prefix,
+            )
             dest.write_text(new_text, encoding="utf-8")
 
         else:

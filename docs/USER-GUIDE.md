@@ -577,7 +577,7 @@ python scripts/form_gen.py compile \
 ### 6.3 후속 작업 (TBD)
 
 - Stage 3에 `--lane jakarta|javax` 도입 → Spring Boot 2 / JDK8 환경 호환 *(현재 `--lane nexacro|vanilla` 만 — v0.3 Phase B 산출)*
-- `/business-fullstack-creater scaffold` 슬래시 커맨드 — Stage 1→2→3→4+overlay 자동화 *(v0.4 예정)*
+- `/business-fullstack-creater scaffold` 슬래시 커맨드 — Stage 1→2→3→4+overlay 자동화 *(v0.4 완료 — `scripts/scaffold_cli.py` 참조)*
 - Overlay 단계 entity 충돌 감지 시 사용자 확인 prompt
 
 ### 6.4 전략 로드맵 (v0.3 ~ v0.7)
@@ -593,7 +593,7 @@ python scripts/form_gen.py compile \
 |:-:|---|---|---|:-:|:-:|
 | 1 | **v0.3** | 단위 확장 (#3): M:N · vanilla lane · UI 패턴 catalog | 즉시 | 2주 | ✅ 완료 (2026-05-18, M-C 4.8/5) |
 | 2 | **v0.3.x** | C-2 유사 도메인 추천 | catalog 5+ 도메인 | 1주 | 대기 |
-| 3 | **v0.4** | CLI scaffold (#1 핵심가치 80%) | v0.3 완료 | 2주 | 다음 후보 |
+| 3 | **v0.4** | CLI scaffold (#1 핵심가치 80%) | v0.3 완료 | 2주 | ✅ 완료 (2026-05-18, M-D 4.4/5) |
 | 4 | **v0.5** | 어댑터화 (#2): contract + MySQL + lane 정식화 | v0.4 + 실사용 1회 | 3-4주 | 대기 |
 | 5 | **v0.6** | C-1 메타 추출 | 실 프로젝트 3+ | 1-2주 | 대기 |
 | 6 | **v0.7** | C-3 마켓플레이스 + Web UI 풀버전 | catalog format 안정 + 비개발자 수요 | 4주+ | 대기 |
@@ -610,9 +610,42 @@ python scripts/form_gen.py compile \
 - `01-init.md` Phase 3 preset 선택 단계에서 사용자 입력 도메인명을 **LLM이 catalog frontmatter와 비교**해 가장 가까운 seed 3개 자동 제안 (벡터 DB 없음, Karpathy 원칙 유지).
 - **앞당기는 이유**: C 중 가장 가볍고(1주) catalog 누적이 이미 시작됨. C 진입 첫걸음.
 
-#### v0.4 — CLI scaffold (단기 #1 핵심가치 80%, Web 없이)
-- `/business-fullstack-creater scaffold <도메인>` 슬래시 커맨드 — Stage 1→2→3→4+overlay 자동 큐레이션. 단계별 추가 정보 prompt → 1회 실행으로 4 stage 통합.
-- **Web 대신 CLI를 먼저 하는 이유**: 진짜 가치는 "1회 실행 큐레이션"이지 Web 자체가 아님. CLI는 1/4 effort로 80% 가치 + Karpathy 정신(파일 기반) 위협 없음. Web UI 풀버전은 v0.7에 비개발자 수요 출현 시.
+#### v0.4 — CLI scaffold ✅ (2026-05-18, M-D 4.4/5 PASS)
+
+**슬래시 커맨드 (권장):**
+```
+/business-fullstack-creater:scaffold --domain "고객관리" --preset 고객관리
+```
+
+**직접 CLI:**
+```powershell
+# preset 모드 (catalog에서 도메인 wiki 자동 생성)
+python scripts/scaffold_cli.py --domain "고객관리" --wiki-mode preset --preset 고객관리 `
+  --package com.example.customer --out ./customer-scaffold
+
+# wiki 모드 (기존 wiki 디렉터리 직접 지정)
+python scripts/scaffold_cli.py --domain "주문관리" --wiki-mode wiki --wiki ./order-wiki `
+  --package com.example.order --out ./order-scaffold
+```
+
+**출력 레이아웃:**
+```
+<out>/
+├── 1-wiki/                ← Stage 1 산출 (_blueprint.yaml + wiki/)
+├── 2-ddl/                 ← Stage 2 산출 (migrations/ + entities/)
+├── 3-mybatis/             ← Stage 3 산출 (backend/ + endpoints.json)
+├── 4-nexacro/             ← Stage 4 산출 (nxui/_form_/ + datasets + patches/)
+└── scaffold-report.md     ← 전체 실행 요약 (성공/실패 stage, 경로, 소요 시간)
+```
+
+**sibling-repo 규약 + 경로 오버라이드:**
+- 기본: `D:\AI\workspace\` 하위에 `andrej-karpathy-rdb-{skill,ddl,mybatis,nexacro}` 가 있으면 자동 탐지.
+- 오버라이드: `config/stage-paths.yaml` 로 각 stage 경로를 명시 (`.gitignore` 등재됨).
+  예시: `config/stage-paths.yaml.example` 참조.
+
+**부분 실패 시:** 실패한 stage 이후는 skip되고 `scaffold-report.md` 에 어느 stage까지 성공했는지, 에러 메시지가 기록됩니다. 성공 stage 산출물은 보존됩니다.
+
+게이트 문서: [Phase D](./superpowers/specs/2026-05-18-v0.4-md-gate.md)
 
 #### v0.5 — 교체 가능 아키텍처 (Phase B · 단기 #2)
 - **어댑터 계약 먼저, 어댑터 두 번째.** tier마다 contract 문서 (`adapters/backend-contract.md`, `service-contract.md`, `ui-contract.md`) 선행. 입력·출력·파일 위치·호환 버전 명시.
@@ -651,4 +684,4 @@ python scripts/form_gen.py compile \
 
 ---
 
-*Last updated: 2026-05-18 — v0.3 완료 (Phase A · B · C 모두 게이트 통과)*
+*Last updated: 2026-05-18 — v0.4 완료 (Phase D CLI scaffold 게이트 통과, M-D 4.4/5)*

@@ -223,13 +223,18 @@ def _run_stage5(args, stage_paths, report):
     bp_path = args.out_dir / "1-wiki" / "_blueprint.yaml"
     data = _yaml.safe_load(bp_path.read_text(encoding="utf-8"))
     entities = data.get("entities", []) if isinstance(data, dict) else []
-    service_pascal = args.service_name or _derive_service_pascal(args.domain_slug)
+    # Overlay slug must match Stage 3's actual Java package + Stage 4's xfdl
+    # output, which derive from --package (e.g. com.example.order -> "order").
+    # args.domain_slug can fall back to "domain" for non-ASCII domain names
+    # (e.g. "주문관리"), so it is not safe for path/prefixid use here.
+    overlay_slug = args.package.split(".")[-1]
+    service_pascal = args.service_name or _derive_service_pascal(overlay_slug)
     try:
         t0 = time.monotonic()
         overlay_result = stage5_overlay.run_overlay(
             out_dir=args.out_dir,
             target_dir=target,
-            domain_slug=args.domain_slug,
+            domain_slug=overlay_slug,
             domain_label=args.domain,
             service_pascal=service_pascal,
             blueprint_entities=entities,

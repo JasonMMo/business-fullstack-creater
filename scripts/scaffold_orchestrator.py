@@ -3,6 +3,7 @@ import pathlib, subprocess, sys, shutil, time, re
 from dataclasses import dataclass, field
 from typing import Optional, List
 from stage_paths import resolve_stage_paths
+import stage5_overlay
 
 
 @dataclass
@@ -17,9 +18,11 @@ class ScaffoldArgs:
     package: str
     out_dir: pathlib.Path
     creator_root: pathlib.Path
-    stop_after_stage: int = 4            # for tests
+    stop_after_stage: int = 5            # for tests (default 5 to include stage5)
     dialect: str = "postgres"            # E3: "postgres" | "hsqldb"
     service_name: Optional[str] = None   # E5: explicit PascalCase service name; auto-derived if None
+    target_project: Optional[pathlib.Path] = None   # F: Stage 5 target overlay root (None → skip)
+    overlay_force: bool = False                     # F: allow .bak overwrite during overlay
 
 
 @dataclass
@@ -27,6 +30,7 @@ class ScaffoldReport:
     stages_run: List[str] = field(default_factory=list)
     stage_durations_ms: dict = field(default_factory=dict)
     out_dir: Optional[pathlib.Path] = None
+    overlay_report: Optional[dict] = None
 
 
 class StageFailure(Exception):
@@ -207,6 +211,38 @@ def _run_stage4(args, stage_paths, report):
     report.stage_durations_ms["stage4"] = dur
 
 
+def _run_stage5(args, stage_paths, report):
+    if args.target_project is None:
+        report.stages_run.append("stage5-skipped")
+        return
+    target = pathlib.Path(args.target_project).resolve()
+    if not target.exists():
+        raise StageFailure(f"--target-project does not exist: {target}")
+    # Load blueprint entities
+    import yaml as _yaml
+    bp_path = args.out_dir / "1-wiki" / "_blueprint.yaml"
+    data = _yaml.safe_load(bp_path.read_text(encoding="utf-8"))
+    entities = data.get("entities", []) if isinstance(data, dict) else []
+    service_pascal = args.service_name or _derive_service_pascal(args.domain_slug)
+    try:
+        t0 = time.monotonic()
+        overlay_result = stage5_overlay.run_overlay(
+            out_dir=args.out_dir,
+            target_dir=target,
+            domain_slug=args.domain_slug,
+            domain_label=args.domain,
+            service_pascal=service_pascal,
+            blueprint_entities=entities,
+            overlay_force=args.overlay_force,
+        )
+        dur = int((time.monotonic() - t0) * 1000)
+    except RuntimeError as exc:
+        raise StageFailure(f"stage5 conflict: {exc}") from exc
+    report.overlay_report = overlay_result
+    report.stages_run.append("stage5")
+    report.stage_durations_ms["stage5"] = dur
+
+
 def _write_report(args, report, failure=None):
     lines = [
         f"# Scaffold Report — {args.domain}",
@@ -221,12 +257,17 @@ def _write_report(args, report, failure=None):
         f"- service_name: `{args.service_name or _derive_service_pascal(args.domain_slug)}`",
         f"- package: `{args.package}`",
         f"- out_dir: `{args.out_dir}`",
+        f"- target_project: `{args.target_project or '(none)'}`",
+        f"- overlay_force: `{args.overlay_force}`",
         "",
         "## Stages",
     ]
-    for name in ("stage1", "stage2", "stage3", "stage4"):
+    for name in ("stage1", "stage2", "stage3", "stage4", "stage5", "stage5-skipped"):
         if name in report.stages_run:
-            lines.append(f"- {name}: OK ({report.stage_durations_ms.get(name, 0)} ms)")
+            if name == "stage5-skipped":
+                lines.append(f"- stage5: SKIPPED (no --target-project)")
+            else:
+                lines.append(f"- {name}: OK ({report.stage_durations_ms.get(name, 0)} ms)")
     if failure:
         lines += ["", f"## FAILED: {failure[0]}", "", "```", failure[1], "```"]
     else:
@@ -237,6 +278,22 @@ def _write_report(args, report, failure=None):
             f"- Nexacro forms (default={args.default_pattern}): "
             f"`{args.out_dir / '4-nexacro'}`",
         ]
+    if report.overlay_report is not None:
+        ov = report.overlay_report
+        lines += [
+            "",
+            "## Stage 5 overlay",
+            f"- java_copied: {ov.get('java_copied', 0)}",
+            f"- resources_copied: {ov.get('resources_copied', 0)}",
+            f"- xfdl_copied: {ov.get('xfdl_copied', 0)}",
+            f"- renamed_imports: {ov.get('renamed_imports', 0)}",
+            f"- backed_up: {ov.get('backed_up', 0)}",
+            f"- typedef_added: {ov.get('typedef_added', False)}",
+            f"- menu_warning: {ov.get('menu_warning')}",
+        ]
+        menu_warning = ov.get("menu_warning")
+        if menu_warning is not None:
+            lines += ["", "```", str(menu_warning), "```"]
     (args.out_dir / "scaffold-report.md").write_text(
         "\n".join(lines) + "\n", encoding="utf-8"
     )
@@ -254,6 +311,7 @@ def run_scaffold(args):
         (_run_stage2, "stage2"),
         (_run_stage3, "stage3"),
         (_run_stage4, "stage4"),
+        (_run_stage5, "stage5"),
     ]
     try:
         for i, (fn, name) in enumerate(runners, start=1):

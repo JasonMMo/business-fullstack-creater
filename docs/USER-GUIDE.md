@@ -46,13 +46,20 @@
 |  2  |  Blueprint → DDL | `db/migrations/`    | `andrej-karpathy-rdb-ddl`                   | v0.2.0 |
 |  3  |  DB → Java 백엔드   | `backend/`, `endpoints.json` | `andrej-karpathy-rdb-mybatis`     | v0.1.4 |
 |  4  |  Endpoints → 화면  | `out/nxui/...`      | `andrej-karpathy-rdb-nexacro`               | v0.1.0 |
-|  4' | Spring + nx 골격   | scaffold            | `/nexacro-fullstack-starter` (외부)           | v0.6.0 |
+|  4' | Spring + nx 골격   | scaffold            | `/nexacro-fullstack-starter` (외부)           | v0.8.2 |
 
 > **v0.2.0 (2026-05-15) 변경점**: Karpathy 복리식 축적 메커니즘 도입.
 > - Stage 1: `wiki/learn-log.md` 신규 + `/karpathy-rdb contribute <도메인>` 명령으로 프로젝트 지식을 글로벌 카탈로그(`~/.karpathy-rdb/catalog/`)로 역류
 > - Stage 1: blueprint entity `extends:` 문법으로 글로벌 base entity 재사용
 > - Stage 2: `catalogs/preset-catalog.yaml` 외부화 + 글로벌 카탈로그 자동 병합 (`PRESETS` 자동 확장)
 > - 하위 호환 유지 (`version: 1` blueprint, 기존 호출부 무변경). 상세: [`docs/superpowers/specs/2026-05-15-karpathy-alignment-review.md`](./superpowers/specs/2026-05-15-karpathy-alignment-review.md)
+
+> **v0.4 Phase E (2026-05-18) 변경점**: scaffold orchestrator 사용성 강화.
+> - `scaffold_cli.py --dialect hsqldb` 추가 — Stage 2 까지 HSQLDB 방언으로 전파 (Spring Boot 임베디드 DB 즉시 부팅 가능)
+> - Stage 2 가 생성한 seed SQL 을 Stage 3 의 `src/main/resources/data.sql` 로 **자동 wiring** (별도 cp 불필요)
+> - `scaffold_cli.py --service-name <PascalCase>` 추가 — 도메인 1개 = nexacro Service 1개 모델 (이전: entity 마다 `SvcOrderItem`/`SvcPayment` 분리되어 typedefinition 후처리 필요). 미지정 시 `domain_slug` 에서 자동 PascalCase 도출
+> - xfdl 폼이 단일 Service id 를 참조하도록 통일 (`SvcOrder::method`)
+> - 하위 호환 유지 — 신규 플래그 모두 default 값. 상세: [`docs/superpowers/specs/2026-05-18-v0.4-phase-e-me-gate.md`](./superpowers/specs/2026-05-18-v0.4-phase-e-me-gate.md)
 
 ### 1.2 사전 준비
 
@@ -193,8 +200,13 @@ Blueprint + endpoints.json으로 entity별 xfdl form, dsMenu seed, typedefinitio
 python D:\AI\workspace\andrej-karpathy-rdb-nexacro\scripts\form_gen.py compile `
   --blueprint .\wiki\_blueprint.yaml `
   --endpoints .\backend\endpoints.json `
+  --service-name Customer `
   --out       .\frontend
 ```
+
+> `--service-name` 은 nexacro Service id 와 URL slug 의 기준이 됩니다 (`SvcCustomer`,
+> `/uiadapter/customer`). 미지정 시 blueprint 의 `service_pascal` → `"Default"` 순으로 fallback.
+> 도메인 1개 = Service 1개 모델 (v0.4 Phase E).
 
 산출물:
 ```
@@ -216,8 +228,13 @@ frontend/
 마지막으로 외부 plugin `/nexacro-fullstack-starter`로 빈 프로젝트 골격을 만들고,
 Stage 3 + Stage 4 산출물을 그 위에 overlay합니다.
 
+> v0.4 (Phase D) 부터 위 1~4 stage 는 `scripts/scaffold_cli.py` 1 회 호출로 묶입니다.
+> 본 절은 (a) 직접 4 stage 만 돌렸을 때 어떻게 base scaffold 위에 얹는지, 그리고
+> (b) `scaffold_cli.py` 가 자동 처리하는 항목 (data.sql wiring, 단일 Service, dialect)
+> 을 함께 설명합니다.
+
 ```
-# (1) Stage 4' — 빈 scaffold
+# (1) Stage 4' — 빈 scaffold (latest v0.8.2)
 /nexacro-fullstack-starter --jdk 17 --framework spring-boot --name customer-mgmt-app
 ```
 
@@ -228,6 +245,8 @@ cp -r ./backend/src/main/java/com/nexacro/uiadapter/. \
 cp -r ./backend/src/main/resources/mybatis/. \
       ./customer-mgmt-app/src/main/resources/mybatis/
 cp ./backend/src/main/resources/schema.sql ./customer-mgmt-app/src/main/resources/
+# data.sql 은 scaffold_cli.py 로 만들었으면 이미 src/main/resources/ 에 들어있음.
+# form_gen 단독 실행 시에만 수동 cp:
 [ -f ./backend/src/main/resources/data.sql ] && \
   cp ./backend/src/main/resources/data.sql ./customer-mgmt-app/src/main/resources/
 
@@ -240,6 +259,15 @@ cd customer-mgmt-app
 mvn -q -DskipTests package
 mvn spring-boot:run
 ```
+
+> **scaffold_cli.py 사용 시 자동 처리되는 항목** (v0.4 Phase E):
+> - `--dialect hsqldb` → Stage 2 가 HSQLDB 방언 schema 와 seed 를 emit
+> - Stage 2 의 `seed/*.sql` → Stage 3 의 `--seed-dir` 로 자동 전달 → `data.sql` 생성
+> - `--service-name Order` → Stage 4 typedefinition 이 단일 `SvcOrder` 만 생성 (per-entity Service 분리 X)
+>
+> 이 자동화는 **scaffold_cli.py 의 출력 트리 내부에서만** 적용됩니다. 위 (2)~(3) overlay 처럼
+> 별도 base scaffold (`customer-mgmt-app`) 로 옮기는 단계는 현재 수동입니다 (v0.4 시점).
+> Stage 5 (target overlay) 자동화는 v0.4 Phase F 로 검토 중.
 
 브라우저에서 `http://localhost:8080/uiadapter/`가 응답하면 정상.
 nexacro Studio로 `customer-mgmt-app/nxui/`를 열어 화면을 확인할 수 있습니다.
@@ -412,6 +440,8 @@ python scripts/form_gen.py compile \
 | `--infer-endpoints` | endpoints.json 없을 때 blueprint로부터 합성 (Stage 3 미실행 시) |
 | `--out` | required. 출력 루트 |
 | `--frame packageN\|minimal` | 프레임 스타일. 기본 `packageN` (MDI) |
+| `--default-pattern D2\|F1\|C1` | entity 에 pattern frontmatter 없을 때 기본 폼 패턴 |
+| `--service-name <PascalCase>` | nexacro Service id 기준 (`SvcXxx`) + URL slug (`/uiadapter/xxx`). 미지정 시 blueprint `service_pascal` → `"Default"` fallback. v0.4 Phase E. |
 | `--strict` | type fallback 발생 시 실패 |
 | `--force` | 기존 xfdl 덮어쓰기 (`<name>.xfdl.bak`로 백업 후) |
 
@@ -479,7 +509,7 @@ python scripts/form_gen.py compile \
 | `pom.xml`, `Application.java`, `config/*.java` | Stage 4' 본 그대로. Stage 3 미수정 |
 | `mybatis-config.xml`, `application.yml` | Stage 4' 본 그대로 |
 | `<entity>.xfdl` (Stage 4 → scaffold) | Stage 4의 `--force`로 덮어쓰기 + `.bak` 자동 생성 |
-| `typedefinition.xml` | 자동 merge 안 함 — `patches/typedefinition.patch.xml`을 수동/`typedefinition.merge.py`로 병합 |
+| `typedefinition.xml` | 자동 merge 안 함 — `patches/typedefinition.patch.xml` 의 `<Service id="Svc<Domain>" .../>` 한 줄을 base scaffold 의 `typedefinition.xml` `<Services>` 섹션에 수동 추가. v0.4 Phase E 부터 entity 별이 아닌 도메인당 1개 Service 만 생성. 자동 merge 도구는 Phase F 에서 검토 중. |
 
 ### 4.3 검증 체크리스트 (overlay 후)
 
@@ -551,7 +581,7 @@ python scripts/form_gen.py compile \
 | :-- | :-- |
 | `target.replace(target.with_suffix(target.suffix + ".bak"))` 후에도 N007 발생 | `.bak` 파일이 이미 존재. 수동으로 제거 후 `--force` 재시도 |
 | nexacro Studio에서 `dsMenu` 비어 있음 | `nxui/_datasets_/dsMenu.seed.xml`을 nexacro project에 import 했는지 확인 |
-| `typedefinition.xml`에 Service entry 없음 | `patches/typedefinition.patch.xml`이 자동 merge 안 됨. 수동 또는 `typedefinition.merge.py` 사용 |
+| `typedefinition.xml`에 Service entry 없음 | `patches/typedefinition.patch.xml` 이 자동 merge 되지 않음. v0.4 Phase E 기준 도메인당 한 줄 (`<Service id="Svc<Domain>" url="/uiadapter/<domain>" .../>`) 을 base scaffold 의 `<Services>` 블록 안에 수동 삽입. 자동 merge 스크립트는 미구현 (Phase F 후보) |
 | `POST /uiadapter/...` → 500 license error | nexacro N v24 라이선스 미설치. 개발 환경엔 라이선스가 필요. 대안으로 plain JSON 응답 모드 검토 |
 
 ---
@@ -626,7 +656,19 @@ python scripts/scaffold_cli.py --domain "고객관리" --wiki-mode preset --pres
 # wiki 모드 (기존 wiki 디렉터리 직접 지정)
 python scripts/scaffold_cli.py --domain "주문관리" --wiki-mode wiki --wiki ./order-wiki `
   --package com.example.order --out ./order-scaffold
+
+# v0.4 Phase E — HSQLDB 임베디드 + 단일 Service + 자동 data.sql 시드
+python scripts/scaffold_cli.py --domain "주문관리" --wiki-mode preset --preset 주문관리 `
+  --package com.example.order --out ./order-scaffold `
+  --dialect hsqldb --service-name Order
 ```
+
+**Phase E 전용 플래그:**
+
+| Flag | 기본 | 설명 |
+| :-- | :-- | :-- |
+| `--dialect postgres\|hsqldb` | `postgres` | Stage 2 SQL 방언. `hsqldb` 선택 시 Spring Boot 임베디드 DB 로 바로 부팅 가능 |
+| `--service-name <PascalCase>` | `domain_slug` → PascalCase 자동 도출 | nexacro 단일 Service id (`SvcXxx`) 와 URL slug (`/uiadapter/xxx`). 도메인 1개 = Service 1개 모델 |
 
 **출력 레이아웃:**
 ```
@@ -684,4 +726,4 @@ python scripts/scaffold_cli.py --domain "주문관리" --wiki-mode wiki --wiki .
 
 ---
 
-*Last updated: 2026-05-18 — v0.4 완료 (Phase D CLI scaffold 게이트 통과, M-D 4.4/5)*
+*Last updated: 2026-05-18 — v0.4 Phase E 완료 (HSQLDB dialect / 자동 data.sql wiring / 단일 Service / `--service-name`), M-E 4.8/5*

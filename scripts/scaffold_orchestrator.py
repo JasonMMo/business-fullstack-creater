@@ -1,5 +1,5 @@
 # scripts/scaffold_orchestrator.py
-import pathlib, subprocess, sys, shutil, time
+import pathlib, subprocess, sys, shutil, time, re
 from dataclasses import dataclass, field
 from typing import Optional, List
 from stage_paths import resolve_stage_paths
@@ -43,16 +43,78 @@ def _run(cmd, cwd, label):
     return dur, proc.stdout
 
 
+def _init_wiki_from_preset(preset_name: str, stage1_root: pathlib.Path,
+                            wiki_out: pathlib.Path) -> None:
+    """Expand a .seed.md preset into entity/concept profile.md files.
+
+    The rdb_index CLI has only {lint,compile} subcommands; it has no 'init'
+    command.  The skill's init workflow is LLM-driven.  For headless scaffold
+    we reproduce the minimal file layout that rdb_index compile expects:
+
+        <wiki_out>/entities/<name>/profile.md   ← YAML frontmatter + heading
+        <wiki_out>/concepts/<name>/profile.md   ← YAML frontmatter + heading
+        <wiki_out>/_schema.md                   ← boilerplate (may be empty)
+    """
+    import yaml as _yaml
+
+    presets_dir = stage1_root / ".claude" / "skills" / "karpathy-rdb" / "presets"
+    seed_file = presets_dir / f"{preset_name}.seed.md"
+    if not seed_file.exists():
+        raise StageFailure(
+            f"Preset not found: {seed_file}\n"
+            f"Available presets: {[p.stem.replace('.seed','') for p in presets_dir.glob('*.seed.md')]}"
+        )
+
+    seed_text = seed_file.read_text(encoding="utf-8")
+
+    # Extract YAML code blocks: ```yaml ... ```
+    blocks = re.findall(r"```yaml\n(.*?)```", seed_text, re.DOTALL)
+
+    for block in blocks:
+        try:
+            fm = _yaml.safe_load(block)
+        except Exception:
+            continue
+        if not isinstance(fm, dict):
+            continue
+
+        kind = fm.get("type", "")
+        name = fm.get("name", "")
+        if not name:
+            continue
+
+        if kind == "entity":
+            dest = wiki_out / "entities" / name / "profile.md"
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(
+                f"---\n{_yaml.dump(fm, allow_unicode=True, sort_keys=False)}---\n\n# {name}\n",
+                encoding="utf-8",
+            )
+        elif kind == "concept":
+            dest = wiki_out / "concepts" / name / "profile.md"
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(
+                f"---\n{_yaml.dump(fm, allow_unicode=True, sort_keys=False)}---\n\n# {name}\n",
+                encoding="utf-8",
+            )
+
+    # Write a minimal _schema.md with required frontmatter
+    schema_md = wiki_out / "_schema.md"
+    if not schema_md.exists():
+        schema_md.write_text(
+            f"---\ntype: schema\nversion: 1\nlocale: ko\nproject: {preset_name}\n---\n\n# {preset_name}\n",
+            encoding="utf-8",
+        )
+
+
 def _run_stage1(args, stage_paths, report):
     wiki_out = args.out_dir / "1-wiki"
     wiki_out.mkdir(parents=True, exist_ok=True)
     s1 = stage_paths.stage1
     if args.wiki_mode == "preset":
-        dur1, _ = _run(
-            [sys.executable, str(s1 / "scripts" / "rdb_index.py"),
-             "init", str(wiki_out), "--preset", args.preset],
-            cwd=s1, label="stage1.init",
-        )
+        t0 = time.monotonic()
+        _init_wiki_from_preset(args.preset, s1, wiki_out)
+        dur1 = int((time.monotonic() - t0) * 1000)
     elif args.wiki_mode == "wiki":
         if not args.wiki_path or not args.wiki_path.exists():
             raise StageFailure(f"wiki_path not found: {args.wiki_path}")
@@ -90,7 +152,9 @@ def _run_stage3(args, stage_paths, report):
     mybatis_out.mkdir(parents=True, exist_ok=True)
     s3 = stage_paths.stage3
     bp = args.out_dir / "1-wiki" / "_blueprint.yaml"
-    ddl_dir = args.out_dir / "2-ddl"
+    # Stage 2 (ddl_gen) writes SQL files into a migrations/ subdirectory.
+    # Stage 3 (karpathy-rdb-mybatis) expects the DDL files in --ddl-dir directly.
+    ddl_dir = args.out_dir / "2-ddl" / "migrations"
     dur, _ = _run(
         [sys.executable, str(s3 / "scripts" / "compile.py"),
          "compile",

@@ -7,3 +7,4 @@ nul
 tests/golden/*/db/
 tests/golden/*/_blueprint.yaml
 tests/golden/*/compile-report.md
+config/stage-paths.yaml

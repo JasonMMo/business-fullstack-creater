@@ -71,6 +71,20 @@ def _run_stage1(args, stage_paths, report):
     report.stage_durations_ms["stage1"] = dur1 + dur2
 
 
+def _run_stage2(args, stage_paths, report):
+    ddl_out = args.out_dir / "2-ddl"
+    ddl_out.mkdir(parents=True, exist_ok=True)
+    s2 = stage_paths.stage2
+    bp = args.out_dir / "1-wiki" / "_blueprint.yaml"
+    dur, _ = _run(
+        [sys.executable, str(s2 / "scripts" / "ddl_compile.py"),
+         str(bp), "--out", str(ddl_out)],
+        cwd=s2, label="stage2.ddl_compile",
+    )
+    report.stages_run.append("stage2")
+    report.stage_durations_ms["stage2"] = dur
+
+
 def run_scaffold(args):
     if args.wiki_mode not in ("preset", "wiki"):
         raise ValueError("wiki_mode must be 'preset' or 'wiki'")
@@ -82,5 +96,8 @@ def run_scaffold(args):
     _run_stage1(args, stage_paths, report)
     if args.stop_after_stage <= 1:
         return report
-    # Stage 2/3/4 wired in later tasks
+    _run_stage2(args, stage_paths, report)
+    if args.stop_after_stage <= 2:
+        return report
+    # Stage 3/4 wired in later tasks
     return report

@@ -104,6 +104,17 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Allow Stage 5 overlay to overwrite existing files (creates .bak backups).",
     )
     p.add_argument(
+        "--target-package-prefix",
+        metavar="<java.pkg>",
+        default="com.nexacro.uiadapter",
+        dest="target_pkg_prefix",
+        help=(
+            "Stage 5 Java/XML target package prefix (default: com.nexacro.uiadapter). "
+            "Source prefix is derived from --package (all segments except the last, "
+            "which becomes the domain slug)."
+        ),
+    )
+    p.add_argument(
         "--dialect",
         choices=("postgres", "hsqldb"),
         default="postgres",
@@ -129,8 +140,16 @@ def main(argv=None):
     if a.wiki_mode == "wiki" and not a.wiki:
         p.error("--wiki-mode=wiki requires --wiki <path>")
 
-    # Derive slug
+    # Derive slug. If non-ASCII domain collapses to the "domain" fallback, warn
+    # that Stage 5 will pick up its slug from --package's last segment instead.
     domain_slug = derive_slug(a.domain)
+    if domain_slug == "domain" and a.domain != "domain":
+        print(
+            f"WARN: derive_slug({a.domain!r}) → 'domain' (non-ASCII fallback). "
+            f"Stage 5 overlay will use --package last segment "
+            f"({a.package.split('.')[-1]!r}) as the actual domain slug.",
+            file=sys.stderr,
+        )
 
     # Resolve creator_root: parent of this script's parent directory
     creator_root = pathlib.Path(__file__).resolve().parent.parent
@@ -160,6 +179,7 @@ def main(argv=None):
         service_name=a.service_name,
         target_project=pathlib.Path(a.target_project).resolve() if a.target_project else None,
         overlay_force=a.overlay_force,
+        target_pkg_prefix=a.target_pkg_prefix,
     )
 
     try:

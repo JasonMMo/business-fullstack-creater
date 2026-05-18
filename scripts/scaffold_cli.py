@@ -1,9 +1,10 @@
-"""scaffold_cli.py — CLI entry point for the 4-stage scaffold orchestrator.
+"""scaffold_cli.py — CLI entry point for the 5-stage scaffold orchestrator.
 
 Usage:
     python scripts/scaffold_cli.py --domain "주문관리" --package com.example.order \
         --out ./order-scaffold [--wiki-mode preset --preset 주문관리] [--lane nexacro] \
-        [--default-pattern D2] [--stop-after-stage 4]
+        [--default-pattern D2] [--stop-after-stage 5] \
+        [--target-project <dir>] [--overlay-force]
 """
 import argparse
 import re
@@ -27,7 +28,7 @@ def derive_slug(domain: str) -> str:
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="scaffold_cli",
-        description="4-stage scaffold orchestrator: wiki → DDL → MyBatis → Nexacro",
+        description="5-stage scaffold orchestrator: wiki → DDL → MyBatis → Nexacro → Overlay",
     )
     p.add_argument(
         "--domain",
@@ -84,10 +85,23 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--stop-after-stage",
         type=int,
-        choices=(1, 2, 3, 4),
-        default=4,
+        choices=(1, 2, 3, 4, 5),
+        default=5,
         dest="stop_after_stage",
-        help="Stop after this stage number (default: 4).",
+        help="Stop after this stage number (default: 5).",
+    )
+    p.add_argument(
+        "--target-project",
+        metavar="<dir>",
+        default=None,
+        dest="target_project",
+        help="Stage 5 overlay target root (base scaffold from /nexacro-fullstack-starter). Stage 5 is skipped when omitted.",
+    )
+    p.add_argument(
+        "--overlay-force",
+        action="store_true",
+        dest="overlay_force",
+        help="Allow Stage 5 overlay to overwrite existing files (creates .bak backups).",
     )
     p.add_argument(
         "--dialect",
@@ -144,6 +158,8 @@ def main(argv=None):
         stop_after_stage=a.stop_after_stage,
         dialect=a.dialect,
         service_name=a.service_name,
+        target_project=pathlib.Path(a.target_project).resolve() if a.target_project else None,
+        overlay_force=a.overlay_force,
     )
 
     try:

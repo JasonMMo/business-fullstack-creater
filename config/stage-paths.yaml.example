@@ -1,0 +1,6 @@
+# Copy to config/stage-paths.yaml to override sibling convention.
+# Default: <creator>/../andrej-karpathy-rdb-{skill,ddl,mybatis,nexacro}
+# stage1: D:/AI/workspace/andrej-karpathy-rdb-skill
+# stage2: D:/AI/workspace/andrej-karpathy-rdb-ddl
+# stage3: D:/AI/workspace/andrej-karpathy-rdb-mybatis
+# stage4: D:/AI/workspace/andrej-karpathy-rdb-nexacro

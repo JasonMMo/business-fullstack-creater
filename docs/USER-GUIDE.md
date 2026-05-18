@@ -69,6 +69,13 @@
 > - 충돌 시 `--overlay-force` 없으면 RuntimeError + 어느 파일과 충돌하는지 listing (변경 시작 전에 fail-fast)
 > - `--target-project` 미지정 시 Stage 5 skip (Phase D/E 하위 호환 100%). 상세: [`docs/superpowers/specs/2026-05-18-v0.4-phase-f-mf-gate.md`](./superpowers/specs/2026-05-18-v0.4-phase-f-mf-gate.md)
 
+> **v0.4.2 보완 (2026-05-18)**: 패키지 prefix 외부화 + Korean 도메인 slug 안전망.
+> - `--target-package-prefix <java.pkg>` 추가 (기본 `com.nexacro.uiadapter`). target 프로젝트가 다른 base package 를 쓰면 한 줄로 매핑.
+> - source prefix 는 `--package` 에서 마지막 segment 를 제외한 전체로 자동 도출 (예: `--package com.foo.bar.shop` → source `com.foo.bar`, slug `shop`).
+> - **slug 정확도 수정**: 이전엔 `derive_slug("주문관리")` → `"domain"` fallback 이 Stage 5 경로/`prefixid` 로 새어 들어가던 버그 → Stage 5 가 항상 `--package` 마지막 segment 를 overlay slug 로 사용.
+> - Korean fallback 발동 시 stderr 경고 출력 (`WARN: derive_slug('주문관리') → 'domain' (non-ASCII fallback). Stage 5 overlay will use --package last segment ('order') as the actual domain slug.`).
+> - 하위 호환 100% — 모든 신규 플래그 default 유지 시 v0.4.1 동작 동일.
+
 ### 1.2 사전 준비
 
 **런타임:**
@@ -550,6 +557,7 @@ python scripts/form_gen.py compile \
 | `--service-name <PascalCase>` | `domain_slug` PascalCase | 단일 Service id (Phase E) |
 | `--target-project <dir>` | — | **Phase F.** Stage 5 overlay 대상 (`/nexacro-fullstack-starter` 산출 root). 미지정 시 Stage 5 skip |
 | `--overlay-force` | `false` | **Phase F.** Stage 5 가 기존 파일 덮어쓰기 허용 (`.bak` 자동 생성). 기본은 충돌 시 fail-fast |
+| `--target-package-prefix <java.pkg>` | `com.nexacro.uiadapter` | **v0.4.2.** Stage 5 가 Java/MyBatis XML 을 rewrite 할 target 패키지 prefix. source prefix 는 `--package` 마지막 segment 를 제외한 전체로 자동 도출 |
 
 **Stage 5 overlay 동작 요약:**
 
@@ -841,4 +849,4 @@ python scripts/scaffold_cli.py --domain "주문관리" --wiki-mode preset --pres
 
 ---
 
-*Last updated: 2026-05-18 — v0.4 Phase F 완료 (Stage 5 자동 overlay: `--target-project` / Java package rename / frameLogin dsSample 메뉴 주입 / typedefinition Service merge / `.bak` 멱등 백업), Phase E (HSQLDB dialect / 자동 data.sql wiring / 단일 Service / `--service-name`)도 포함 — M-E 4.8/5, M-F 진행 중*
+*Last updated: 2026-05-18 — v0.4.2 보완 (`--target-package-prefix` / source prefix 자동 도출 / Korean domain slug 안전망), v0.4 Phase F 완료 (Stage 5 자동 overlay: `--target-project` / Java package rename / frameLogin dsSample 메뉴 주입 / typedefinition Service merge / `.bak` 멱등 백업), Phase E (HSQLDB dialect / 자동 data.sql wiring / 단일 Service / `--service-name`)도 포함 — M-E 4.8/5, M-F 4.6/5 PASS, M-G v0.4.2 진행 중*

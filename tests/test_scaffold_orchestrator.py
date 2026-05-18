@@ -243,3 +243,82 @@ def test_missing_wiki_mode_raises(tmp_path):
     with pytest.raises(ValueError) as exc:
         run_scaffold(args)
     assert "wiki_mode" in str(exc.value)
+
+
+def test_scaffold_report_written_on_success(tmp_path):
+    """Full 4-stage run writes scaffold-report.md with all stage markers."""
+    _make_fake_chain_stages(tmp_path)
+
+    s4_src = (
+        "import sys, pathlib\n"
+        "argv = sys.argv[1:]\n"
+        "out = pathlib.Path(argv[argv.index('--out')+1])\n"
+        "out.mkdir(parents=True, exist_ok=True)\n"
+        "(out / 'argv.txt').write_text(' '.join(argv))\n"
+    )
+    _make_fake_stage(tmp_path, "nexacro", {"form_gen.py": s4_src})
+
+    creator = tmp_path / "creater"; creator.mkdir()
+    out = tmp_path / "out"
+    args = ScaffoldArgs(
+        domain="주문관리", domain_slug="order", wiki_mode="preset",
+        preset="주문관리", wiki_path=None, lane="nexacro",
+        default_pattern="D2", package="com.example.order", out_dir=out,
+        creator_root=creator, stop_after_stage=4,
+    )
+    run_scaffold(args)
+
+    report_path = out / "scaffold-report.md"
+    assert report_path.exists()
+    content = report_path.read_text(encoding="utf-8")
+    assert "주문관리" in content
+    assert "stage1" in content
+    assert "stage4" in content
+    assert "D2" in content
+    assert "FAILED" not in content
+    assert "다음 단계" in content
+
+
+def test_scaffold_report_written_on_failure(tmp_path):
+    """When stage2 exits non-zero, scaffold-report.md is written with FAILED marker and StageFailure is raised."""
+    # stage1: normal
+    s1_src = (
+        "import sys, pathlib\n"
+        "args = sys.argv[1:]\n"
+        "if args[0] == 'init':\n"
+        "    out = pathlib.Path(args[1]); out.mkdir(parents=True, exist_ok=True)\n"
+        "    (out / '_schema.md').write_text('---\\ntype: schema\\n---\\n')\n"
+        "elif args[0] == 'compile':\n"
+        "    out = pathlib.Path(args[1])\n"
+        "    (out / '_blueprint.yaml').write_text('version: 1\\nentities: []\\n')\n"
+        "    (out / 'compile-report.md').write_text('OK\\n')\n"
+    )
+    # stage2: exits 1 (simulates failure)
+    s2_fail_src = (
+        "import sys\n"
+        "sys.stderr.write('ddl_compile error: invalid blueprint\\n')\n"
+        "sys.exit(1)\n"
+    )
+    _make_fake_stage(tmp_path, "skill", {"rdb_index.py": s1_src})
+    _make_fake_stage(tmp_path, "ddl",   {"ddl_compile.py": s2_fail_src})
+    for n in ("mybatis", "nexacro"):
+        _make_fake_stage(tmp_path, n, {})
+    creator = tmp_path / "creater"; creator.mkdir()
+    out = tmp_path / "out"
+    args = ScaffoldArgs(
+        domain="주문관리", domain_slug="order", wiki_mode="preset",
+        preset="주문관리", wiki_path=None, lane="nexacro",
+        default_pattern="D2", package="com.example.order", out_dir=out,
+        creator_root=creator, stop_after_stage=4,
+    )
+
+    with pytest.raises(StageFailure):
+        run_scaffold(args)
+
+    report_path = out / "scaffold-report.md"
+    assert report_path.exists()
+    content = report_path.read_text(encoding="utf-8")
+    assert "FAILED: stage2" in content
+    assert "stage1" in content
+    assert "stage3" not in content
+    assert "stage4" not in content

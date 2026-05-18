@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<TypeDefinition version="3.0">
+  <Modules/>
+  <Components/>
+  <Services>
+    <Service prefixid="frame" type="form" url="./frame/" cachelevel="session" version="0"/>
+    <Service prefixid="cmm" type="form" cachelevel="session" url="./cmm/" version="0"/>
+  </Services>
+  <Protocols/>
+  <Update/>
+</TypeDefinition>

@@ -576,10 +576,59 @@ python scripts/form_gen.py compile \
 
 ### 6.3 후속 작업 (TBD)
 
-- Stage 3에 `--lane jakarta|javax` 도입 → Spring Boot 2 / JDK8 환경 호환
-- `/business-fullstack-creater scaffold` 슬래시 커맨드 — Stage 1→2→3→4+overlay 자동화
+- Stage 3에 `--lane jakarta|javax` 도입 → Spring Boot 2 / JDK8 환경 호환 *(현재 `--lane nexacro|vanilla` 만 — v0.3 Phase B 산출)*
+- `/business-fullstack-creater scaffold` 슬래시 커맨드 — Stage 1→2→3→4+overlay 자동화 *(v0.4 예정)*
 - Overlay 단계 entity 충돌 감지 시 사용자 확인 prompt
-- nexacro 화면에 master-detail / popup 패턴 추가
+
+### 6.4 전략 로드맵 (v0.3 ~ v0.7)
+
+단기 ToDo (1: Web UI / 2: 어댑터화 / 3: 단위 확장)와 장기 C 차원 (메타 추출 / 도메인 추천 / 마켓플레이스, 구 task #97)을 **데이터 흐름 기준**으로 통합 재정렬. 핵심 원칙:
+- **C 차원의 진입 조건은 "데이터"**: 누적된 catalog · learn-log · contribute 가 없으면 무의미 → 데이터 조건이 차오르는 시점에 진입 (장기 ≠ 후순위, "조건 충족 시 즉시").
+- **v0.3 + 실 사용이 데이터를 만든다** — C는 그 위에 올라간다.
+- **Web UI 진입 위험 회피**: "1회 실행 큐레이션" 가치는 CLI scaffold만으로 80% 달성 가능 → Web UI는 비개발자 수요가 실제로 생긴 다음에.
+
+각 단계는 v0.2처럼 Milestone Gate 5축 자체 리뷰 통과를 조건으로 다음 진행.
+
+| 순위 | 버전 | 내용 | 진입 조건 | Effort | 상태 |
+|:-:|---|---|---|:-:|:-:|
+| 1 | **v0.3** | 단위 확장 (#3): M:N · vanilla lane · UI 패턴 catalog | 즉시 | 2주 | ✅ 완료 (2026-05-18, M-C 4.8/5) |
+| 2 | **v0.3.x** | C-2 유사 도메인 추천 | catalog 5+ 도메인 | 1주 | 대기 |
+| 3 | **v0.4** | CLI scaffold (#1 핵심가치 80%) | v0.3 완료 | 2주 | 다음 후보 |
+| 4 | **v0.5** | 어댑터화 (#2): contract + MySQL + lane 정식화 | v0.4 + 실사용 1회 | 3-4주 | 대기 |
+| 5 | **v0.6** | C-1 메타 추출 | 실 프로젝트 3+ | 1-2주 | 대기 |
+| 6 | **v0.7** | C-3 마켓플레이스 + Web UI 풀버전 | catalog format 안정 + 비개발자 수요 | 4주+ | 대기 |
+
+#### v0.3 — 단위 기능 확장 ✅ (Phase A + B + C 완료, 2026-05-18)
+
+- **Phase A (back-end)** — blueprint `relations[]` 의 M:N junction 자연 지원 + 복합 PK + 복합 FK (`fk.column: [a, b]`). Stage 1 V005 가 junction 패턴을 INFO 로 감지. Stage 2 토포소트 / FK 생성기 다중 컬럼 케이스 처리. *(M-A 게이트 통과)*
+- **Phase B (middle)** — Stage 3 에 `--lane vanilla` 추가 (기본 `--lane nexacro`). vanilla lane 산출은 NexacroBase / NexacroResult / DataSet 의존성 없는 표준 Spring Boot 3 + MyBatis POJO + `@RestController` + DTO 기반 service-impl. `endpoints.json` v2 (vanilla 전용) 동시 emit. *(M-B 게이트 4.4/5)*
+- **Phase C (front-end)** — Stage 4 form layout 을 명명된 파일 기반 pattern catalog 로 분리. 번들 3종: **D2** (detail-2-tier, 기본), **F1** (form-1-tier 단일 record), **C1** (card-1-tier readonly picker). entity frontmatter 의 `pattern: <name>` 또는 `--default-pattern` 으로 선택. 패턴 카탈로그는 번들 → 글로벌 (`~/.karpathy-rdb/catalog/patterns/`) → `PatternNotFoundError`. `/karpathy-rdb contribute --kind pattern <name>` 으로 글로벌 카탈로그 승격. *(M-C 게이트 4.8/5)*
+
+게이트 문서: [Phase A](./superpowers/specs/2026-05-15-v0.3-phase-a-ma-gate.md) · [Phase B](./superpowers/specs/2026-05-15-v0.3-phase-b-mb-gate.md) · [Phase C](./superpowers/specs/2026-05-18-v0.3-phase-c-mc-gate.md)
+
+#### v0.3.x — C-2 유사 도메인 추천 (장기 C-2를 앞당김)
+- `01-init.md` Phase 3 preset 선택 단계에서 사용자 입력 도메인명을 **LLM이 catalog frontmatter와 비교**해 가장 가까운 seed 3개 자동 제안 (벡터 DB 없음, Karpathy 원칙 유지).
+- **앞당기는 이유**: C 중 가장 가볍고(1주) catalog 누적이 이미 시작됨. C 진입 첫걸음.
+
+#### v0.4 — CLI scaffold (단기 #1 핵심가치 80%, Web 없이)
+- `/business-fullstack-creater scaffold <도메인>` 슬래시 커맨드 — Stage 1→2→3→4+overlay 자동 큐레이션. 단계별 추가 정보 prompt → 1회 실행으로 4 stage 통합.
+- **Web 대신 CLI를 먼저 하는 이유**: 진짜 가치는 "1회 실행 큐레이션"이지 Web 자체가 아님. CLI는 1/4 effort로 80% 가치 + Karpathy 정신(파일 기반) 위협 없음. Web UI 풀버전은 v0.7에 비개발자 수요 출현 시.
+
+#### v0.5 — 교체 가능 아키텍처 (Phase B · 단기 #2)
+- **어댑터 계약 먼저, 어댑터 두 번째.** tier마다 contract 문서 (`adapters/backend-contract.md`, `service-contract.md`, `ui-contract.md`) 선행. 입력·출력·파일 위치·호환 버전 명시.
+- **back-end DB**: PostgreSQL + HSQLDB 두 어댑터를 contract로 추상화 → MySQL 추가로 일반화 검증.
+- **middle service**: Stage 3 `--lane jakarta|javax|vanilla` 정식화 (v0.3의 vanilla lane을 contract 기반으로 정리).
+- **front-end UI**: Stage 4(nexacro) + Stage 4'(외부 starter) 외에 React/Vue 어댑터 슬롯 정의.
+
+#### v0.6 — C-1 메타 추출 (장기 C-1)
+- `scripts/meta_extract.py`: 복수 프로젝트 `learn-log.md` 횡단 → `~/.karpathy-rdb/catalog/meta/<도메인>_meta.md` 생성 (공통 패턴, 반복 등장 entity, false-belief 경향).
+- **진입 조건**: 실 프로젝트 3개 이상 누적 (각각 ingest + contribute 1회 이상). v0.3~0.5 사용 과정에서 자연 충족.
+
+#### v0.7 — C-3 마켓플레이스 + Web UI 풀버전
+- **C-3**: `catalogs/preset-catalog.yaml`을 별도 git repo로 분리, `plugin.json`에 `catalog_remote` URL 필드. 외부 contribute 도입 + 충돌 해결 정책.
+- **Web UI 풀버전 (단기 #1 잔여)**: 사용자가 요구만 입력하면 agent가 단계별 큐레이션, 결과 시연·테스트, WAR/JAR 다운로드.
+- **Karpathy 정신 보존 가드레일**: Web app은 **파일 기반 파이프라인 위의 view + runner**로만 동작. 진실의 원천은 항상 `wiki/`, `_blueprint.yaml`, `~/.karpathy-rdb/catalog/`. Web 측에 별도 DB·세션 상태를 두지 않는다.
+- **Run Manifest**: 1회 실행 = `runs/YYYY-MM-DD-<topic>/manifest.yaml` (blueprint + 선택 어댑터 + 선택 패턴 → 산출 WAR). 재현·공유·롤백 가능.
 
 ---
 
@@ -602,4 +651,4 @@ python scripts/form_gen.py compile \
 
 ---
 
-*Last updated: 2026-05-15 — Stage 4 v0.1.0 release*
+*Last updated: 2026-05-18 — v0.3 완료 (Phase A · B · C 모두 게이트 통과)*

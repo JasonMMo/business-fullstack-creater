@@ -320,3 +320,92 @@ def test_schema_mismatch_skips_menu_only(tmp_path):
     frame_text = frame_login.read_text(encoding="utf-8")
     assert "auth" not in frame_text, "auth column should still be absent"
     assert "BIZ_ORDER" not in frame_text, "menu rows should not have been injected"
+
+
+# ---------------------------------------------------------------------------
+# Test 6: Custom package prefixes (v0.4.2 G1) — non-default source + target
+# ---------------------------------------------------------------------------
+
+def _make_out_dir_custom_source(tmp: pathlib.Path) -> pathlib.Path:
+    """Same as _make_out_dir but Stage 3 java tree is rooted at io/foo/bar/shop."""
+    out = tmp / "out"
+    java_pkg = (
+        out / "3-mybatis" / "src" / "main" / "java"
+        / "io" / "foo" / "bar" / "shop" / "controller"
+    )
+    java_pkg.mkdir(parents=True)
+    (java_pkg / "ShopController.java").write_text(
+        "package io.foo.bar.shop.controller;\n\n"
+        "import io.foo.bar.shop.domain.Shop;\n\n"
+        "public class ShopController {}\n",
+        encoding="utf-8",
+    )
+    mapper_dir = out / "3-mybatis" / "src" / "main" / "resources" / "mybatis" / "mapper"
+    mapper_dir.mkdir(parents=True)
+    (mapper_dir / "ShopMapper.xml").write_text(
+        '<?xml version="1.0" encoding="utf-8"?>\n'
+        '<mapper namespace="io.foo.bar.shop.mapper.ShopMapper">\n'
+        '  <select id="selectAll" resultType="io.foo.bar.shop.domain.Shop">\n'
+        "    SELECT * FROM shops\n"
+        "  </select>\n"
+        "</mapper>\n",
+        encoding="utf-8",
+    )
+    res_dir = out / "3-mybatis" / "src" / "main" / "resources"
+    (res_dir / "schema.sql").write_text("CREATE TABLE shops (id BIGINT);\n", encoding="utf-8")
+    (res_dir / "data.sql").write_text("-- seed\n", encoding="utf-8")
+    form_dir = out / "4-nexacro" / "nxui" / "_form_"
+    form_dir.mkdir(parents=True)
+    (form_dir / "shop.xfdl").write_text(
+        '<?xml version="1.0" encoding="utf-8"?>\n<FDL/>\n', encoding="utf-8"
+    )
+    return out
+
+
+def test_custom_prefixes_route_java_to_target_path(tmp_path):
+    """v0.4.2: source_pkg_prefix + target_pkg_prefix must route java files
+    from io.foo.bar.<slug> → io.acme.uiadapter.<slug>."""
+    out_dir = _make_out_dir_custom_source(tmp_path)
+    target_dir = _make_target_dir(tmp_path)
+
+    report = run_overlay(
+        out_dir=out_dir,
+        target_dir=target_dir,
+        domain_slug="shop",
+        domain_label="쇼핑몰",
+        service_pascal="Shop",
+        blueprint_entities=[{"name": "shop", "label_ko": "쇼핑몰"}],
+        source_pkg_prefix="io.foo.bar",
+        target_pkg_prefix="io.acme.uiadapter",
+    )
+
+    # Java lands at io/acme/uiadapter/shop/...
+    java_file = (
+        target_dir
+        / "src" / "main" / "java"
+        / "io" / "acme" / "uiadapter" / "shop" / "controller" / "ShopController.java"
+    )
+    assert java_file.exists(), f"Java not at custom target path: {java_file}"
+    java_text = java_file.read_text(encoding="utf-8")
+    assert "package io.acme.uiadapter.shop.controller;" in java_text
+    assert "import io.acme.uiadapter.shop.domain.Shop;" in java_text
+    assert "io.foo.bar.shop" not in java_text, "old custom source prefix still present"
+
+    # Mapper xml rewritten too
+    mapper_file = (
+        target_dir / "src" / "main" / "resources" / "mybatis" / "mapper" / "ShopMapper.xml"
+    )
+    xml_text = mapper_file.read_text(encoding="utf-8")
+    assert 'namespace="io.acme.uiadapter.shop.mapper.ShopMapper"' in xml_text
+    assert 'resultType="io.acme.uiadapter.shop.domain.Shop"' in xml_text
+
+    # No shop slug-subdir under the default com.nexacro.uiadapter prefix
+    # (fixture base scaffold pre-includes com/nexacro/uiadapter/ infrastructure dirs,
+    # so we check specifically that our slug 'shop' didn't leak there)
+    default_shop = target_dir / "src" / "main" / "java" / "com" / "nexacro" / "uiadapter" / "shop"
+    assert not default_shop.exists(), (
+        f"shop slug leaked under default prefix: {default_shop}"
+    )
+
+    assert report["renamed_imports"] >= 1
+    assert report["typedef_added"] is True

@@ -23,6 +23,7 @@ class ScaffoldArgs:
     service_name: Optional[str] = None   # E5: explicit PascalCase service name; auto-derived if None
     target_project: Optional[pathlib.Path] = None   # F: Stage 5 target overlay root (None → skip)
     overlay_force: bool = False                     # F: allow .bak overwrite during overlay
+    target_pkg_prefix: str = "com.nexacro.uiadapter"  # G(v0.4.2): Stage 5 Java/XML target package prefix
 
 
 @dataclass
@@ -228,6 +229,10 @@ def _run_stage5(args, stage_paths, report):
     # args.domain_slug can fall back to "domain" for non-ASCII domain names
     # (e.g. "주문관리"), so it is not safe for path/prefixid use here.
     overlay_slug = args.package.split(".")[-1]
+    # G(v0.4.2): source prefix is everything before the slug, e.g.
+    #   --package com.example.order   → source_pkg_prefix=com.example
+    #   --package io.acme.svc.order   → source_pkg_prefix=io.acme.svc
+    source_pkg_prefix = ".".join(args.package.split(".")[:-1]) or "com.example"
     service_pascal = args.service_name or _derive_service_pascal(overlay_slug)
     try:
         t0 = time.monotonic()
@@ -239,6 +244,8 @@ def _run_stage5(args, stage_paths, report):
             service_pascal=service_pascal,
             blueprint_entities=entities,
             overlay_force=args.overlay_force,
+            source_pkg_prefix=source_pkg_prefix,
+            target_pkg_prefix=args.target_pkg_prefix,
         )
         dur = int((time.monotonic() - t0) * 1000)
     except RuntimeError as exc:

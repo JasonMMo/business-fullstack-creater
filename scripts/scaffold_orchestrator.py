@@ -128,6 +128,39 @@ def _run_stage4(args, stage_paths, report):
     report.stage_durations_ms["stage4"] = dur
 
 
+def _write_report(args, report, failure=None):
+    lines = [
+        f"# Scaffold Report — {args.domain}",
+        "",
+        f"- domain: `{args.domain}` (slug: `{args.domain_slug}`)",
+        f"- wiki_mode: `{args.wiki_mode}` "
+        + (f"(preset=`{args.preset}`)" if args.wiki_mode == "preset"
+           else f"(wiki=`{args.wiki_path}`)"),
+        f"- lane: `{args.lane}`",
+        f"- default_pattern: `{args.default_pattern}`",
+        f"- package: `{args.package}`",
+        f"- out_dir: `{args.out_dir}`",
+        "",
+        "## Stages",
+    ]
+    for name in ("stage1", "stage2", "stage3", "stage4"):
+        if name in report.stages_run:
+            lines.append(f"- {name}: OK ({report.stage_durations_ms.get(name, 0)} ms)")
+    if failure:
+        lines += ["", f"## FAILED: {failure[0]}", "", "```", failure[1], "```"]
+    else:
+        lines += [
+            "", "## 다음 단계",
+            f"- DDL: `{args.out_dir / '2-ddl'}`",
+            f"- Spring (lane={args.lane}): `{args.out_dir / '3-mybatis'}`",
+            f"- Nexacro forms (default={args.default_pattern}): "
+            f"`{args.out_dir / '4-nexacro'}`",
+        ]
+    (args.out_dir / "scaffold-report.md").write_text(
+        "\n".join(lines) + "\n", encoding="utf-8"
+    )
+
+
 def run_scaffold(args):
     if args.wiki_mode not in ("preset", "wiki"):
         raise ValueError("wiki_mode must be 'preset' or 'wiki'")
@@ -135,15 +168,20 @@ def run_scaffold(args):
     args.out_dir.mkdir(parents=True, exist_ok=True)
     stage_paths = resolve_stage_paths(args.creator_root)
     report = ScaffoldReport(out_dir=args.out_dir)
-
-    _run_stage1(args, stage_paths, report)
-    if args.stop_after_stage <= 1:
-        return report
-    _run_stage2(args, stage_paths, report)
-    if args.stop_after_stage <= 2:
-        return report
-    _run_stage3(args, stage_paths, report)
-    if args.stop_after_stage <= 3:
-        return report
-    _run_stage4(args, stage_paths, report)
+    runners = [
+        (_run_stage1, "stage1"),
+        (_run_stage2, "stage2"),
+        (_run_stage3, "stage3"),
+        (_run_stage4, "stage4"),
+    ]
+    try:
+        for i, (fn, name) in enumerate(runners, start=1):
+            fn(args, stage_paths, report)
+            if args.stop_after_stage <= i:
+                break
+    except StageFailure as e:
+        next_stage = f"stage{len(report.stages_run) + 1}"
+        _write_report(args, report, failure=(next_stage, str(e)))
+        raise
+    _write_report(args, report)
     return report

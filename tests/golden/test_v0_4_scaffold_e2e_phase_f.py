@@ -392,3 +392,101 @@ def test_real_target_overlay_optional(tmp_path):
     assert java_root.is_dir() and list(java_root.rglob("*.java")), (
         f"No java files placed under {java_root}"
     )
+
+
+# ---------------------------------------------------------------------------
+# Case 7 (v0.4.2): Korean domain + arbitrary --package + custom target prefix
+# ---------------------------------------------------------------------------
+
+def test_korean_domain_custom_package_and_target_prefix(tmp_path):
+    """v0.4.2 retest: ensure the domain identifier ('주문관리') correctly maps to the
+    test-bed project's actual package layout when both --package and
+    --target-package-prefix are non-default.
+
+    Stage 3 writes under com.foo.bar.shop (derived from --package). Stage 5 must
+    rewrite imports to io.acme.uiadapter.shop and place files there. The
+    derive_slug() Korean fallback ('domain') must NOT contaminate the slug —
+    overlay_slug comes from --package last segment.
+    """
+    from scaffold_orchestrator import ScaffoldArgs, run_scaffold, StageFailure  # noqa: PLC0415
+
+    target = tmp_path / "target"
+    shutil.copytree(_FIXTURE_BASE, target)
+
+    args = ScaffoldArgs(
+        domain="주문관리",
+        domain_slug="domain",  # simulate derive_slug Korean fallback explicitly
+        wiki_mode="preset",
+        preset="주문관리",
+        wiki_path=None,
+        lane="nexacro",
+        default_pattern="D2",
+        package="com.foo.bar.shop",
+        out_dir=tmp_path / "scaffold-out",
+        creator_root=CREATOR,
+        stop_after_stage=5,
+        dialect="hsqldb",
+        service_name="Shop",
+        target_project=target,
+        overlay_force=False,
+        target_pkg_prefix="io.acme.uiadapter",
+    )
+
+    try:
+        run_scaffold(args)
+    except StageFailure as exc:
+        pytest.fail(f"StageFailure during custom-prefix run: {exc}")
+
+    # Java files land at io/acme/uiadapter/shop/... — NOT com/nexacro/uiadapter
+    custom_root = (
+        target / "src" / "main" / "java"
+        / "io" / "acme" / "uiadapter" / "shop"
+    )
+    assert custom_root.is_dir(), f"Java not at custom target root: {custom_root}"
+    custom_files = list(custom_root.rglob("*.java"))
+    assert custom_files, f"No .java under {custom_root}"
+
+    # Package decl rewritten to custom target prefix
+    sample = custom_files[0].read_text(encoding="utf-8")
+    assert sample.startswith("package io.acme.uiadapter.shop"), (
+        f"Package not rewritten to custom prefix in {custom_files[0].name}:\n{sample[:200]}"
+    )
+    # And the original source package (com.foo.bar.shop) must be gone
+    assert "com.foo.bar.shop" not in sample, "source prefix still present in rewritten java"
+
+    # The 'shop' slug subdir must NOT appear under default com.nexacro.uiadapter
+    # (fixture pre-includes empty com/nexacro/uiadapter/ infrastructure dirs,
+    # so we check specifically for slug leakage)
+    default_shop = (
+        target / "src" / "main" / "java"
+        / "com" / "nexacro" / "uiadapter" / "shop"
+    )
+    assert not default_shop.exists(), (
+        f"shop slug leaked under default prefix despite --target-package-prefix: {default_shop}"
+    )
+
+    # xfdl forms placed under the slug derived from --package (shop), not from derive_slug ('domain')
+    xfdl_dir = target / "nxui" / "packageN" / "shop"
+    assert xfdl_dir.is_dir() and list(xfdl_dir.glob("*.xfdl")), (
+        f"xfdl not placed under shop/ (slug derived from --package last segment): {xfdl_dir}"
+    )
+    leak_dir = target / "nxui" / "packageN" / "domain"
+    assert not leak_dir.exists(), (
+        "xfdl leaked into nxui/packageN/domain/ — derive_slug Korean fallback contaminated overlay"
+    )
+
+    # typedef uses prefixid="shop"
+    typedef_text = (target / "nxui" / "packageN" / "typedefinition.xml").read_text(
+        encoding="utf-8"
+    )
+    assert 'prefixid="shop"' in typedef_text, (
+        "typedef prefixid not set to slug derived from --package last segment"
+    )
+
+    # menu rows use BIZ_SHOP* prefix (service_pascal="Shop" → BIZ_SHOP)
+    frame_text = (target / "nxui" / "packageN" / "frame" / "frameLogin.xfdl").read_text(
+        encoding="utf-8"
+    )
+    assert '<Col id="menuId">BIZ_SHOP</Col>' in frame_text, (
+        "BIZ_SHOP group row not injected into frameLogin.xfdl"
+    )

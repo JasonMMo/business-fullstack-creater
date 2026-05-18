@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FDL version="1.7">
+  <Form id="frameLogin">
+    <Objects>
+      <Dataset id="dsSample">
+        <ColumnInfo>
+          <Column id="level" type="STRING" size="256"/>
+          <Column id="groupId" type="STRING" size="256"/>
+          <Column id="menuId" type="STRING" size="256"/>
+          <Column id="menuNm" type="STRING" size="256"/>
+          <Column id="menuUrl" type="STRING" size="256"/>
+          <Column id="sortNo" type="STRING" size="256"/>
+          <Column id="upMenuId" type="STRING" size="256"/>
+          <Column id="useYn" type="STRING" size="256"/>
+          <Column id="auth" type="STRING" size="256"/>
+        </ColumnInfo>
+        <Rows>
+          <Row>
+            <Col id="level">0</Col>
+            <Col id="groupId">SA00000005</Col>
+            <Col id="menuId">SA00000005</Col>
+            <Col id="menuNm">샘플</Col>
+            <Col id="menuUrl"/>
+            <Col id="sortNo">6</Col>
+            <Col id="upMenuId">SA00000001</Col>
+            <Col id="useYn">Y</Col>
+          </Row>
+        </Rows>
+      </Dataset>
+    </Objects>
+  </Form>
+</FDL>

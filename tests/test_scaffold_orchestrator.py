@@ -1,5 +1,5 @@
 # tests/test_scaffold_orchestrator.py
-import pathlib, subprocess
+import pathlib
 import pytest
 from scaffold_orchestrator import ScaffoldArgs, run_scaffold, StageFailure
 
@@ -13,7 +13,7 @@ def _make_fake_stage(tmp_path, name, scripts):
     return repo
 
 
-def test_stage1_preset_writes_blueprint(tmp_path, monkeypatch):
+def test_stage1_preset_writes_blueprint(tmp_path):
     # fake stage1: rdb_index.py compile <wiki> writes _blueprint.yaml
     s1_src = (
         "import sys, pathlib\n"

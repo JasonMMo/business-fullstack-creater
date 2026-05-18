@@ -18,6 +18,8 @@ class ScaffoldArgs:
     out_dir: pathlib.Path
     creator_root: pathlib.Path
     stop_after_stage: int = 4            # for tests
+    dialect: str = "postgres"            # E3: "postgres" | "hsqldb"
+    service_name: Optional[str] = None   # E5: explicit PascalCase service name; auto-derived if None
 
 
 @dataclass
@@ -29,6 +31,12 @@ class ScaffoldReport:
 
 class StageFailure(Exception):
     pass
+
+
+def _derive_service_pascal(domain_slug: str) -> str:
+    """snake_case slug → PascalCase service name. 'sales_order' → 'SalesOrder'."""
+    parts = [p for p in re.split(r"[_\-\s]+", domain_slug) if p]
+    return "".join(p[:1].upper() + p[1:] for p in parts) or "Default"
 
 
 def _run(cmd, cwd, label):
@@ -140,7 +148,7 @@ def _run_stage2(args, stage_paths, report):
     bp = args.out_dir / "1-wiki" / "_blueprint.yaml"
     dur, _ = _run(
         [sys.executable, str(s2 / "scripts" / "ddl_compile.py"),
-         str(bp), "--out", str(ddl_out)],
+         str(bp), "--out", str(ddl_out), "--dialect", args.dialect],
         cwd=s2, label="stage2.ddl_compile",
     )
     report.stages_run.append("stage2")
@@ -155,16 +163,20 @@ def _run_stage3(args, stage_paths, report):
     # Stage 2 (ddl_gen) writes SQL files into a migrations/ subdirectory.
     # Stage 3 (karpathy-rdb-mybatis) expects the DDL files in --ddl-dir directly.
     ddl_dir = args.out_dir / "2-ddl" / "migrations"
-    dur, _ = _run(
-        [sys.executable, str(s3 / "scripts" / "compile.py"),
-         "compile",
-         "--blueprint", str(bp),
-         "--ddl-dir", str(ddl_dir),
-         "--out", str(mybatis_out),
-         "--lane", args.lane,
-         "--package", args.package],
-        cwd=s3, label="stage3.compile",
-    )
+    seed_dir = args.out_dir / "2-ddl" / "seed"
+    cmd = [
+        sys.executable, str(s3 / "scripts" / "compile.py"),
+        "compile",
+        "--blueprint", str(bp),
+        "--ddl-dir", str(ddl_dir),
+        "--out", str(mybatis_out),
+        "--lane", args.lane,
+        "--package", args.package,
+    ]
+    # E4: pass --seed-dir only when Stage 2 actually emitted seed files
+    if seed_dir.exists() and any(seed_dir.iterdir()):
+        cmd += ["--seed-dir", str(seed_dir)]
+    dur, _ = _run(cmd, cwd=s3, label="stage3.compile")
     report.stages_run.append("stage3")
     report.stage_durations_ms["stage3"] = dur
 
@@ -187,6 +199,9 @@ def _run_stage4(args, stage_paths, report):
         cmd += ["--infer-endpoints"]
     if args.default_pattern:
         cmd += ["--default-pattern", args.default_pattern]
+    # E5: derive service_name from domain_slug when not explicit
+    service_name = args.service_name or _derive_service_pascal(args.domain_slug)
+    cmd += ["--service-name", service_name]
     dur, _ = _run(cmd, cwd=s4, label="stage4.compile")
     report.stages_run.append("stage4")
     report.stage_durations_ms["stage4"] = dur
@@ -201,7 +216,9 @@ def _write_report(args, report, failure=None):
         + (f"(preset=`{args.preset}`)" if args.wiki_mode == "preset"
            else f"(wiki=`{args.wiki_path}`)"),
         f"- lane: `{args.lane}`",
+        f"- dialect: `{args.dialect}`",
         f"- default_pattern: `{args.default_pattern}`",
+        f"- service_name: `{args.service_name or _derive_service_pascal(args.domain_slug)}`",
         f"- package: `{args.package}`",
         f"- out_dir: `{args.out_dir}`",
         "",

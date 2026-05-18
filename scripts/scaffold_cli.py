@@ -89,6 +89,19 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="stop_after_stage",
         help="Stop after this stage number (default: 4).",
     )
+    p.add_argument(
+        "--dialect",
+        choices=("postgres", "hsqldb"),
+        default="postgres",
+        help="Stage 2 SQL dialect (default: postgres). Use 'hsqldb' for in-DB test.",
+    )
+    p.add_argument(
+        "--service-name",
+        metavar="<PascalCase>",
+        default=None,
+        dest="service_name",
+        help="Explicit nexacro service name (e.g. 'Order'). Auto-derived from --domain when omitted.",
+    )
     return p
 
 
@@ -129,6 +142,8 @@ def main(argv=None):
         out_dir=out_dir,
         creator_root=creator_root,
         stop_after_stage=a.stop_after_stage,
+        dialect=a.dialect,
+        service_name=a.service_name,
     )
 
     try:

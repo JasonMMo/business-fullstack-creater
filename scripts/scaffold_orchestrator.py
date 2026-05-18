@@ -105,6 +105,29 @@ def _run_stage3(args, stage_paths, report):
     report.stage_durations_ms["stage3"] = dur
 
 
+def _run_stage4(args, stage_paths, report):
+    nexacro_out = args.out_dir / "4-nexacro"
+    nexacro_out.mkdir(parents=True, exist_ok=True)
+    s4 = stage_paths.stage4
+    bp = args.out_dir / "1-wiki" / "_blueprint.yaml"
+    eps = args.out_dir / "3-mybatis" / "endpoints.json"
+    cmd = [
+        sys.executable, str(s4 / "scripts" / "form_gen.py"),
+        "compile",
+        "--blueprint", str(bp),
+        "--out", str(nexacro_out),
+    ]
+    if eps.exists():
+        cmd += ["--endpoints", str(eps)]
+    else:
+        cmd += ["--infer-endpoints"]
+    if args.default_pattern:
+        cmd += ["--default-pattern", args.default_pattern]
+    dur, _ = _run(cmd, cwd=s4, label="stage4.compile")
+    report.stages_run.append("stage4")
+    report.stage_durations_ms["stage4"] = dur
+
+
 def run_scaffold(args):
     if args.wiki_mode not in ("preset", "wiki"):
         raise ValueError("wiki_mode must be 'preset' or 'wiki'")
@@ -122,5 +145,5 @@ def run_scaffold(args):
     _run_stage3(args, stage_paths, report)
     if args.stop_after_stage <= 3:
         return report
-    # Stage 4 wired in later tasks
+    _run_stage4(args, stage_paths, report)
     return report

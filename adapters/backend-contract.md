@@ -1,8 +1,8 @@
 # Backend Adapter Contract (v0.5)
 
-**Status:** v0.5 H1 (Contract Foundation) — 2026-05-19
+**Status:** v0.5 H2 (MySQL 실증 완료) — 2026-05-19
 **Scope:** DB dialect 어댑터 (Stage 2 = `andrej-karpathy-rdb-ddl`)
-**Reference impls:** `postgres`, `hsqldb` (둘 다 v0.4.x 시점 production)
+**Reference impls:** `postgres`, `hsqldb`, `mysql` (v0.5.0 — H2 으로 mysql 추가)
 
 > "어댑터 계약 먼저, 어댑터 두 번째." — USER-GUIDE §6.4 v0.5
 
@@ -96,7 +96,7 @@ class Dialect:
 |:-:|:-:|:-|
 | **1** | v0.2.0 | 초기 (`postgres`, `hsqldb`) |
 | **1.1** | v0.4.1 (Phase E) | `--dialect` orchestrator pass-through |
-| **2** *(예정)* | v0.5.0 | `mysql` 등록 + 본 contract 문서 추가 |
+| **2** | v0.5.0 (H2, 2026-05-19) | `mysql` 등록 + 본 contract 문서 추가 + §10 환류 |
 
 **Bump 규칙**: 필드 추가 시 **minor** (1 → 1.1) — 기존 어댑터는 default 값으로 통과. 필수 키/시그니처 변경 시 **major** (1.x → 2) — 모든 어댑터 마이그레이션 필수.
 
@@ -139,3 +139,27 @@ class Dialect:
 ## 9. 다음 단계 (v0.5 H2)
 
 MySQL 어댑터를 본 계약에 따라 등록하여 contract 의 일반화 능력을 **실증**. 등록 과정에서 발견되는 누락 슬롯/암묵적 가정은 본 문서로 환류 (계약 진화).
+
+---
+
+## 10. H2 환류 (MySQL 실증 결과, 2026-05-19)
+
+MySQL 어댑터를 §4 절차로 등록한 결과 — **추가 코드 수정 없이** Dialect 인스턴스 + 5 템플릿 + CLI choices 만으로 통과. Contract 의 일반화 능력 1차 실증 ✅.
+
+회귀 테스트 결과: 94 passed / 1 skipped (`test_dialect_mysql_inDB` — embedded MySQL 미제공). 골든 SQL (customer + address) 정상 렌더, `BIGINT AUTO_INCREMENT` / `DATETIME` / backtick identifier / InnoDB / utf8mb4 모두 검증.
+
+### 10.1 발견된 contract 갭
+
+| # | 갭 | 영향 | 조치 |
+|:-:|:--|:--|:--|
+| G1 | `postgres/seed.sql.j2` 가 `ON CONFLICT DO NOTHING` 을 **하드코딩** — `{{ idempotent_insert }}` 슬롯 미사용 | 어댑터별 idempotent 정책이 §2.3 에 정의됐어도 postgres 렌더 경로에서 무시됨 | v0.5.1 (H2.x patch): postgres seed.sql.j2 를 `{{ idempotent_insert }}` 슬롯 사용형으로 정정. mysql 은 처음부터 `INSERT IGNORE` 하드코딩 (동일 패턴 유지) → 정정 시 같이 슬롯화. |
+| G2 | `regex_op` 가 `None` 일 때의 fallback 정책이 §2.4 에 "silent-skip 되거나 LIKE fallback (어댑터가 명시)" 로 양가 표현 — 실 적용 정책 불일치 | v005 (regex check) 룰이 hsqldb 에서 어떻게 처리되는지 어댑터 코드 검사로만 확인 가능 | v0.5.1: §2.4 를 "어댑터는 명시적으로 둘 중 하나를 declare 해야 한다" 로 강제, `Dialect.regex_fallback: Literal["skip", "like"]` 필드 추가 검토 |
+| G3 | MySQL 5.x ↔ 8.0.29+ 간 `CREATE INDEX IF NOT EXISTS` 지원 차이 — 본 계약은 idempotency 를 가정하지만 어댑터에 버전 범위 명시 필드 없음 | mysql 어댑터가 inline 주석으로 운회 (templates/mysql/indexes.sql.j2) — 정식 슬롯 부재 | v0.5.1+: `Dialect.engine_version_notes: Optional[str]` 도입 검토. 단, v2 계약 안정성 우선 — 현재는 인라인 주석으로 충분. |
+
+### 10.2 본 contract 자체에는 변경 없음
+
+§2~§8 모든 슬롯이 MySQL 등록에서 정확히 사용됐고 추가 슬롯 요청 없음. 위 G1~G3 은 **reference impl 의 슬롯 사용 누락** 또는 **policy 표현 모호** 이슈로, 계약 시그니처가 아닌 **운영 정책** 수준. v2 계약은 그대로 유지하고 H2.x 패치로 정리.
+
+### 10.3 다음 단계 (v0.5 H3)
+
+본 contract 는 H2 으로 안정화. H3 부터는 service-contract.md (lane = jakarta/javax 추가) 와 ui-contract.md (UIOverlayAdapter Protocol 분리) 에 집중.

@@ -60,7 +60,11 @@ def _build_parser() -> argparse.ArgumentParser:
         "--lane",
         choices=("nexacro", "vanilla", "jakarta", "javax"),
         default="nexacro",
-        help="Stage 3 lane (default: nexacro).",
+        help=(
+            "Stage 3 lane (default: nexacro). Middle-layer display labels: "
+            "nexacro=jakarta-for-nexacro (MyBatis + jakarta, NexacroN-compatible), "
+            "vanilla, jakarta, javax."
+        ),
     )
     p.add_argument(
         "--ui",

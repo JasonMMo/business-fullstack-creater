@@ -178,6 +178,7 @@ def _run_stage3(args, stage_paths, report):
         "--out", str(mybatis_out),
         "--lane", args.lane,
         "--package", args.package,
+        "--project-root-pkg", args.target_pkg_prefix,
     ]
     # E4: pass --seed-dir only when Stage 2 actually emitted seed files
     if seed_dir.exists() and any(seed_dir.iterdir()):

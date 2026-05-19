@@ -13,7 +13,7 @@ class ScaffoldArgs:
     wiki_mode: Optional[str]            # "preset" | "wiki"
     preset: Optional[str]
     wiki_path: Optional[pathlib.Path]
-    lane: str                            # "nexacro" | "vanilla"
+    lane: str                            # "nexacro" | "vanilla" | "jakarta" | "javax"
     default_pattern: str                 # "D2" | "F1" | "C1"
     package: str
     out_dir: pathlib.Path

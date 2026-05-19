@@ -12,7 +12,7 @@
 |:-:|:-:|:-:|:-:|:-:|
 | Back-end DB | [backend-contract.md](./backend-contract.md) | Stage 2 (`rdb-ddl`) | postgres, hsqldb, mysql | `Dialect` dataclass + 5 .j2 templates |
 | Middle service | [service-contract.md](./service-contract.md) | Stage 3 (`rdb-mybatis`) | nexacro, vanilla, jakarta, javax | `lane` 식별자 + 3 변형 templates |
-| Front-end UI | [ui-contract.md](./ui-contract.md) | Stage 4 (`rdb-nexacro`) + Stage 5 overlay | nexacro (D2/F1/C1) | pattern + UIOverlayAdapter |
+| Front-end UI | [ui-contract.md](./ui-contract.md) | Stage 4 (`rdb-nexacro`) + Stage 5 overlay | nexacro (D2/F1/C1), react (H4 fetch skeleton) | pattern + UIOverlayAdapter registry |
 
 ---
 
@@ -41,7 +41,7 @@
 | **H1** | 3 contract 문서 + 본 README | ✅ 2026-05-19 |
 | **H2** | MySQL 어댑터 (backend contract 실증) | ✅ 2026-05-19 |
 | **H3** | jakarta/javax lane + suffix 일반화 (service contract v2) | ✅ 2026-05-19 |
-| **H4** | `--ui` flag + Stage 5 overlay 분할 + react 스켈레톤 (ui contract v2) | 대기 |
+| **H4** | `--ui` flag + Stage 5 overlay 레지스트리 분할 + react 스켈레톤 (ui contract v2) | ✅ 2026-05-19 |
 
 각 phase 는 v0.2~v0.4 와 동일하게 **Milestone Gate 5축 자체 리뷰** 통과 조건. 게이트 문서: `docs/superpowers/specs/2026-05-19-v0.5-phase-h<N>-mh<N>-gate.md`
 

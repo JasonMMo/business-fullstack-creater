@@ -1,8 +1,8 @@
 # UI Adapter Contract (v0.5)
 
-**Status:** v0.5 H1 (Contract Foundation) — 2026-05-19
+**Status:** v0.5 H4 (overlay registry + react skeleton) — 2026-05-19
 **Scope:** Front-end UI 어댑터 (Stage 4 = `andrej-karpathy-rdb-nexacro` + Stage 5 overlay)
-**Reference impls:** `nexacro` (D2 / F1 / C1 pattern), `nexacro-starter-overlay` (Stage 5)
+**Reference impls:** `nexacro` (D2 / F1 / C1 pattern + Stage 5 starter overlay), `react` (v0.5 H4 skeleton — endpoints fetch hooks)
 
 > "front-end UI: Stage 4(nexacro) + Stage 4'(외부 starter) 외에 React/Vue 어댑터 슬롯 정의." — USER-GUIDE §6.4 v0.5
 
@@ -21,14 +21,14 @@
 
 ## 2. 어댑터 슬롯 — UI 종류 식별자
 
-`--ui` CLI 플래그 (예정, v0.5 H4) 의 값:
+`--ui` CLI 플래그 (v0.5 H4 도입, `scaffold_cli.py:--ui`) 의 값:
 
 | ui | 도입 | 슬롯 |
 |:-:|:-:|:-:|
-| `nexacro` | v0.1 | 렌더 (.xfdl) + 오버레이 (Stage 5 nexacro-starter) |
-| `nexacro-only` *(예정)* | v0.5 H4 | 렌더만 (오버레이 SKIP) |
-| `react` *(예정)* | v0.5 H4 | 렌더 (.tsx) + 오버레이 (Vite/Next starter) |
-| `vue` *(예정)* | v0.5 H4 | 렌더 (.vue) + 오버레이 (Vite starter) |
+| `nexacro` | v0.1 / H4 default | 렌더 (.xfdl) + 오버레이 (Stage 5 nexacro-starter) |
+| `react` ✅ | v0.5 H4 | 오버레이 (frontend/src/api/`<entity>`.ts fetch 모듈) — 렌더(.tsx)는 v0.6+ |
+| `nexacro-only` *(예정)* | v0.6 | 렌더만 (오버레이 SKIP) — `--target-project` 생략으로 현재도 가능 |
+| `vue` *(예정)* | v0.6 | 렌더 (.vue) + 오버레이 (Vite starter) |
 
 ---
 
@@ -127,20 +127,21 @@ generated_files:                       # 출력 산출물 목록 (어댑터별 �
 2. `frameLogin.xfdl` 의 `dsSample` Dataset 에 메뉴 row 주입
 3. `typedefinition.xml` `<Services>` 에 entity 서비스 항목 머지
 
-### 5.2 v0.5 H4 어댑터화 후 분할
+### 5.2 v0.5 H4 어댑터화 후 분할 ✅
+
+H4 에서 dispatch 가 `if/elif` 가 아닌 **레지스트리** 로 일반화되었다:
 
 ```python
-def run_overlay(
-    out_dir, target_dir, ui: str, ...
-) -> OverlayResult:
-    if ui == "nexacro":
-        return _nexacro_overlay(...)      # 현재 로직
-    elif ui == "react":
-        return _react_overlay(...)        # 새 어댑터 (예: vite.config.ts route 등록)
-    elif ui == "vue":
-        return _vue_overlay(...)
-    ...
+# scripts/stage5_overlay.py
+def run_overlay(*, ui: str = "nexacro", **kwargs) -> dict:
+    return ui_overlay_registry.dispatch(ui, **kwargs)
+
+ui_overlay_registry.register("nexacro", _nexacro_overlay_run)
+# scripts/react_overlay.py:
+ui_overlay_registry.register("react", run)
 ```
+
+→ 새 UI 추가 = 모듈 1개 + `register()` 1줄. `stage5_overlay.py` 본체는 무수정.
 
 각 어댑터의 책임은 §5.1 처럼 명시. 모든 어댑터 공통:
 
@@ -148,16 +149,24 @@ def run_overlay(
 - conflict-scan-first (변경 전 모든 충돌 검출, 부분쓰기 금지)
 - `OverlayResult` 구조 (`java_copied`, `xml_modified`, `conflicts`, …)
 
-### 5.3 오버레이 어댑터 슬롯 (등록 인터페이스, v0.5 H4 도입 예정)
+### 5.3 오버레이 어댑터 슬롯 (등록 인터페이스, v0.5 H4 도입 ✅)
+
+H4 가 채택한 실제 시그니처 — Protocol 보다 가벼운 callable 규약:
 
 ```python
-class UIOverlayAdapter(Protocol):
-    name: str                      # "nexacro" | "react" | "vue"
-    def scan_conflicts(self, out_dir, target_dir) -> list[Conflict]: ...
-    def apply(self, out_dir, target_dir, *, force: bool) -> OverlayResult: ...
+def adapter_run(
+    *, out_dir, target_dir, domain_slug, domain_label, service_pascal,
+    blueprint_entities, overlay_force=False,
+    source_pkg_prefix="com.example", target_pkg_prefix="com.nexacro.uiadapter",
+) -> dict: ...
+
+ui_overlay_registry.register("<ui-name>", adapter_run)
 ```
 
-`scripts/stage5_overlay.py` 가 어댑터 레지스트리 가지고 dispatch.
+반환 dict 의 공통 키 (모든 어댑터):
+`java_copied`, `resources_copied`, `xfdl_copied`, `backed_up`,
+`renamed_imports`, `menu_warning`, `typedef_added`, `conflicts`.
+어댑터별 추가 키는 자유 (`react_api_written` 등).
 
 ---
 
@@ -169,7 +178,7 @@ class UIOverlayAdapter(Protocol):
 | **1.1** | v0.3.0 Phase C | D2/F1/C1 pattern 시스템, manifest.yaml |
 | **1.2** | v0.4.1 (Phase F) | Stage 5 overlay (nexacro 전용) |
 | **1.3** | v0.4.2 | overlay package prefix 외부화 |
-| **2** *(예정)* | v0.5.0 H4 | `--ui` 플래그, overlay 어댑터 분할, react/vue 슬롯 |
+| **2** ✅ | v0.5.0 H4 | `--ui` 플래그, overlay 레지스트리 분할 (`ui_overlay_registry`), react 어댑터 스켈레톤 (fetch hooks) |
 
 ---
 
@@ -202,11 +211,40 @@ class UIOverlayAdapter(Protocol):
 
 ---
 
-## 10. 다음 단계 (v0.5 H4)
+## 10. H4 환류 — Reference Implementation 결과
 
-1. `--ui` CLI 플래그 도입 (default `nexacro`)
-2. Stage 5 overlay 분할 → `UIOverlayAdapter` 레지스트리
-3. **react 어댑터 스켈레톤** — D2 pattern 한 개 + endpoints fetch hook 만 — 계약 일반화 능력 실증
-4. (선택) vue 어댑터 동일 절차
+H4 에서 `react` 어댑터 스켈레톤이 reference impl 으로 등록되며 다음이 드러나 v2 계약에 반영:
 
-H4 완료 시 UI 어댑터 슬롯 운영 안정. 풀 React/Vue 패턴 catalog 는 v0.6+ 누적.
+| 항목 | 변경 | 영향 |
+|:-:|:-|:-|
+| dispatch 방식 | `if/elif ui == ...` (계획) → `ui_overlay_registry.register()` + `dispatch()` | 새 UI 추가 시 `stage5_overlay.py` 무수정 (모듈 1개 + register 1줄) |
+| 어댑터 시그니처 | `Protocol` (계획) → 평이한 keyword-only callable | typing 의존 없음, 테스트 시 monkeypatch 용이 |
+| 반환 dict | nexacro 만 정의 → **공통 키 8개 + 어댑터별 키 자유** | 호출부가 `report.get("react_api_written", [])` 등으로 안전하게 분기 |
+| 충돌 정책 | nexacro 만 명시 → 모든 어댑터 conflict-scan + 1-shot `.bak` 강제 | react 테스트가 idempotent 백업 동작 검증 |
+| react 산출물 범위 | "D2 pattern + fetch hook" (계획) → **fetch hook 만** (skeleton) | 풀 .tsx pattern 은 v0.6 — endpoints 계약 일반화 능력은 이미 실증 |
+
+### 10.1 회귀 테스트 추가 (`tests/`)
+
+- `test_ui_overlay_registry.py` — register/dispatch, 미등록 ui KeyError, 3rd-party 등록, run_overlay default 디스패치
+- `test_react_overlay.py` — 엔티티당 1 모듈 emit, endpoint path 포함, conflict-scan abort, `overlay_force` 1-shot .bak, report shape, 레지스트리 경유 dispatch
+
+`pytest` (creater 8 파일): 48 passed (기존 38 + H4 신규 10). 회귀 0.
+
+### 10.2 CLI 진입점
+
+| 위치 | 변경 |
+|:-|:-|
+| `business-fullstack-creater/scripts/scaffold_cli.py` | `--ui` choices=("nexacro","react"), default "nexacro" |
+| `business-fullstack-creater/scripts/scaffold_orchestrator.py` | `ScaffoldArgs.ui` 필드 + `run_overlay(ui=args.ui, ...)` pass-through + scaffold-report.md 에 `ui` 행 |
+| `business-fullstack-creater/scripts/stage5_overlay.py` | `run_overlay(*, ui="nexacro", **kwargs)` 디스패처. `_nexacro_overlay_run` 으로 내부 로직 분리. `import react_overlay` 시도 (옵션) |
+| `business-fullstack-creater/scripts/ui_overlay_registry.py` *(신규)* | `REGISTRY` dict + `register()` / `dispatch()` / `registered()` |
+| `business-fullstack-creater/scripts/react_overlay.py` *(신규)* | endpoints.json 읽어 `frontend/src/api/<entity>.ts` 생성 |
+
+### 10.3 잔여 갭
+
+| Gap | 후속 milestone |
+|:-:|:-|
+| react 본격 pattern 시스템 (D2/F1/C1 .tsx.j2 + manifest.yaml) | v0.6 — Stage 4 reuse 가능성 검토 |
+| vue / svelte 어댑터 | v0.6 — H4 의 register() 한 줄 패턴 그대로 |
+| react 어댑터의 SWR / React Query 등 fetch 백엔드 선택지 | v0.6 — manifest 로 외부화 |
+| Stage 4 와 Stage 5 react adapter 의 책임 분리 (현재는 Stage 5 가 fetch 전부 담당) | v0.6 |

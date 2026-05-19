@@ -605,6 +605,8 @@ v0.4 Phase F `--target-project` 사용 시 Stage 5 가 다음 정책으로 자�
 | `nxui/packageN/<slug>/<entity>.xfdl` | 신규 prefix dir 이므로 충돌 거의 없음. 존재 시 `.bak` (overlay-force 필요) |
 | `nxui/packageN/frame/frameLogin.xfdl` | 원본 `frameLogin.xfdl.bak` 1회 백업 후 in-place patch (`<Dataset id="dsSample">` 안의 `</Rows>` 직전에 도메인 row append). 동일 `menuId` 존재 시 skip (idempotent). **컬럼 schema mismatch 시** patch 하지 않고 실 ColumnInfo + 필요 컬럼 (`level/groupId/menuId/menuNm/menuUrl/sortNo/upMenuId/useYn/auth`) + missing 목록을 `scaffold-report.md` 에 사용자 메시지로 출력 후 menu 단계만 skip. Java/xfdl/typedef 단계는 계속 |
 | `nxui/packageN/typedefinition.xml` | 원본 `typedefinition.xml.bak` 1회 백업 후 `<Services>` 닫기 직전에 `<Service prefixid="<slug>" .../>` 한 줄 삽입. 동일 `prefixid` 존재 시 skip (idempotent) |
+| `nxui/packageN/<slug>/Export.xjs` | **Growth-8 (RO 패턴 한정).** blueprint 에 하나라도 `pattern: RO` 엔티티가 있으면 `fn_export_dataset(ds, name)` 헬퍼 (`Dataset.saveCSV` 기반) 를 발행. RO `form.xfdl.j2` 가 `this.parent.fn_export_dataset(...)` 를 호출하므로 사용자는 발행된 `Export.xjs` 를 typedefinition `<Scripts>` 에 등록하고 parent frame 에서 include 하면 끝 (one-time). `report["nexacro_export_emitted"]` 가 발행 경로를 노출 |
+| `frontend/src/api/<entity>.ts` (lane=react) | **Growth-8.** 각 entity 모듈에 `exportToCsv(params?, filename?)` 도 함께 emit (RO 패턴 외 entity 에서도 호출 가능). `selectDataListMap()` 결과를 Blob+`a.download` 로 즉시 다운로드. `report["react_export_csv_added"]` 가 emit 된 entity 목록을 노출 |
 
 (`--target-project` 미지정 시 Stage 5 skip → 위 정책 적용 안 됨. 수동 overlay 절차는 §2.6 (B) 참조.)
 
@@ -849,4 +851,4 @@ python scripts/scaffold_cli.py --domain "주문관리" --wiki-mode preset --pres
 
 ---
 
-*Last updated: 2026-05-19 — v0.5 Phase H1 (어댑터 contract foundation) 완료: `adapters/backend-contract.md` + `service-contract.md` + `ui-contract.md` + `README.md` 인덱스. v0.4.2 (`--target-package-prefix`), Phase F (Stage 5 자동 overlay), Phase E (HSQLDB / data.sql / 단일 Service / `--service-name`) 포함 — M-E 4.8/5, M-F 4.6/5, M-G v0.4.2 4.6/5 PASS, M-H1 v0.5 진행 중.*
+*Last updated: 2026-05-19 — Growth-8: `fn_export_dataset` 어댑터 완료. Stage 5 가 RO 엔티티 감지 시 `nxui/packageN/<slug>/Export.xjs` 발행 (`Dataset.saveCSV` 헬퍼), react overlay 는 모든 entity 모듈에 `exportToCsv()` 발행. report 에 `nexacro_export_emitted` / `react_export_csv_added` 추가. 이전: v0.5 Phase H1 어댑터 contract foundation, v0.4.2 (`--target-package-prefix`), Phase F (Stage 5 자동 overlay), Phase E (HSQLDB / data.sql / 단일 Service).*

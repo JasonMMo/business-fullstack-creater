@@ -116,9 +116,9 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--dialect",
-        choices=("postgres", "hsqldb"),
+        choices=("postgres", "hsqldb", "mysql"),
         default="postgres",
-        help="Stage 2 SQL dialect (default: postgres). Use 'hsqldb' for in-DB test.",
+        help="Stage 2 SQL dialect (default: postgres). Use 'hsqldb' for in-DB test, 'mysql' for MySQL targets.",
     )
     p.add_argument(
         "--service-name",

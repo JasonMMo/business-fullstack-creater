@@ -58,7 +58,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument(
         "--lane",
-        choices=("nexacro", "vanilla"),
+        choices=("nexacro", "vanilla", "jakarta", "javax"),
         default="nexacro",
         help="Stage 3 lane (default: nexacro).",
     )

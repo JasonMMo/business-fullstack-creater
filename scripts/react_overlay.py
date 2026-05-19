@@ -72,6 +72,29 @@ def _fetch_module(entity_name: str, endpoints: dict) -> str:
         f"  }});\n"
         f"  if (!res.ok) throw new Error(`save_datalist_map failed: ${{res.status}}`);\n"
         f"  return res.json();\n"
+        f"}}\n\n"
+        f"// Growth-8: lane=react CSV exporter for RO/audit screens\n"
+        f"function _csvEscape(v: unknown): string {{\n"
+        f"  if (v == null) return '';\n"
+        f"  const s = String(v);\n"
+        f"  return /[\",\\n]/.test(s) ? '\"' + s.replace(/\"/g, '\"\"') + '\"' : s;\n"
+        f"}}\n\n"
+        f"export async function exportToCsv"
+        f"(params: Record<string, unknown> = {{}}, filename: string = '{entity_name}.csv'): Promise<void> {{\n"
+        f"  const rows = await selectDataListMap(params);\n"
+        f"  if (!rows.length) return;\n"
+        f"  const cols = Object.keys(rows[0] as Record<string, unknown>);\n"
+        f"  const header = cols.join(',');\n"
+        f"  const body = rows\n"
+        f"    .map((r) => cols.map((c) => _csvEscape((r as Record<string, unknown>)[c])).join(','))\n"
+        f"    .join('\\n');\n"
+        f"  const blob = new Blob([header + '\\n' + body], {{ type: 'text/csv;charset=utf-8;' }});\n"
+        f"  const url = URL.createObjectURL(blob);\n"
+        f"  const a = document.createElement('a');\n"
+        f"  a.href = url;\n"
+        f"  a.download = filename;\n"
+        f"  a.click();\n"
+        f"  URL.revokeObjectURL(url);\n"
         f"}}\n"
     )
 
@@ -88,6 +111,8 @@ def _empty_report() -> dict:
         "conflicts": [],
         # H4: react-specific surface
         "react_api_written": [],
+        # Growth-8: list of entity names whose module includes exportToCsv
+        "react_export_csv_added": [],
     }
 
 
@@ -153,6 +178,8 @@ def run(
         report["react_api_written"].append(
             str(dest.relative_to(target_dir))
         )
+        if "export async function exportToCsv" in body:
+            report["react_export_csv_added"].append(dest.stem)
 
     return report
 

@@ -13,6 +13,7 @@ from typing import Optional
 # Local imports (scripts/ must be on sys.path)
 import menu_injector
 import typedef_merger
+import ui_overlay_registry
 
 
 # ---------------------------------------------------------------------------
@@ -127,10 +128,10 @@ def _collect_xfdl_targets(
 
 
 # ---------------------------------------------------------------------------
-# Public API
+# Nexacro overlay adapter (Stage 5 reference impl)
 # ---------------------------------------------------------------------------
 
-def run_overlay(
+def _nexacro_overlay_run(
     *,
     out_dir: pathlib.Path,
     target_dir: pathlib.Path,
@@ -142,7 +143,7 @@ def run_overlay(
     source_pkg_prefix: str = "com.example",
     target_pkg_prefix: str = "com.nexacro.uiadapter",
 ) -> dict:
-    """Overlay scaffold output onto target_dir.
+    """Nexacro UIAdapter overlay (xfdl + menu + typedef + Java package rename).
 
     Returns a report dict with these keys:
         java_copied: list[str]    relative paths under target src/main/java/
@@ -359,3 +360,25 @@ def run_overlay(
     # Step 6: Return report
     # -----------------------------------------------------------------------
     return report
+
+
+# ---------------------------------------------------------------------------
+# Public API — UI overlay dispatcher (v0.5 H4)
+# ---------------------------------------------------------------------------
+
+def run_overlay(*, ui: str = "nexacro", **kwargs) -> dict:
+    """Dispatch to the UI overlay adapter registered for `ui`.
+
+    Default `ui="nexacro"` preserves v0.4 callers that pass no `ui` argument.
+    Adapters register themselves via ``ui_overlay_registry.register``.
+    """
+    return ui_overlay_registry.dispatch(ui, **kwargs)
+
+
+# Register the nexacro adapter (and any others imported below) at import time.
+ui_overlay_registry.register("nexacro", _nexacro_overlay_run)
+
+try:  # react adapter is optional — registers itself on import
+    import react_overlay as _react_overlay  # noqa: F401
+except ImportError:
+    pass

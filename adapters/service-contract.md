@@ -1,8 +1,8 @@
 # Service Adapter Contract (v0.5)
 
-**Status:** v0.5 H1 (Contract Foundation) — 2026-05-19
+**Status:** v0.5 H3 (lane suffix v2 + jakarta/javax) — 2026-05-19
 **Scope:** Middle-tier lane 어댑터 (Stage 3 = `andrej-karpathy-rdb-mybatis`)
-**Reference impls:** `nexacro` (default), `vanilla` (v0.3 Phase B 도입)
+**Reference impls:** `nexacro` (default), `vanilla` (v0.3 Phase B), `jakarta` (v0.5 H3), `javax` (v0.5 H3)
 
 > "middle service: Stage 3 `--lane jakarta|javax|vanilla` 정식화 (v0.3의 vanilla lane을 contract 기반으로 정리)." — USER-GUIDE §6.4 v0.5
 
@@ -28,8 +28,8 @@ def render_entity_files(out_root, entity, base_package, lane: str = "nexacro") -
 |:-:|:-:|:-|
 | `nexacro` | v0.1 | Nexacro UI 어댑터와 짝지어진 controller (uiadapter 응답 포맷) |
 | `vanilla` | v0.3 Phase B | 표준 Spring `@RestController` + `ResponseEntity<List<T>>` (UI 어댑터 의존성 없음) |
-| `jakarta` | v0.5 H3 *(예정)* | `javax.*` → `jakarta.*` 마이그레이션 (Spring Boot 3+) |
-| `javax`   | v0.5 H3 *(예정)* | 명시적 legacy lane (Spring Boot 2.x) |
+| `jakarta` | v0.5 H3 ✅ | JPA `@Entity` + `jakarta.persistence.*` (Spring Boot 3+/JDK17+) |
+| `javax`   | v0.5 H3 ✅ | JPA `@Entity` + `javax.persistence.*` (Spring Boot 2.x/JDK8·11) |
 
 ---
 
@@ -37,10 +37,11 @@ def render_entity_files(out_root, entity, base_package, lane: str = "nexacro") -
 
 위치: `andrej-karpathy-rdb-mybatis/.claude/skills/karpathy-rdb-mybatis/templates/`
 
-현재 lane 분기는 **파일 suffix 컨벤션** 으로 표현:
+lane 분기는 **파일 suffix 컨벤션** (v2, H3 일반화):
 
 ```python
-suffix = ".vanilla" if lane == "vanilla" else ""
+# codegen.py:32 — lane suffix v2
+suffix = "" if lane == "nexacro" else f".{lane}"
 env.get_template(f"domain/entity{suffix}.java.j2")
 env.get_template(f"service/service-impl{suffix}.java.j2")
 env.get_template(f"controller/controller{suffix}.java.j2")
@@ -48,11 +49,11 @@ env.get_template(f"controller/controller{suffix}.java.j2")
 
 ### 3.1 **변형되는 파일** (lane 별로 다른 .j2 필요)
 
-| 슬롯 | 기본 (nexacro) | vanilla | jakarta *(예정)* |
-|:-:|:-:|:-:|:-:|
-| domain | `entity.java.j2` | `entity.vanilla.java.j2` | `entity.jakarta.java.j2` |
-| service impl | `service-impl.java.j2` | `service-impl.vanilla.java.j2` | `service-impl.jakarta.java.j2` |
-| controller | `controller.java.j2` | `controller.vanilla.java.j2` | `controller.jakarta.java.j2` |
+| 슬롯 | 기본 (nexacro) | vanilla | jakarta | javax |
+|:-:|:-:|:-:|:-:|:-:|
+| domain | `entity.java.j2` | `entity.vanilla.java.j2` | `entity.jakarta.java.j2` | `entity.javax.java.j2` |
+| service impl | `service-impl.java.j2` | `service-impl.vanilla.java.j2` | `service-impl.jakarta.java.j2` | `service-impl.javax.java.j2` |
+| controller | `controller.java.j2` | `controller.vanilla.java.j2` | `controller.jakarta.java.j2` | `controller.javax.java.j2` |
 
 ### 3.2 **공유되는 파일** (lane 무관, 1개 .j2 재사용)
 
@@ -112,7 +113,7 @@ lane 어댑터가 새 키 요구 시 `build_entity_context` 에 추가 — 다�
 | **1** | v0.1.0 | `nexacro` lane 만 존재, suffix 무 |
 | **1.1** | v0.3.0 Phase B | `vanilla` lane 추가, suffix 컨벤션 도입 |
 | **1.2** | v0.4.x | `--lane` CLI flag + orchestrator pass-through |
-| **2** *(예정)* | v0.5.0 H3 | suffix 일반화 (모든 비-default lane 자동 처리), `jakarta`/`javax` 추가 |
+| **2** ✅ | v0.5.0 H3 | suffix 일반화 (`"" if lane=="nexacro" else f".{lane}"`), `jakarta`/`javax` 추가, `build_domain_fields` 에 `column`/`is_pk`/`is_search` 키 추가(JPA 매핑용) |
 
 ### 6.1 H3 의 v2 변경 사항 (계획)
 
@@ -159,11 +160,38 @@ suffix = "" if lane == "nexacro" else f".{lane}"
 
 ---
 
-## 10. 다음 단계 (v0.5 H3)
+## 10. H3 환류 — Reference Implementation 결과
 
-1. `codegen.py:32` suffix 분기 일반화 → 계약 v2
-2. `entity.jakarta.java.j2` + `service-impl.jakarta.java.j2` + `controller.jakarta.java.j2` 추가
-3. `entity.javax.java.j2` 등 명시적 legacy lane 추가 (현재 `nexacro` default 가 사실상 javax 라서 명시화 필요)
-4. orchestrator `--lane jakarta|javax|vanilla|nexacro` 전 lane 전달 검증
+H3 에서 `jakarta`/`javax` 4 lane 모두 reference impl 으로 등록되며 다음 사항이 드러나 v2 계약에 반영:
 
-H3 완료 시 v0.5 lane 어댑터 슬롯이 운영 안정.
+| 항목 | 변경 | 영향 |
+|:-:|:-|:-|
+| `suffix` 규칙 | `".vanilla" if lane=="vanilla" else ""` → `"" if lane=="nexacro" else f".{lane}"` | lane 추가 시 `codegen.py` 무수정 (templates 만 추가) |
+| `build_domain_fields` | `field`/`java_type`/`getter`/`setter` → +`column`/`is_pk`/`is_search` | JPA `@Id`/`@Column`/`@Transient` 매핑 가능. 기존 nexacro/vanilla 템플릿은 새 키 무시(하위호환) |
+| `build_save_branches(lane=)` | `vanilla` 만 I/U/D 문자열 → `vanilla`/`jakarta`/`javax` 모두 I/U/D 문자열 | nexacro 만 `DataSet.ROW_TYPE_*` 상수 유지 |
+| `endpoint_base` | `vanilla=/api/{name}`, 그 외 `/ {name}` → `nexacro=/{name}`, 그 외 `/api/{name}` | jakarta/javax controller 도 `@RequestMapping("/api/{name}")` 표준 사용 |
+| search field 표현 | (없음) → `@Transient` (JPA lanes 한정) | `searchCondition`/`searchKeyword`/`searchUseYn` 가 DB 컬럼이 아닌 검색 파라미터 |
+
+### 10.1 회귀 테스트 추가 (`tests/`)
+
+- `test_codegen_lane_suffix.py` — 4 lane 모두 6 파일 렌더
+- `test_codegen_lane_jakarta.py` — `jakarta.persistence.*` import, `@Entity`/`@Table`/`@Id`/`@Transient`, REST controller, I/U/D 분기
+- `test_codegen_lane_javax.py` — 동일하지만 `javax.persistence.*`
+
+`pytest`: 72 passed (기존 59 + 신규 13). 회귀 0.
+
+### 10.2 CLI 진입점
+
+| 위치 | 변경 |
+|:-|:-|
+| `andrej-karpathy-rdb-mybatis/scripts/compile.py:24` | `choices=["nexacro","vanilla","jakarta","javax"]` |
+| `business-fullstack-creater/scripts/scaffold_cli.py:61` | `choices=("nexacro","vanilla","jakarta","javax")` |
+| `business-fullstack-creater/scripts/scaffold_orchestrator.py:16` | 주석 lane Union 갱신 |
+
+### 10.3 잔여 갭
+
+| Gap | 후속 milestone |
+|:-:|:-|
+| jakarta/javax service-impl 에 `@Transactional` 미부착 | H4 (또는 v0.5.1) — 옵션 컨텍스트 키 |
+| JPA 사용 시 mapper XML 과의 역할 분담 (둘 다 emit 됨) | v0.6 — JPA lane 에서 mapper.xml 생략 옵션 |
+| controller 응답 envelope 표준화 (현재 `List<Map>` 로 통일) | v0.6 — `ResponseEntity<DTO>` 옵션 |

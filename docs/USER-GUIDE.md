@@ -747,7 +747,7 @@ v0.4 Phase F `--target-project` 사용 시 Stage 5 가 다음 정책으로 자�
 | 1 | **v0.3** | 단위 확장 (#3): M:N · vanilla lane · UI 패턴 catalog | 즉시 | 2주 | ✅ 완료 (2026-05-18, M-C 4.8/5) |
 | 2 | **v0.3.x** | C-2 유사 도메인 추천 | catalog 5+ 도메인 | 1주 | 대기 |
 | 3 | **v0.4** | CLI scaffold (#1 핵심가치 80%) | v0.3 완료 | 2주 | ✅ 완료 (2026-05-18, M-D 4.4/5) |
-| 4 | **v0.5** | 어댑터화 (#2): contract + MySQL + lane 정식화 | v0.4 + 실사용 1회 | 3-4주 | 대기 |
+| 4 | **v0.5** | 어댑터화 (#2): contract + MySQL + lane 정식화 | v0.4 + 실사용 1회 | 3-4주 | 🔄 진행 중 (H1 완료 2026-05-19, H2-H4 대기) |
 | 5 | **v0.6** | C-1 메타 추출 | 실 프로젝트 3+ | 1-2주 | 대기 |
 | 6 | **v0.7** | C-3 마켓플레이스 + Web UI 풀버전 | catalog format 안정 + 비개발자 수요 | 4주+ | 대기 |
 
@@ -813,10 +813,10 @@ python scripts/scaffold_cli.py --domain "주문관리" --wiki-mode preset --pres
 게이트 문서: [Phase D](./superpowers/specs/2026-05-18-v0.4-md-gate.md)
 
 #### v0.5 — 교체 가능 아키텍처 (Phase B · 단기 #2)
-- **어댑터 계약 먼저, 어댑터 두 번째.** tier마다 contract 문서 (`adapters/backend-contract.md`, `service-contract.md`, `ui-contract.md`) 선행. 입력·출력·파일 위치·호환 버전 명시.
-- **back-end DB**: PostgreSQL + HSQLDB 두 어댑터를 contract로 추상화 → MySQL 추가로 일반화 검증.
-- **middle service**: Stage 3 `--lane jakarta|javax|vanilla` 정식화 (v0.3의 vanilla lane을 contract 기반으로 정리).
-- **front-end UI**: Stage 4(nexacro) + Stage 4'(외부 starter) 외에 React/Vue 어댑터 슬롯 정의.
+- **어댑터 계약 먼저, 어댑터 두 번째.** tier마다 contract 문서 (`adapters/backend-contract.md`, `service-contract.md`, `ui-contract.md`) 선행. 입력·출력·파일 위치·호환 버전 명시. → **✅ H1 완료 (2026-05-19)**: [adapters/](../adapters/README.md) 3 contract + 인덱스.
+- **back-end DB**: PostgreSQL + HSQLDB 두 어댑터를 contract로 추상화 → MySQL 추가로 일반화 검증. → **H2 대기**
+- **middle service**: Stage 3 `--lane jakarta|javax|vanilla` 정식화 (v0.3의 vanilla lane을 contract 기반으로 정리). → **H3 대기**
+- **front-end UI**: Stage 4(nexacro) + Stage 4'(외부 starter) 외에 React/Vue 어댑터 슬롯 정의. → **H4 대기**
 
 #### v0.6 — C-1 메타 추출 (장기 C-1)
 - `scripts/meta_extract.py`: 복수 프로젝트 `learn-log.md` 횡단 → `~/.karpathy-rdb/catalog/meta/<도메인>_meta.md` 생성 (공통 패턴, 반복 등장 entity, false-belief 경향).
@@ -849,4 +849,4 @@ python scripts/scaffold_cli.py --domain "주문관리" --wiki-mode preset --pres
 
 ---
 
-*Last updated: 2026-05-18 — v0.4.2 보완 (`--target-package-prefix` / source prefix 자동 도출 / Korean domain slug 안전망), v0.4 Phase F 완료 (Stage 5 자동 overlay: `--target-project` / Java package rename / frameLogin dsSample 메뉴 주입 / typedefinition Service merge / `.bak` 멱등 백업), Phase E (HSQLDB dialect / 자동 data.sql wiring / 단일 Service / `--service-name`)도 포함 — M-E 4.8/5, M-F 4.6/5 PASS, M-G v0.4.2 진행 중*
+*Last updated: 2026-05-19 — v0.5 Phase H1 (어댑터 contract foundation) 완료: `adapters/backend-contract.md` + `service-contract.md` + `ui-contract.md` + `README.md` 인덱스. v0.4.2 (`--target-package-prefix`), Phase F (Stage 5 자동 overlay), Phase E (HSQLDB / data.sql / 단일 Service / `--service-name`) 포함 — M-E 4.8/5, M-F 4.6/5, M-G v0.4.2 4.6/5 PASS, M-H1 v0.5 진행 중.*

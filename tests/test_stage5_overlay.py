@@ -409,3 +409,51 @@ def test_custom_prefixes_route_java_to_target_path(tmp_path):
 
     assert report["renamed_imports"] >= 1
     assert report["typedef_added"] is True
+
+
+# ---------------------------------------------------------------------------
+# Growth-8: fn_export_dataset adapter — Nexacro xjs helper for RO patterns
+# ---------------------------------------------------------------------------
+
+def test_ro_pattern_emits_export_xjs(tmp_path):
+    """When any entity has pattern: RO, an Export.xjs helper is emitted."""
+    out_dir = _make_out_dir(tmp_path)
+    target_dir = _make_target_dir(tmp_path)
+
+    report = run_overlay(
+        out_dir=out_dir,
+        target_dir=target_dir,
+        domain_slug="order",
+        domain_label="주문관리",
+        service_pascal="Order",
+        blueprint_entities=[
+            {"name": "order", "label_ko": "주문"},
+            {"name": "order_status_history", "label_ko": "주문상태이력", "pattern": "RO"},
+        ],
+    )
+
+    export_xjs = target_dir / "nxui" / "packageN" / "order" / "Export.xjs"
+    assert export_xjs.exists(), "Export.xjs should be emitted when an RO entity exists"
+    body = export_xjs.read_text(encoding="utf-8")
+    assert "fn_export_dataset" in body
+    assert "saveCSV" in body
+    assert report.get("nexacro_export_emitted") == "nxui/packageN/order/Export.xjs"
+
+
+def test_no_ro_pattern_skips_export_xjs(tmp_path):
+    """Without any RO entity, no Export.xjs is emitted."""
+    out_dir = _make_out_dir(tmp_path)
+    target_dir = _make_target_dir(tmp_path)
+
+    report = run_overlay(
+        out_dir=out_dir,
+        target_dir=target_dir,
+        domain_slug="order",
+        domain_label="주문관리",
+        service_pascal="Order",
+        blueprint_entities=[{"name": "order", "label_ko": "주문"}],
+    )
+
+    export_xjs = target_dir / "nxui" / "packageN" / "order" / "Export.xjs"
+    assert not export_xjs.exists(), "Export.xjs must not be emitted without RO entities"
+    assert report.get("nexacro_export_emitted") is None

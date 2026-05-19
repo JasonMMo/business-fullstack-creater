@@ -63,6 +63,12 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Stage 3 lane (default: nexacro).",
     )
     p.add_argument(
+        "--ui",
+        choices=("nexacro", "react"),
+        default="nexacro",
+        help="Stage 5 UI overlay adapter (default: nexacro). 'react' emits frontend/src/api/*.ts fetch modules.",
+    )
+    p.add_argument(
         "--default-pattern",
         metavar="<pattern>",
         default=None,
@@ -180,6 +186,7 @@ def main(argv=None):
         target_project=pathlib.Path(a.target_project).resolve() if a.target_project else None,
         overlay_force=a.overlay_force,
         target_pkg_prefix=a.target_pkg_prefix,
+        ui=a.ui,
     )
 
     try:

@@ -24,6 +24,7 @@ class ScaffoldArgs:
     target_project: Optional[pathlib.Path] = None   # F: Stage 5 target overlay root (None → skip)
     overlay_force: bool = False                     # F: allow .bak overwrite during overlay
     target_pkg_prefix: str = "com.nexacro.uiadapter"  # G(v0.4.2): Stage 5 Java/XML target package prefix
+    ui: str = "nexacro"                             # H4 (v0.5): Stage 5 UI overlay adapter ("nexacro" | "react")
 
 
 @dataclass
@@ -237,6 +238,7 @@ def _run_stage5(args, stage_paths, report):
     try:
         t0 = time.monotonic()
         overlay_result = stage5_overlay.run_overlay(
+            ui=args.ui,
             out_dir=args.out_dir,
             target_dir=target,
             domain_slug=overlay_slug,
@@ -271,6 +273,7 @@ def _write_report(args, report, failure=None):
         f"- out_dir: `{args.out_dir}`",
         f"- target_project: `{args.target_project or '(none)'}`",
         f"- overlay_force: `{args.overlay_force}`",
+        f"- ui: `{args.ui}`",
         "",
         "## Stages",
     ]

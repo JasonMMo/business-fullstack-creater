@@ -176,6 +176,42 @@ def test_report_shape_matches_overlay_contract(tmp_path):
         assert key in report, f"missing key: {key}"
 
 
+def test_module_includes_export_to_csv(tmp_path):
+    """Growth-8: each generated module exposes exportToCsv for RO/audit use."""
+    out = _make_out_dir(tmp_path)
+    target = tmp_path / "target"
+    react_overlay.run(
+        out_dir=out,
+        target_dir=target,
+        domain_slug="orders",
+        domain_label="주문",
+        service_pascal="Order",
+        blueprint_entities=_entities(),
+    )
+    body = (target / "frontend" / "src" / "api" / "customer.ts").read_text(
+        encoding="utf-8"
+    )
+    assert "export async function exportToCsv" in body
+    assert "Blob" in body
+    assert ".csv" in body
+
+
+def test_report_records_export_helpers(tmp_path):
+    """Growth-8: report exposes react_export_csv_added list."""
+    out = _make_out_dir(tmp_path)
+    target = tmp_path / "target"
+    report = react_overlay.run(
+        out_dir=out,
+        target_dir=target,
+        domain_slug="orders",
+        domain_label="주문",
+        service_pascal="Order",
+        blueprint_entities=_entities(),
+    )
+    assert "react_export_csv_added" in report
+    assert sorted(report["react_export_csv_added"]) == ["address", "customer"]
+
+
 def test_dispatch_via_registry(tmp_path):
     out = _make_out_dir(tmp_path)
     target = tmp_path / "target"

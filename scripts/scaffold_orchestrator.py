@@ -45,6 +45,21 @@ def _derive_service_pascal(domain_slug: str) -> str:
     return "".join(p[:1].upper() + p[1:] for p in parts) or "Default"
 
 
+# Middle-layer display labels. Internal lane codes stay as-is (templates,
+# package paths, CLI choices), but human-facing surfaces show the
+# clarified label — "nexacro" lane is MyBatis-driven + jakarta, *not* JPA.
+_LANE_DISPLAY = {
+    "nexacro": "jakarta-for-nexacro",
+    "vanilla": "vanilla",
+    "jakarta": "jakarta",
+    "javax":   "javax",
+}
+
+
+def display_lane(lane: str) -> str:
+    return _LANE_DISPLAY.get(lane, lane)
+
+
 def _run(cmd, cwd, label):
     t0 = time.monotonic()
     proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
@@ -266,7 +281,7 @@ def _write_report(args, report, failure=None):
         f"- wiki_mode: `{args.wiki_mode}` "
         + (f"(preset=`{args.preset}`)" if args.wiki_mode == "preset"
            else f"(wiki=`{args.wiki_path}`)"),
-        f"- lane: `{args.lane}`",
+        f"- lane: `{args.lane}` (middle: {display_lane(args.lane)})",
         f"- dialect: `{args.dialect}`",
         f"- default_pattern: `{args.default_pattern}`",
         f"- service_name: `{args.service_name or _derive_service_pascal(args.domain_slug)}`",
@@ -290,7 +305,7 @@ def _write_report(args, report, failure=None):
         lines += [
             "", "## 다음 단계",
             f"- DDL: `{args.out_dir / '2-ddl'}`",
-            f"- Spring (lane={args.lane}): `{args.out_dir / '3-mybatis'}`",
+            f"- Spring (middle={display_lane(args.lane)}): `{args.out_dir / '3-mybatis'}`",
             f"- Nexacro forms (default={args.default_pattern}): "
             f"`{args.out_dir / '4-nexacro'}`",
         ]

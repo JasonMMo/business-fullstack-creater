@@ -19,7 +19,7 @@ class ScaffoldArgs:
     out_dir: pathlib.Path
     creator_root: pathlib.Path
     stop_after_stage: int = 5            # for tests (default 5 to include stage5)
-    dialect: str = "postgres"            # E3: "postgres" | "hsqldb"
+    dialect: str = "postgres"            # E3: "postgres" | "hsqldb" | "mysql"
     service_name: Optional[str] = None   # E5: explicit PascalCase service name; auto-derived if None
     target_project: Optional[pathlib.Path] = None   # F: Stage 5 target overlay root (None → skip)
     overlay_force: bool = False                     # F: allow .bak overwrite during overlay

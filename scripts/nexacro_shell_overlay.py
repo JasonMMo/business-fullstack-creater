@@ -63,6 +63,28 @@ def _load_resolve_shell(nexacro_skill_root: pathlib.Path):
     return pl.resolve_shell, pl.ShellNotFoundError
 
 
+_FRAME_SUFFIX_CASING = {
+    "main": "Main",
+    "mdi": "MDI",
+    "sdi": "SDI",
+    "left": "Left",
+    "top": "Top",
+    "login": "Login",
+}
+
+
+def _frame_filename(template_key: str) -> str:
+    """Map a frame template key (e.g. ``frame_mdi``) to the runtime filename
+    stem (``frameMDI``). Variant acronyms are preserved verbatim so the
+    rendered filename matches the ``work_frame`` references inside
+    ``frameMain.xfdl`` — Linux WAR runtimes are case-sensitive and
+    ``frameMdi.xfdl`` does NOT satisfy a ``frameMDI`` lookup.
+    """
+    parts = template_key.split("_")[1:]  # drop the leading "frame"
+    pieces = [_FRAME_SUFFIX_CASING.get(p.lower(), p.capitalize()) for p in parts]
+    return "frame" + "".join(pieces)
+
+
 def _render(tpl_path: pathlib.Path, ctx: dict) -> str:
     env = jinja2.Environment(
         loader=jinja2.FileSystemLoader(str(tpl_path.parent)),
@@ -186,7 +208,7 @@ def _shell_overlay_run(
     targets: list[tuple[pathlib.Path, pathlib.Path]] = []
     for name, tpl in resolved.frames.items():
         # name → frame{Main|MDI|Left|Top|Login|SDI}.xfdl
-        out_name = "frame" + "".join(p.capitalize() for p in name.split("_")[1:])
+        out_name = _frame_filename(name)
         targets.append((tpl, frame_dir / f"{out_name}.xfdl"))
     targets.append((resolved.typedef_template, pkg_dir / "typedefinition.xml"))
     targets.append((resolved.xadl_template, pkg_dir / "packageN.xadl"))

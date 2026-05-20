@@ -137,6 +137,35 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="service_name",
         help="Explicit nexacro service name (e.g. 'Order'). Auto-derived from --domain when omitted.",
     )
+    # ---- Growth-16: standalone shell controls ---------------------------
+    p.add_argument(
+        "--shell-mode",
+        choices=("none", "MDI", "SDI"),
+        default="none",
+        dest="shell_mode",
+        help=(
+            "Standalone nexacro shell variant rendered into <target>/nxui/packageN/. "
+            "'none' (default) preserves existing overlay-only behavior. "
+            "'MDI' or 'SDI' renders frame_main/mdi|sdi/left/top/login + typedefinition.xml + packageN.xadl."
+        ),
+    )
+    p.add_argument(
+        "--nexacrolib-from",
+        metavar="<dir>",
+        default=None,
+        dest="nexacrolib_from",
+        help=(
+            "When set, copies the given nexacrolib tree into <target>/nxui/nexacrolib/. "
+            "Only honored together with --shell-mode."
+        ),
+    )
+    p.add_argument(
+        "--shell-app-id",
+        metavar="<name>",
+        default="packageN",
+        dest="shell_app_id",
+        help="branding.app_id passed to the shell adapter (default: packageN).",
+    )
     return p
 
 
@@ -191,6 +220,11 @@ def main(argv=None):
         overlay_force=a.overlay_force,
         target_pkg_prefix=a.target_pkg_prefix,
         ui=a.ui,
+        shell_mode=a.shell_mode,
+        nexacrolib_from=(
+            pathlib.Path(a.nexacrolib_from).resolve() if a.nexacrolib_from else None
+        ),
+        shell_app_id=a.shell_app_id,
     )
 
     try:

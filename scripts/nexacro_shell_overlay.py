@@ -229,7 +229,10 @@ def _shell_overlay_run(
     targets.append((resolved.typedef_template, pkg_dir / "typedefinition.xml", "typedef"))
     targets.append((resolved.xadl_template, pkg_dir / "packageN.xadl", "xadl"))
     for tpl, rel in resolved.build_files:
-        rel_resolved = rel.replace("{pkg_path}", pkg_path)
+        rel_resolved = (
+            rel.replace("{pkg_path}", pkg_path)
+               .replace("{domain_slug}", domain_slug)
+        )
         targets.append((tpl, target_dir / rel_resolved, "build"))
 
     if not overlay_force:

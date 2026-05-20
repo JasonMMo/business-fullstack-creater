@@ -73,6 +73,74 @@ _FRAME_SUFFIX_CASING = {
 }
 
 
+# Dialect → JDBC + Spring Boot datasource defaults.
+# Keep dev-friendly defaults that a Postgres/MySQL user can connect against
+# (localhost, conventional dev creds). HSQLDB stays in-memory for zero-setup
+# `mvn spring-boot:run`. init_mode controls spring.sql.init.mode:
+#   - "always": run schema.sql every boot (safe for in-memory HSQLDB)
+#   - "embedded": Spring's default — only runs on embedded DBs (safe for
+#     real Postgres/MySQL; user owns schema migration)
+_DIALECT_DATASOURCES = {
+    "hsqldb": {
+        "url_template": "jdbc:hsqldb:mem:{slug};sql.syntax_mys=true",
+        "driver_class_name": "org.hsqldb.jdbc.JDBCDriver",
+        "username": "sa",
+        "password": "",
+        "init_mode": "always",
+        "driver_groupId": "org.hsqldb",
+        "driver_artifactId": "hsqldb",
+        "driver_version_prop": "hsqldb.version",
+        "driver_version": "2.7.3",
+    },
+    "postgres": {
+        "url_template": "jdbc:postgresql://localhost:5432/{slug}",
+        "driver_class_name": "org.postgresql.Driver",
+        "username": "postgres",
+        "password": "postgres",
+        "init_mode": "embedded",
+        "driver_groupId": "org.postgresql",
+        "driver_artifactId": "postgresql",
+        "driver_version_prop": "postgresql.version",
+        "driver_version": "42.7.4",
+    },
+    "mysql": {
+        "url_template": (
+            "jdbc:mysql://localhost:3306/{slug}"
+            "?useUnicode=true&characterEncoding=utf8mb4&serverTimezone=UTC"
+        ),
+        "driver_class_name": "com.mysql.cj.jdbc.Driver",
+        "username": "root",
+        "password": "root",
+        "init_mode": "embedded",
+        "driver_groupId": "com.mysql",
+        "driver_artifactId": "mysql-connector-j",
+        "driver_version_prop": "mysql.connector.version",
+        "driver_version": "8.4.0",
+    },
+}
+
+
+def _resolve_datasource(dialect: str, domain_slug: str) -> dict:
+    """Compose a Spring Boot datasource block for the given dialect.
+
+    Unknown dialect → falls back to hsqldb (the historical default) so older
+    callers that don't yet pass `dialect=` get the legacy behavior.
+    """
+    cfg = _DIALECT_DATASOURCES.get(dialect, _DIALECT_DATASOURCES["hsqldb"])
+    return {
+        "dialect": dialect if dialect in _DIALECT_DATASOURCES else "hsqldb",
+        "url": cfg["url_template"].format(slug=domain_slug),
+        "driver_class_name": cfg["driver_class_name"],
+        "username": cfg["username"],
+        "password": cfg["password"],
+        "init_mode": cfg["init_mode"],
+        "driver_groupId": cfg["driver_groupId"],
+        "driver_artifactId": cfg["driver_artifactId"],
+        "driver_version_prop": cfg["driver_version_prop"],
+        "driver_version": cfg["driver_version"],
+    }
+
+
 def _frame_filename(template_key: str) -> str:
     """Map a frame template key (e.g. ``frame_mdi``) to the runtime filename
     stem (``frameMDI``). Variant acronyms are preserved verbatim so the
@@ -152,6 +220,8 @@ def _shell_overlay_run(
     maven_group_id: str = "com.example",
     maven_artifact_id: Optional[str] = None,
     maven_version: str = "0.1.0-SNAPSHOT",
+    # Growth-18: DB dialect threads through Stage 2 → shell pom.xml + application.yml
+    dialect: str = "hsqldb",
     **_unused,
 ) -> dict:
     if nexacro_skill_root is None:
@@ -204,6 +274,8 @@ def _shell_overlay_run(
         "maven_group_id": maven_group_id,
         "maven_artifact_id": artifact_id,
         "maven_version": maven_version,
+        "dialect": dialect,
+        "datasource": _resolve_datasource(dialect, domain_slug),
     }
 
     report: dict = {

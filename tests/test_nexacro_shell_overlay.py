@@ -136,6 +136,55 @@ def test_shell_overlay_sdi_frame_filename_is_case_exact(tmp_path):
     assert "frameSdi.xfdl" not in actual, "frame_sdi must render as frameSDI.xfdl"
 
 
+def test_shell_overlay_emits_buildable_maven_project(tmp_path):
+    """Growth-17b: the standalone shell must scaffold pom.xml,
+    Application.java, and application.yml so `mvn package` produces a
+    Spring Boot fat-jar that bundles the rendered nxui/packageN as a static
+    resource (BACKEND_URL → /uiadapter/, same-origin uiadapter REST).
+    """
+    kwargs = _common_kwargs(tmp_path)
+    kwargs["target_pkg_prefix"] = "com.acme.shipping"
+    kwargs["maven_group_id"] = "com.acme"
+    kwargs["maven_artifact_id"] = "shipping-shell"
+    kwargs["maven_version"] = "0.2.0-SNAPSHOT"
+    report = ui_overlay_registry.dispatch("nexacro-shell", **kwargs)
+
+    pom = tmp_path / "pom.xml"
+    app = tmp_path / "src" / "main" / "java" / "com" / "acme" / "shipping" / "Application.java"
+    yml = tmp_path / "src" / "main" / "resources" / "application.yml"
+    assert pom.exists(), "pom.xml missing"
+    assert app.exists(), f"Application.java missing at {app}"
+    assert yml.exists(), "application.yml missing"
+
+    pom_text = pom.read_text(encoding="utf-8")
+    assert "<groupId>com.acme</groupId>" in pom_text
+    assert "<artifactId>shipping-shell</artifactId>" in pom_text
+    assert "<version>0.2.0-SNAPSHOT</version>" in pom_text
+    assert "com.acme.shipping.Application" in pom_text  # mainClass
+    # Jinja must have escaped the Maven {{*}} delimiter and {{BACKEND_URL}}
+    assert "{{*}}" in pom_text
+    assert "{{BACKEND_URL}}" in pom_text
+    # nxui bundled as Boot static resource
+    assert "nxui/packageN" in pom_text
+    assert "static/packageN" in pom_text
+
+    app_text = app.read_text(encoding="utf-8")
+    assert "package com.acme.shipping;" in app_text
+    assert "@SpringBootApplication" in app_text
+    assert "@MapperScan(\"com.acme.shipping.shipping.mapper\")" in app_text
+
+    yml_text = yml.read_text(encoding="utf-8")
+    assert "context-path: /uiadapter" in yml_text
+    assert "type-aliases-package: com.acme.shipping.shipping.domain" in yml_text
+    assert "mapper-locations: classpath:mapper/**/*.xml" in yml_text
+
+    # Report keys
+    assert len(report["build_files_rendered"]) == 3
+    assert any(p.endswith("pom.xml") for p in report["build_files_rendered"])
+    assert any(p.endswith("Application.java") for p in report["build_files_rendered"])
+    assert any(p.endswith("application.yml") for p in report["build_files_rendered"])
+
+
 def test_shell_overlay_extra_services_appended(tmp_path):
     kwargs = _common_kwargs(tmp_path)
     kwargs["shell_extra_services"] = [

@@ -35,6 +35,10 @@ class ScaffoldArgs:
     #   "jwt"     → session + JwtTokenProvider; success handler emits Bearer
     #   "oauth2"  → jwt + OAuth2 starter (Growth-21a-3 fills in deps + login UI)
     auth_mode: str = "none"
+    # Growth-23: SHELL auth bundle servlet/Spring-Security flavor.
+    #   "jakarta" → Spring Security 6 + jakarta.servlet (default; matches Growth-21a)
+    #   "javax"   → Spring Security 5 + javax.servlet (no silent fallback)
+    auth_lane: str = "jakarta"
 
 
 @dataclass
@@ -305,6 +309,7 @@ def _run_stage5(args, stage_paths, report):
                 maven_version=getattr(args, "maven_version", None) or "0.1.0-SNAPSHOT",
                 dialect=args.dialect,
                 auth_mode=args.auth_mode,
+                auth_lane=args.auth_lane,
             )
             shell_dur = int((time.monotonic() - t0s) * 1000)
         except RuntimeError as exc:

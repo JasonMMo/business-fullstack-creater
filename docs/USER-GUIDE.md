@@ -777,6 +777,60 @@ schema.sql       →  DEFAULT TRUE / DEFAULT 'pending' / DEFAULT now() / DEFAULT
 
 ---
 
+### 3.9 Growth-19 — Stage 5 × shell 1-pass 통합 (Korean 메뉴 + 명시적 contract)
+
+`--shell-mode MDI|SDI` 와 per-domain overlay 가 한 번의 `scaffold_cli` 실행에서
+같은 target 디렉터리로 흘러들어가는 1-pass 통합이 v0.7.4 에서 다음 세 가지를
+보장한다.
+
+**1. seed `display` 가 frameLeft 메뉴 라벨까지 보존된다**
+
+Stage 1 blueprint 컴파일러(`rdb_index.py`)가 entity frontmatter 의 `display`
+필드를 `_blueprint.yaml` 의 `label_ko` 로 정규화한다. shell 어댑터의
+`_derive_menu_items` 가 `e.get("label_ko") or e["name"]` 을 읽기 때문에
+`frameLeft.xfdl` 의 `ds_menu` 행에는 한국어 라벨이 그대로 노출된다.
+
+```text
+배송관리.seed.md           → entity.display: 배송사
+_blueprint.yaml             → entity.label_ko: 배송사
+frameLeft.xfdl              → <Col id="label">배송사</Col>
+```
+
+선택 필드라 누락 시에는 종전대로 entity name 이 fallback 으로 사용된다
+(하위 호환). `version: 1` 유지.
+
+**2. menu 주입은 shell-mode 에서 명시적으로 skip 된다**
+
+`_nexacro_overlay_run` 이 `shell_mode != "none"` 을 인지하면 `frameLogin.xfdl`
+의 `dsSample` 주입을 **건너뛰는 것이 정상 계약**이다 (메뉴는 shell 이
+`frameLeft.ds_menu` 로 소유). 결과 report 에는 다음과 같이 명시된다.
+
+```python
+overlay_report = {
+    "menu_skipped": "shell_mode=MDI: menu owned by shell adapter (ds_menu in frameLeft)",
+    "menu_warning": None,      # 경고가 아님 — 의도된 분기
+    ...
+}
+```
+
+기존의 `menu_warning` 키는 *예상 외* 의 schema mismatch / dsSample 부재
+상황에서만 채워진다.
+
+**3. typedef 가 1-pass 로 병합된다**
+
+shell 패스가 `<Service prefixid="svc" type="module" .../>` 를 emit 한 뒤,
+per-domain overlay 의 `typedef_merger` 가 동일 파일에 `<Service
+prefixid="shipping" type="form" url="./shipping/" .../>` 를 추가한다.
+두 항목이 한 `typedefinition.xml` 에 공존하는지는 회귀 테스트
+`tests/golden/test_growth16_shell_e2e.py::test_growth19_one_pass_korean_labels_and_typedef_merge`
+가 직접 검증한다.
+
+> 이 세 가지가 깨지면 *동일한 도메인 지식이 두 파이프라인에 흩어졌다는 신호* —
+> Karpathy 정렬 리뷰(`docs/superpowers/specs/2026-05-15-karpathy-alignment-review.md`)
+> 의 진단표 갭에 해당한다.
+
+---
+
 ## 4. 통합 — Stage 3+4 → nexacro-fullstack-starter overlay
 
 핸드오프 계약 전문은 [`needs/Plugin참조/3. Middle+Frontend - Stage 3→4 nexacro 핸드오프 계약.md`](../needs/Plugin%EC%B0%B8%EC%A1%B0/3.%20Middle%2BFrontend%20-%20Stage%203%E2%86%924%20nexacro%20%ED%95%B8%EB%93%9C%EC%98%A4%ED%94%84%20%EA%B3%84%EC%95%BD.md) 참조.

@@ -116,12 +116,6 @@ def test_growth21b3_stage2_ddl_has_all_three_domains(tmp_path):
         assert table in ddl, f"DDL missing table `{table}`"
 
 
-@pytest.mark.xfail(
-    reason="Growth-21b-4 gap: seed uses `fk_column:` but ddl_gen._fk_columns "
-    "reads `fk:` only. Cross-domain FK silently dropped. Backlog: unify "
-    "schema (either ddl_gen fallback or Stage 1 compiler translation).",
-    strict=False,
-)
 def test_growth21b3_opportunity_customer_fk_resolves(tmp_path):
     """opportunity.customer_id must declare an FK against customer when
     both tables coexist in the same scaffold.
@@ -131,28 +125,16 @@ def test_growth21b3_opportunity_customer_fk_resolves(tmp_path):
     _run(args)
 
     ddl = _combined_ddl(args).lower()
-    # The exact rendering varies by dialect; we check for the pair
-    # (customer_id ... references customer) appearing in the SQL.
     assert "customer_id" in ddl
-    assert "references customer" in ddl or "foreign key" in ddl, (
-        "no FK constraints emitted at all — DDL generator may be skipping FKs"
-    )
-    # Strict: customer_id should sit next to a references-customer clause.
-    # We accept either inline column constraint or a trailing FK clause.
-    has_inline = "customer_id" in ddl and "references customer" in ddl
-    assert has_inline, (
+    # Accept any schema-qualified form: "references customer" or
+    # "references <schema>.customer". The opportunity FK must point at customer.
+    import re
+    assert re.search(r"foreign key\s*\(\s*customer_id\s*\)\s*references\s+(\w+\.)?customer\b", ddl), (
         "opportunity.customer_id did not resolve to FK → customer. "
-        "Likely cause: seed FK declared as plain bigint column without "
-        "a matching concept relation entry, OR ddl_gen does not consume "
-        "cross-domain concepts. This is the Growth-21b-3 gap."
+        "Cross-domain concept-derived relation failed to emit constraint."
     )
 
 
-@pytest.mark.xfail(
-    reason="Growth-21b-4 gap: see customer_fk test — same `fk_column:` vs "
-    "`fk:` schema mismatch affects owner_user_id → app_user.",
-    strict=False,
-)
 def test_growth21b3_opportunity_owner_fk_resolves(tmp_path):
     """opportunity.owner_user_id must declare an FK against app_user."""
     wiki = _build_combined_wiki(tmp_path)
@@ -161,7 +143,8 @@ def test_growth21b3_opportunity_owner_fk_resolves(tmp_path):
 
     ddl = _combined_ddl(args).lower()
     assert "owner_user_id" in ddl
-    assert "references app_user" in ddl, (
+    import re
+    assert re.search(r"foreign key\s*\(\s*owner_user_id\s*\)\s*references\s+(\w+\.)?app_user\b", ddl), (
         "opportunity.owner_user_id did not resolve to FK → app_user. "
         "RBAC ownership guard will not work at the DB layer."
     )

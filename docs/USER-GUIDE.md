@@ -69,6 +69,13 @@
 > - 충돌 시 `--overlay-force` 없으면 RuntimeError + 어느 파일과 충돌하는지 listing (변경 시작 전에 fail-fast)
 > - `--target-project` 미지정 시 Stage 5 skip (Phase D/E 하위 호환 100%). 상세: [`docs/superpowers/specs/2026-05-18-v0.4-phase-f-mf-gate.md`](./superpowers/specs/2026-05-18-v0.4-phase-f-mf-gate.md)
 
+> **v0.5.x Gap 2~6 (2026-05-19~20) 변경점**: 패턴/워크플로 커버리지 강화.
+> - **Gap 2 — Workflow service template**: blueprint entity 에 `workflow:` 블록(`status_column` + `states` + `transitions`)이 있으면 Stage 3 가 `<Entity>WorkflowService.java` + `Impl` 을 추가 emit. action 별 from-state 가드 + `update_<entity>_status` mapper method/XML 까지 자동 발행 (`approval_request`, `notification` 시드에 즉시 적용). `workflow:` 없는 entity 는 기존과 동일.
+> - **Gap 3 — React overlay MD/TR pattern 컴포넌트**: master-detail-2-tier(MD) · tree-1-tier(TR) entity 가 blueprint 에 있으면 Stage 5 (react lane) 가 `MDPage.tsx` · `TRPage.tsx` 도 emit (기존 H4 API 모듈에 더해).
+> - **Gap 4 — V002 validator FK side 정정**: `relations[].kind` 가 `belongs_to`/`many_to_one` 이면 FK 컬럼 존재를 **FROM** 엔티티에서 확인 (이전: 항상 TO 에서 확인하여 customer→customer_category 같은 정상 관계를 false-fail). `many_to_many` 는 junction 사용 → 컬럼 검사 skip. kind 미지정 관계는 기존(TO-side) 동작 유지 → 하위 호환 100%.
+> - **Gap 5 — React overlay 7 패턴 parity**: react lane 이 nexacro 와 동일하게 **D2 · F1 · C1 · L2 · MD · TR · RO** 7종 모두 emit. 각 entity 의 `pattern` frontmatter 가 그대로 `<Pascal><Suffix>Page.tsx` 로 변환되고 (`D2Page`/`F1Page`/`C1Page`/`L2Page`/`MDPage`/`TRPage`/`ROPage`), `RO` 는 read-only 불변식대로 `saveDataListMap` 호출 없이 `exportToCsv()` 만 노출.
+> - **Gap 6 — Pattern resolver 회귀 freeze**: 7 패턴 (`D2/F1/C1/L2/MD/TR/RO`) 의 manifest + form.xfdl.j2 가 generic resolver 로 모두 로드되는지 parametrized 회귀 테스트로 동결. 누군가 manifest 를 지우거나 이름을 바꾸면 silent 한 D2 fallback 대신 즉시 실패.
+
 > **v0.4.2 보완 (2026-05-18)**: 패키지 prefix 외부화 + Korean 도메인 slug 안전망.
 > - `--target-package-prefix <java.pkg>` 추가 (기본 `com.nexacro.uiadapter`). target 프로젝트가 다른 base package 를 쓰면 한 줄로 매핑.
 > - source prefix 는 `--package` 에서 마지막 segment 를 제외한 전체로 자동 도출 (예: `--package com.foo.bar.shop` → source `com.foo.bar`, slug `shop`).
@@ -465,6 +472,25 @@ Mapper / MyBatis XML과 schema.sql을 emit. v0.1.4부터 **Stage 4용 endpoints.
 - 각 entity는 `select_datalist_map` + `save_datalist_map` 두 메서드를 **반드시** 포함
 - import는 jakarta lane (`com.nexacro.uiadapter.jakarta.core.*`) — JDK17 / Spring Boot 3 전용
 
+**Workflow service (Gap 2, v0.5.x):** blueprint entity 가 `workflow:` 블록을 선언하면 위 산출에 더해 `service/<Entity>WorkflowService.java` + `service/impl/<Entity>WorkflowServiceImpl.java` + mapper `update_<entity>_status` / `select_<entity>_by_id` 가 추가 발행됩니다.
+
+```yaml
+# blueprint 예시
+entities:
+  - name: approval_request
+    columns: [...]
+    workflow:
+      status_column: status
+      states: [DRAFT, SUBMITTED, IN_PROGRESS, APPROVED, REJECTED, CANCELLED]
+      transitions:
+        - { action: submit,  from: [DRAFT],                          to: SUBMITTED }
+        - { action: approve, from: [IN_PROGRESS],                    to: APPROVED }
+        - { action: cancel,  from: [DRAFT, SUBMITTED, IN_PROGRESS],  to: CANCELLED }
+```
+
+- 각 `action` 은 service interface 의 `<action>_<entity>(...)` 메서드 + impl 의 `ALLOWED_FROM_<ACTION>` 가드로 emit. 잘못된 from-state 호출 시 `IllegalStateException("cannot \`<action>\` from <state>")`.
+- workflow 가 없는 entity 는 일반 CRUD 만 발행 (하위 호환).
+
 ---
 
 ### 3.4 andrej-karpathy-rdb-nexacro v0.1.0 — Frontend xfdl
@@ -607,6 +633,7 @@ v0.4 Phase F `--target-project` 사용 시 Stage 5 가 다음 정책으로 자�
 | `nxui/packageN/typedefinition.xml` | 원본 `typedefinition.xml.bak` 1회 백업 후 `<Services>` 닫기 직전에 `<Service prefixid="<slug>" .../>` 한 줄 삽입. 동일 `prefixid` 존재 시 skip (idempotent) |
 | `nxui/packageN/<slug>/Export.xjs` | **Growth-8 (RO 패턴 한정).** blueprint 에 하나라도 `pattern: RO` 엔티티가 있으면 `fn_export_dataset(ds, name)` 헬퍼 (`Dataset.saveCSV` 기반) 를 발행. RO `form.xfdl.j2` 가 `this.parent.fn_export_dataset(...)` 를 호출하므로 사용자는 발행된 `Export.xjs` 를 typedefinition `<Scripts>` 에 등록하고 parent frame 에서 include 하면 끝 (one-time). `report["nexacro_export_emitted"]` 가 발행 경로를 노출 |
 | `frontend/src/api/<entity>.ts` (lane=react) | **Growth-8.** 각 entity 모듈에 `exportToCsv(params?, filename?)` 도 함께 emit (RO 패턴 외 entity 에서도 호출 가능). `selectDataListMap()` 결과를 Blob+`a.download` 로 즉시 다운로드. `report["react_export_csv_added"]` 가 emit 된 entity 목록을 노출 |
+| `frontend/src/pages/<entity>/<Pascal><Suffix>Page.tsx` (lane=react) | **Gap 3 + Gap 5.** entity 의 `pattern` 에 따라 7종 페이지 컴포넌트 emit: `D2Page` (편집 grid + Search/Save), `F1Page` (단일 record form), `C1Page` (선택 가능 card grid + `onPick`), `L2Page` (list+detail 2-pane), `MDPage` (master-detail child grid), `TRPage` (tree), `ROPage` (read-only + `exportToCsv()`). RO 는 `saveDataListMap` 호출 없이 read-only 불변식 유지. 충돌 시 `--overlay-force` 없으면 fail-fast |
 
 (`--target-project` 미지정 시 Stage 5 skip → 위 정책 적용 안 됨. 수동 overlay 절차는 §2.6 (B) 참조.)
 
@@ -851,4 +878,4 @@ python scripts/scaffold_cli.py --domain "주문관리" --wiki-mode preset --pres
 
 ---
 
-*Last updated: 2026-05-19 — Growth-8: `fn_export_dataset` 어댑터 완료. Stage 5 가 RO 엔티티 감지 시 `nxui/packageN/<slug>/Export.xjs` 발행 (`Dataset.saveCSV` 헬퍼), react overlay 는 모든 entity 모듈에 `exportToCsv()` 발행. report 에 `nexacro_export_emitted` / `react_export_csv_added` 추가. 이전: v0.5 Phase H1 어댑터 contract foundation, v0.4.2 (`--target-package-prefix`), Phase F (Stage 5 자동 overlay), Phase E (HSQLDB / data.sql / 단일 Service).*
+*Last updated: 2026-05-20 — Gap 2~6: workflow service template (state machine 자동화) · React overlay 7-pattern parity (D2/F1/C1/L2/MD/TR/RO) · V002 validator FK side 정정 (belongs_to FROM-side 검사) · pattern resolver 회귀 freeze. 이전: 2026-05-19 Growth-8 (`fn_export_dataset` 어댑터), v0.5 Phase H1 어댑터 contract foundation, v0.4.2 (`--target-package-prefix`), Phase F (Stage 5 자동 overlay), Phase E (HSQLDB / data.sql / 단일 Service).*

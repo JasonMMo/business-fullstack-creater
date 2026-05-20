@@ -1,11 +1,15 @@
 # tests/golden/test_growth21a_auth_mode.py
-"""Growth-21a-2 — SHELL Spring Security + Nexacro auth bundle emission.
+"""Growth-21a-2/21a-3 — SHELL Spring Security + Nexacro auth bundle emission.
 
-Asserts the auth_files block in the SHELL manifest:
+Asserts the auth_files block in the SHELL manifest plus the 21a-3
+살붙임 (pom dependencies, application.yml security blocks, frame_login
+real /login POST + OAuth2 provider buttons):
   - auth_mode="none"    → no auth/config files (Growth-16~20 contract)
-  - auth_mode="session" → 10 files (8 auth + UserDetailsService + SecurityConfig)
-  - auth_mode="jwt"     → 11 files (session + JwtTokenProvider)
-  - auth_mode="oauth2"  → 11 files (same set as jwt; OAuth2 deps land in 21a-3)
+  - auth_mode="session" → 10 files + spring-boot-starter-security
+  - auth_mode="jwt"     → 11 files + jjwt deps + JWT yaml block + STATELESS
+  - auth_mode="oauth2"  → 12 files (+ OAuth2LoginSuccessHandler) +
+                          oauth2-client starter + OAuth2 yaml block +
+                          provider buttons in frameLogin
 
 Skipped when any sibling stage repo is missing.
 """
@@ -151,12 +155,124 @@ def test_auth_mode_jwt_emits_11_files_with_bearer(tmp_path):
 
 
 def test_auth_mode_oauth2_includes_jwt_provider(tmp_path):
-    """oauth2 mode includes the same files as jwt (deps land in 21a-3)."""
+    """oauth2 mode: jwt bundle + OAuth2LoginSuccessHandler + client deps."""
     target = tmp_path / "newproj"
     target.mkdir()
 
     args = _build_args(tmp_path, target, auth_mode="oauth2")
     _run(args)
 
-    assert (_auth_root(target) / "JwtTokenProvider.java").exists()
-    assert (_config_root(target) / "SecurityConfig.java").exists()
+    auth_dir = _auth_root(target)
+    cfg_dir = _config_root(target)
+
+    assert (auth_dir / "JwtTokenProvider.java").exists()
+    assert (cfg_dir / "SecurityConfig.java").exists()
+    assert (auth_dir / "OAuth2LoginSuccessHandler.java").exists(), \
+        "auth_mode=oauth2 must emit OAuth2LoginSuccessHandler"
+
+    # SecurityConfig wires the oauth2Login() chain only under oauth2.
+    sec = (cfg_dir / "SecurityConfig.java").read_text(encoding="utf-8")
+    assert "oauth2Login" in sec, \
+        "auth_mode=oauth2 SecurityConfig must enable oauth2Login chain"
+    assert "OAuth2LoginSuccessHandler" in sec
+
+
+# ---------------------------------------------------------------------------
+# Growth-21a-3: SHELL 살붙임 — pom.xml, application.yml, frame_login.xfdl
+# ---------------------------------------------------------------------------
+
+
+def _pom(target):
+    return (target / "pom.xml").read_text(encoding="utf-8")
+
+
+def _appyml(target):
+    return (target / "src" / "main" / "resources" / "application.yml").read_text(
+        encoding="utf-8"
+    )
+
+
+def _login_xfdl(target):
+    # nexacro_shell_overlay renders frames into target/nxui/packageN/frame/.
+    # The src/main/resources/static/packageN/ path is only populated by Maven
+    # at build time via the pom.xml resource filter — not at scaffold time.
+    return (
+        target / "nxui" / "packageN" / "frame" / "frameLogin.xfdl"
+    ).read_text(encoding="utf-8")
+
+
+def test_growth21a3_none_keeps_pom_clean(tmp_path):
+    """Regression guard: auth_mode=none must NOT pull security/jjwt/oauth2."""
+    target = tmp_path / "newproj"
+    target.mkdir()
+    _run(_build_args(tmp_path, target, auth_mode="none"))
+
+    pom = _pom(target)
+    assert "spring-boot-starter-security" not in pom
+    assert "jjwt-api" not in pom
+    assert "spring-boot-starter-oauth2-client" not in pom
+
+    appyml = _appyml(target)
+    assert "oauth2:" not in appyml
+    assert "app:" not in appyml or "app.security" not in appyml
+
+
+def test_growth21a3_session_adds_security_starter(tmp_path):
+    target = tmp_path / "newproj"
+    target.mkdir()
+    _run(_build_args(tmp_path, target, auth_mode="session"))
+
+    pom = _pom(target)
+    assert "spring-boot-starter-security" in pom, \
+        "auth_mode=session must pull spring-boot-starter-security"
+    assert "jjwt-api" not in pom, "session mode must NOT pull jjwt"
+    assert "spring-boot-starter-oauth2-client" not in pom
+
+    # frameLogin in session+ mode posts a real DataSet to /login.
+    login = _login_xfdl(target)
+    assert 'transaction(\n    "login"' in login or '"svc::/login"' in login, \
+        "session frameLogin must POST to /login via transaction()"
+
+
+def test_growth21a3_jwt_adds_jjwt_and_app_security_yaml(tmp_path):
+    target = tmp_path / "newproj"
+    target.mkdir()
+    _run(_build_args(tmp_path, target, auth_mode="jwt"))
+
+    pom = _pom(target)
+    assert "spring-boot-starter-security" in pom
+    assert "jjwt-api" in pom and "jjwt-impl" in pom and "jjwt-jackson" in pom
+    assert "spring-boot-starter-oauth2-client" not in pom, \
+        "jwt mode must NOT pull oauth2 client"
+
+    appyml = _appyml(target)
+    assert "app:" in appyml and "jwt:" in appyml, \
+        "jwt mode must emit app.security.jwt block"
+    assert "APP_SECURITY_JWT_SECRET" in appyml
+
+    # frameLogin captures Bearer header on successful login in jwt+ mode.
+    login = _login_xfdl(target)
+    assert "gv_bearerToken" in login
+
+
+def test_growth21a3_oauth2_full_stack(tmp_path):
+    target = tmp_path / "newproj"
+    target.mkdir()
+    _run(_build_args(tmp_path, target, auth_mode="oauth2"))
+
+    pom = _pom(target)
+    assert "spring-boot-starter-security" in pom
+    assert "jjwt-api" in pom
+    assert "spring-boot-starter-oauth2-client" in pom, \
+        "auth_mode=oauth2 must pull spring-boot-starter-oauth2-client"
+
+    appyml = _appyml(target)
+    assert "oauth2:" in appyml and "registration:" in appyml, \
+        "oauth2 mode must emit spring.security.oauth2.client block"
+    assert "google" in appyml and "keycloak" in appyml
+
+    # frameLogin gains provider buttons in oauth2 mode.
+    login = _login_xfdl(target)
+    assert "btnLoginGoogle" in login and "btnLoginKeycloak" in login, \
+        "oauth2 frameLogin must surface Google + Keycloak buttons"
+    assert "/oauth2/authorization/google" in login

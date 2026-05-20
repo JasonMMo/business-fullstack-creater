@@ -425,3 +425,8 @@ try:  # react adapter is optional — registers itself on import
     import react_overlay as _react_overlay  # noqa: F401
 except ImportError:
     pass
+
+try:  # nexacro-shell adapter (Growth-16) — standalone WAR shell
+    import nexacro_shell_overlay as _nexacro_shell_overlay  # noqa: F401
+except ImportError:
+    pass

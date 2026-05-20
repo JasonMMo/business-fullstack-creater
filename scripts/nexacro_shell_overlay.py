@@ -222,6 +222,12 @@ def _shell_overlay_run(
     maven_version: str = "0.1.0-SNAPSHOT",
     # Growth-18: DB dialect threads through Stage 2 → shell pom.xml + application.yml
     dialect: str = "hsqldb",
+    # Growth-21a-2: auth_mode gates SHELL auth_files emission.
+    #   "none"    → no auth files (default, keeps Growth-16~20 goldens bit-identical)
+    #   "session" → 8-class form-login bundle (BCrypt + UserDetailsService)
+    #   "jwt"     → session + JwtTokenProvider; SuccessHandler emits Bearer
+    #   "oauth2"  → jwt + OAuth2 starter wiring (Growth-21a-3 will add deps)
+    auth_mode: str = "none",
     **_unused,
 ) -> dict:
     if nexacro_skill_root is None:
@@ -276,6 +282,7 @@ def _shell_overlay_run(
         "maven_version": maven_version,
         "dialect": dialect,
         "datasource": _resolve_datasource(dialect, domain_slug),
+        "auth_mode": auth_mode,
     }
 
     report: dict = {
@@ -284,6 +291,8 @@ def _shell_overlay_run(
         "typedef_rendered": "",
         "xadl_rendered": "",
         "build_files_rendered": [],
+        "auth_files_rendered": [],
+        "auth_mode": auth_mode,
         "menu_entries": len(menu_items),
         "backed_up": [],
         "conflicts": [],
@@ -306,6 +315,19 @@ def _shell_overlay_run(
                .replace("{domain_slug}", domain_slug)
         )
         targets.append((tpl, target_dir / rel_resolved, "build"))
+
+    # Growth-21a-2: filter resolved.auth_files by active auth_mode.
+    # auth_mode="none" → skip the whole bundle. Otherwise emit every entry
+    # whose `modes` list contains the active mode.
+    if auth_mode != "none":
+        for tpl, rel, modes in getattr(resolved, "auth_files", []) or []:
+            if auth_mode not in modes:
+                continue
+            rel_resolved = (
+                rel.replace("{pkg_path}", pkg_path)
+                   .replace("{domain_slug}", domain_slug)
+            )
+            targets.append((tpl, target_dir / rel_resolved, "auth"))
 
     if not overlay_force:
         for _tpl, dest, _kind in targets:
@@ -336,6 +358,8 @@ def _shell_overlay_run(
             report["xadl_rendered"] = rel
         elif kind == "build":
             report["build_files_rendered"].append(rel)
+        elif kind == "auth":
+            report["auth_files_rendered"].append(rel)
 
     return report
 

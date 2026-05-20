@@ -337,6 +337,7 @@ def _run_stage5(args, stage_paths, report):
             overlay_force=args.overlay_force,
             source_pkg_prefix=source_pkg_prefix,
             target_pkg_prefix=args.target_pkg_prefix,
+            shell_mode=args.shell_mode,
         )
         dur = int((time.monotonic() - t0) * 1000)
     except RuntimeError as exc:

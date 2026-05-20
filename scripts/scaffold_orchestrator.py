@@ -29,6 +29,12 @@ class ScaffoldArgs:
     shell_mode: str = "none"                        # "none" | "MDI" | "SDI"
     nexacrolib_from: Optional[pathlib.Path] = None  # copies into target_dir/nxui/nexacrolib/
     shell_app_id: str = "packageN"                  # branding.app_id passed to shell adapter
+    # Growth-21a-2: SHELL Spring Security + Nexacro auth bundle gate.
+    #   "none"    → no auth classes (default; Growth-16~20 goldens stay bit-identical)
+    #   "session" → 8-class form-login bundle (BCrypt + JDBC UserDetailsService)
+    #   "jwt"     → session + JwtTokenProvider; success handler emits Bearer
+    #   "oauth2"  → jwt + OAuth2 starter (Growth-21a-3 fills in deps + login UI)
+    auth_mode: str = "none"
 
 
 @dataclass
@@ -298,6 +304,7 @@ def _run_stage5(args, stage_paths, report):
                 maven_artifact_id=getattr(args, "maven_artifact_id", None),
                 maven_version=getattr(args, "maven_version", None) or "0.1.0-SNAPSHOT",
                 dialect=args.dialect,
+                auth_mode=args.auth_mode,
             )
             shell_dur = int((time.monotonic() - t0s) * 1000)
         except RuntimeError as exc:

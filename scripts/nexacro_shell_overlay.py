@@ -228,6 +228,12 @@ def _shell_overlay_run(
     #   "jwt"     → session + JwtTokenProvider; SuccessHandler emits Bearer
     #   "oauth2"  → jwt + OAuth2 starter wiring (Growth-21a-3 will add deps)
     auth_mode: str = "none",
+    # Growth-23: auth_lane selects servlet flavor for the auth bundle.
+    #   "jakarta" (default) → Spring Security 6 + jakarta.servlet (legacy)
+    #   "javax"             → Spring Security 5 + javax.servlet (Spring Boot 2.7)
+    # Ignored when auth_mode == "none". Resolution is strict — javax requires
+    # all 11 templates to exist under variants/<variant>/auth-javax/.
+    auth_lane: str = "jakarta",
     **_unused,
 ) -> dict:
     if nexacro_skill_root is None:
@@ -247,6 +253,7 @@ def _shell_overlay_run(
             bundled_root=nexacro_skill_root,
             global_root=nexacro_global_root,
             frame_overrides=shell_frame_overrides or {},
+            auth_lane=auth_lane,
         )
     except ShellNotFoundError as exc:
         raise RuntimeError(f"SHELL pattern resolve failed: {exc}") from exc
@@ -283,6 +290,7 @@ def _shell_overlay_run(
         "dialect": dialect,
         "datasource": _resolve_datasource(dialect, domain_slug),
         "auth_mode": auth_mode,
+        "auth_lane": auth_lane,
     }
 
     report: dict = {
@@ -293,6 +301,7 @@ def _shell_overlay_run(
         "build_files_rendered": [],
         "auth_files_rendered": [],
         "auth_mode": auth_mode,
+        "auth_lane": auth_lane,
         "menu_entries": len(menu_items),
         "backed_up": [],
         "conflicts": [],

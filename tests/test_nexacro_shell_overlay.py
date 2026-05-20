@@ -176,13 +176,21 @@ def test_shell_overlay_emits_buildable_maven_project(tmp_path):
     yml_text = yml.read_text(encoding="utf-8")
     assert "context-path: /uiadapter" in yml_text
     assert "type-aliases-package: com.acme.shipping.shipping.domain" in yml_text
-    assert "mapper-locations: classpath:mapper/**/*.xml" in yml_text
+    assert "mapper-locations: classpath:mybatis/mapper/**/*.xml" in yml_text
 
-    # Report keys
-    assert len(report["build_files_rendered"]) == 3
+    # Growth-17c: NexacroBase POJO required by Stage 3 nexacro-lane entities
+    nb = tmp_path / "src" / "main" / "java" / "com" / "acme" / "shipping" / "shipping" / "domain" / "NexacroBase.java"
+    assert nb.exists(), f"NexacroBase.java missing at {nb}"
+    nb_text = nb.read_text(encoding="utf-8")
+    assert "package com.acme.shipping.shipping.domain;" in nb_text
+    assert "implements DataSetRowTypeAccessor" in nb_text
+
+    # Report keys (4 build files now: pom, Application, application.yml, NexacroBase)
+    assert len(report["build_files_rendered"]) == 4
     assert any(p.endswith("pom.xml") for p in report["build_files_rendered"])
     assert any(p.endswith("Application.java") for p in report["build_files_rendered"])
     assert any(p.endswith("application.yml") for p in report["build_files_rendered"])
+    assert any(p.endswith("NexacroBase.java") for p in report["build_files_rendered"])
 
 
 def test_shell_overlay_extra_services_appended(tmp_path):

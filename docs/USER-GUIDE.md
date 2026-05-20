@@ -717,6 +717,64 @@ BOOT-INF/classes/com/acme/shipping/shipping/domain/NexacroBase.class       # 컴
 BOOT-INF/classes/static/packageN/frame/frameMDI.xfdl                       # nxui 번들
 ```
 
+### 3.8 Growth-18 — `--dialect` 가 standalone shell 까지 흐른다
+
+Growth-17c 까지 standalone shell scaffold 는 `--dialect postgres` 를 줘도
+`schema.sql` 만 postgres 방언으로 생성되고 `application.yml` / `pom.xml` 은
+HSQLDB 하드코딩이 남아 있었음 (계약 누수). Growth-18 에서 두 contract bug 를
+한 번에 닫는다:
+
+**Bug #1 — shell template 이 dialect 를 모름**
+
+- `scripts/nexacro_shell_overlay.py` 에 `_DIALECT_DATASOURCES` registry
+  (`hsqldb` / `postgres` / `mysql`) 와 `_resolve_datasource(dialect,
+  domain_slug)` 헬퍼 추가. 각 dialect 별 JDBC URL / driver class / 자격증명 /
+  init mode / Maven 좌표 (groupId·artifactId·version) 를 한 곳에서 결정
+- `_shell_overlay_run(...)` 가 `dialect="hsqldb"` kwarg 를 받아
+  `ctx_common` 에 `{{ dialect }}` 와 `{{ datasource }}` 를 노출
+- `scripts/scaffold_orchestrator.py` 가 `args.dialect` 를 shell-mode stage5
+  overlay 호출에 forward
+- nexacro-skill 의 `SHELL/variants/MDI/application.yml.j2` 와 `pom.xml.j2`
+  가 하드코딩 대신 `{{ datasource.* }}` 를 렌더. Postgres/MySQL 은 init mode
+  `embedded` (Spring 기본값 — Flyway/Liquibase 가 마이그레이션 소유) /
+  HSQLDB 는 `always` (in-memory 라 매 부팅마다 schema.sql 안전)
+- 미등록 dialect 는 hsqldb 로 fallback (back-compat — 기존 호출부 무변경)
+
+**Bug #2 — Postgres DEFAULT 값 quoting**
+
+- `rdb-ddl/scripts/ddl_gen.py` 에 `_sql_default` Jinja 필터 추가. 리터럴 문자열은
+  싱글쿼트로 감싸고 (`'pending'` → `DEFAULT 'pending'`), 함수/예약어
+  (`CURRENT_TIMESTAMP`, `now()`, `NULL`, `TRUE`/`FALSE`, 숫자 리터럴) 는
+  raw 로 통과. 3개 dialect 템플릿 (`postgres/hsqldb/mysql/tables.sql.j2`)
+  이 모두 `| sql_default` 필터를 거치도록 통일
+- 11종 단위 테스트 + 3 dialect parametrize E2E 로 회귀 안전망 구성
+
+**스모크 명령 (Postgres):**
+```powershell
+$env:PYTHONPATH = "D:\AI\workspace\business-fullstack-creater\scripts"
+python -m scripts.scaffold_cli `
+  --domain "배송관리" --wiki-mode preset --preset "배송관리" `
+  --dialect postgres --lane nexacro `
+  --package com.example.shipping --target-package-prefix com.acme.shipping `
+  --target-project .tmp_smoke_pg/shell --shell-mode MDI `
+  --overlay-force --out .tmp_smoke_pg/out
+```
+
+**검증 포인트:**
+```
+application.yml  →  url: jdbc:postgresql://localhost:5432/shipping
+                    driver-class-name: org.postgresql.Driver
+                    spring.sql.init.mode: embedded
+pom.xml          →  <postgresql.version>42.7.4</postgresql.version>
+                    <groupId>org.postgresql</groupId>
+                    <artifactId>postgresql</artifactId>
+schema.sql       →  DEFAULT TRUE / DEFAULT 'pending' / DEFAULT now() / DEFAULT 1
+```
+
+> 같은 패턴이 `--dialect mysql` 에도 자동 적용 (mysql-connector-j 8.4.0,
+> `com.mysql.cj.jdbc.Driver`). `--dialect` 미지정 시 hsqldb 동작은 v0.7.3
+> 과 100% 동일하게 유지된다 (regression 테스트 4종 통과).
+
 ---
 
 ## 4. 통합 — Stage 3+4 → nexacro-fullstack-starter overlay

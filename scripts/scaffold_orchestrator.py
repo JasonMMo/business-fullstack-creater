@@ -297,6 +297,7 @@ def _run_stage5(args, stage_paths, report):
                 maven_group_id=getattr(args, "maven_group_id", None) or args.target_pkg_prefix,
                 maven_artifact_id=getattr(args, "maven_artifact_id", None),
                 maven_version=getattr(args, "maven_version", None) or "0.1.0-SNAPSHOT",
+                dialect=args.dialect,
             )
             shell_dur = int((time.monotonic() - t0s) * 1000)
         except RuntimeError as exc:

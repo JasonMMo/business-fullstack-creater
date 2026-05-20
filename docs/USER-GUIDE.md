@@ -76,6 +76,12 @@
 > - **Gap 5 — React overlay 7 패턴 parity**: react lane 이 nexacro 와 동일하게 **D2 · F1 · C1 · L2 · MD · TR · RO** 7종 모두 emit. 각 entity 의 `pattern` frontmatter 가 그대로 `<Pascal><Suffix>Page.tsx` 로 변환되고 (`D2Page`/`F1Page`/`C1Page`/`L2Page`/`MDPage`/`TRPage`/`ROPage`), `RO` 는 read-only 불변식대로 `saveDataListMap` 호출 없이 `exportToCsv()` 만 노출.
 > - **Gap 6 — Pattern resolver 회귀 freeze**: 7 패턴 (`D2/F1/C1/L2/MD/TR/RO`) 의 manifest + form.xfdl.j2 가 generic resolver 로 모두 로드되는지 parametrized 회귀 테스트로 동결. 누군가 manifest 를 지우거나 이름을 바꾸면 silent 한 D2 fallback 대신 즉시 실패.
 
+> **v0.7.4 (2026-05-20) 변경점**: standalone shell × per-domain 1-pass 통합 + 통합 시나리오 정비.
+> - Growth-16~19 가 묶여 단일 명령(`scaffold_cli --shell-mode MDI --dialect <hsqldb|postgres|mysql>`) 으로 빌드 가능한 nexacro+Spring Boot WAR 트리가 만들어지는 흐름 완성. 더 이상 `/nexacro-fullstack-starter` 외부 plugin 의존이 필수가 아님.
+> - Growth-19: seed `display` → blueprint `label_ko` → frameLeft `ds_menu` 한국어 라벨 보존 체인. shell-mode 의 menu skip 은 `menu_skipped` 첫 클래스 필드로 명시화 (silent fallback 아님). typedef_merger 1-pass 가 `<Service prefixid="svc">`(shell) + `<Service prefixid="<domain>">`(per-domain) 둘 다 한 파일에 보존.
+> - 신규 §2.7 (권장 통합 경로) + §3.10 (Growth-16~19 통합 시나리오 매트릭스).
+> - 하위 호환 100% — shell-mode/`label_ko` 모두 선택 플래그/필드. 상세: [`docs/superpowers/specs/2026-05-15-karpathy-alignment-review.md`](./superpowers/specs/2026-05-15-karpathy-alignment-review.md)
+
 > **v0.4.2 보완 (2026-05-18)**: 패키지 prefix 외부화 + Korean 도메인 slug 안전망.
 > - `--target-package-prefix <java.pkg>` 추가 (기본 `com.nexacro.uiadapter`). target 프로젝트가 다른 base package 를 쓰면 한 줄로 매핑.
 > - source prefix 는 `--package` 에서 마지막 segment 를 제외한 전체로 자동 도출 (예: `--package com.foo.bar.shop` → source `com.foo.bar`, slug `shop`).
@@ -332,6 +338,56 @@ nexacro Studio로 `customer-mgmt-app/nxui/`를 열어 화면을 확인할 수 �
 
 `POST /uiadapter/customer/select_datalist_map`을 호출하여 NexacroResult 직렬화가
 성공하면 end-to-end 통과 (라이선스 설치 환경 필요).
+
+---
+
+### 2.7 권장 통합 경로 — Standalone shell (Growth-16~19)
+
+`/nexacro-fullstack-starter` 외부 plugin 없이 **빈 디렉터리 한 개**에서 출발해
+`mvn package` 까지 한 번에 가는 권장 경로. Growth-16~19 가 묶여 다음 4 가지가
+한 명령으로 보장된다:
+
+| 보장 | 출처 | 검증 위치 |
+| :-- | :-- | :-- |
+| 한국어 메뉴 라벨 (seed `display` → frameLeft) | Growth-19 | `nxui/packageN/frame/frameLeft.xfdl` 의 `<Col id="label">` |
+| dialect 별 application.yml + pom.xml | Growth-18 | `src/main/resources/application.yml`, `pom.xml` |
+| Maven 빌드 디스크립터 4종 | Growth-17b | `pom.xml`, `Application.java`, `application.yml`, `NexacroBase.java` |
+| typedef 1-pass 병합 (svc + per-domain) | Growth-19 | `nxui/packageN/typedefinition.xml` |
+
+**원클릭 (배송관리 + Postgres + MDI):**
+
+```powershell
+python scripts/scaffold_cli.py `
+  --domain "배송관리" --wiki-mode preset --preset "배송관리" `
+  --package com.example.shipping --service-name Shipping `
+  --target-package-prefix com.acme.shipping `
+  --dialect postgres --lane nexacro `
+  --out .\shipping-scaffold `
+  --target-project .\shipping-app `
+  --shell-mode MDI `
+  --nexacrolib-from D:\nexacro\nexacrolib   # 옵션: 사내 nexacrolib 복사
+```
+
+**빌드 + 실행:**
+```powershell
+cd .\shipping-app
+mvn -B -DskipTests package
+java -jar .\target\shipping-shell-0.1.0-SNAPSHOT.jar
+# → http://localhost:8080/uiadapter/
+```
+
+**언제 §2.6 (수동 overlay) 대신 §2.7 을 쓰는가:**
+- 신규 프로젝트 0→1 (빈 디렉터리 출발)
+- nexacro 패키지명을 직접 통제하고 싶을 때 (`--shell-app-id`)
+- 사내 표준 base scaffold 가 없거나 starter plugin 을 도입하기 어려울 때
+- dialect 를 hsqldb 외로 바꿀 때 (postgres/mysql) — application.yml + pom.xml 까지 자동 동기
+
+**§2.6 (외부 starter overlay) 가 여전히 적절한 경우:**
+- 이미 starter 로 만든 사내 표준 프로젝트 위에 도메인만 얹는 경우
+- frameMain/frameLogin 등 frame 5종을 회사 표준으로 별도 관리하는 경우
+- 한 프로젝트에 여러 도메인을 누적 overlay 하는 경우 (idempotent 보장)
+
+> 두 경로 모두 같은 4-stage 산출물을 공유한다. 차이는 **frame/typedef/xadl 의 소유권** — §2.7 은 shell adapter, §2.6 은 외부 starter.
 
 ---
 
@@ -828,6 +884,38 @@ prefixid="shipping" type="form" url="./shipping/" .../>` 를 추가한다.
 > 이 세 가지가 깨지면 *동일한 도메인 지식이 두 파이프라인에 흩어졌다는 신호* —
 > Karpathy 정렬 리뷰(`docs/superpowers/specs/2026-05-15-karpathy-alignment-review.md`)
 > 의 진단표 갭에 해당한다.
+
+---
+
+### 3.10 통합 시나리오 매트릭스 (Growth-16~19)
+
+standalone shell 경로(§2.7)의 **각 보장이 어느 Growth-N 에서 들어왔고 어느
+파일이 권위자(authority)인가**를 한 표로 정리. 회귀 발생 시 어느 commit/file
+로 거슬러 올라갈지 결정하는 1차 참조.
+
+| 보장 (Contract) | Growth | 권위 파일 (authority) | 검증 위치 (test/path) |
+| :-- | :-- | :-- | :-- |
+| frame 5종 + xadl + typedef 초기 emit | G-16 P1 | `andrej-karpathy-rdb-nexacro/patterns/SHELL/variants/<MDI\|SDI>/` | `tests/golden/test_growth16_shell_e2e.py::test_standalone_shell_mdi_renders_full_project` |
+| Stage 5 adapter registry (`nexacro-shell`) | G-16 P2 | `scripts/nexacro_shell_overlay.py` | 동상 (registry dispatch) |
+| `scaffold_cli --shell-mode MDI/SDI` 흐름 | G-16 P3 | `scripts/scaffold_orchestrator.py`, `scripts/scaffold_cli.py` | 동상 |
+| `--nexacrolib-from` 도우미 | G-16 P4 | `scripts/nexacro_shell_overlay.py` (`_copy_nexacrolib`) | `tests/golden/test_growth16_shell_e2e.py::test_standalone_shell_with_nexacrolib_copy` |
+| frame casing (Linux WAR 안전) | G-17a | `patterns/SHELL/variants/MDI/manifest.yaml` (`frameMDI.xfdl`) | nexacro-rdb regression test |
+| Maven 빌드 디스크립터 4종 emit | G-17b | `patterns/SHELL/variants/MDI/{pom.xml,Application.java,application.yml,NexacroBase.java}.j2` | scaffold-report stage5 ok + `mvn package` 그린 |
+| `mvn package` 1회 실빌드 안전망 | G-17c | `docs/USER-GUIDE.md §3.7` (절차) | (수동 스모크) |
+| dialect→application.yml/pom.xml 흐름 | G-18 | `_DIALECT_DATASOURCES` in `nexacro_shell_overlay.py` | rdb-ddl `tests/test_sql_default.py` + creater dialect smoke |
+| Postgres `DEFAULT` 값 quoting | G-18 | `rdb-ddl/scripts/ddl_gen.py::_sql_default` | rdb-ddl `tests/test_sql_default.py` |
+| seed `display` → blueprint `label_ko` | G-19 | `rdb-skill/scripts/rdb_index.py` (entity emit loop) | rdb-skill `tests/test_blueprint_spec.py` |
+| frameLeft `ds_menu` 한국어 라벨 | G-19 | `nexacro_shell_overlay.py::_derive_menu_items` | `test_growth19_one_pass_korean_labels_and_typedef_merge` |
+| shell-mode 시 dsSample 주입 의도적 skip | G-19 | `scripts/stage5_overlay.py` (`menu_skipped` 필드) | 동상 |
+| `<Service prefixid="svc">` + `<Service prefixid="<domain>">` 공존 | G-19 | `scripts/typedef_merger.py` (1-pass merge) | 동상 |
+
+**복리식 환류 (3축 매핑):**
+- **Backend (Stage 2 catalog/dialect)**: G-18 (dialect adapter), G-18 (`_sql_default` 필터)
+- **Middle (Stage 3 lane templates)**: 직접 변경 없음 — shell-mode 가 middle 산출물을 그대로 소비
+- **Frontend (Stage 4/5 patterns + overlay)**: G-16 (SHELL pattern), G-17 (빌드 descriptor 4종), G-19 (shell↔per-domain 분담 계약)
+
+> 새 도메인(Growth-21 후보 — CRM/공급망/회계)을 추가할 때는 이 표가 **회귀 체크리스트**로 동작한다.
+> 각 칸의 *권위 파일* 변경 없이 도메인이 추가되면, 그 도메인은 자동으로 위 13개 보장을 모두 얻는다.
 
 ---
 

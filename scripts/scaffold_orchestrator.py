@@ -292,6 +292,11 @@ def _run_stage5(args, stage_paths, report):
                 shell_variant=args.shell_mode,
                 shell_branding={"app_id": args.shell_app_id},
                 nexacro_skill_root=nexacro_skill_root,
+                target_pkg_prefix=args.target_pkg_prefix,
+                source_pkg_prefix=".".join(args.package.split(".")[:-1]) or "com.example",
+                maven_group_id=getattr(args, "maven_group_id", None) or args.target_pkg_prefix,
+                maven_artifact_id=getattr(args, "maven_artifact_id", None),
+                maven_version=getattr(args, "maven_version", None) or "0.1.0-SNAPSHOT",
             )
             shell_dur = int((time.monotonic() - t0s) * 1000)
         except RuntimeError as exc:

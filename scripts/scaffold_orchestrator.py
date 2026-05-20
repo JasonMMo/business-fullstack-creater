@@ -350,6 +350,9 @@ def _run_stage5(args, stage_paths, report):
             source_pkg_prefix=source_pkg_prefix,
             target_pkg_prefix=args.target_pkg_prefix,
             shell_mode=args.shell_mode,
+            # Growth-24: react adapter uses auth_mode to gate LoginPage.tsx
+            auth_mode=args.auth_mode,
+            auth_lane=args.auth_lane,
         )
         dur = int((time.monotonic() - t0) * 1000)
     except RuntimeError as exc:

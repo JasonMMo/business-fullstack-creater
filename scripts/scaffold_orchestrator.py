@@ -25,6 +25,10 @@ class ScaffoldArgs:
     overlay_force: bool = False                     # F: allow .bak overwrite during overlay
     target_pkg_prefix: str = "com.nexacro.uiadapter"  # G(v0.4.2): Stage 5 Java/XML target package prefix
     ui: str = "nexacro"                             # H4 (v0.5): Stage 5 UI overlay adapter ("nexacro" | "react")
+    # Growth-16 (P3): standalone shell controls
+    shell_mode: str = "none"                        # "none" | "MDI" | "SDI"
+    nexacrolib_from: Optional[pathlib.Path] = None  # copies into target_dir/nxui/nexacrolib/
+    shell_app_id: str = "packageN"                  # branding.app_id passed to shell adapter
 
 
 @dataclass
@@ -229,18 +233,81 @@ def _run_stage4(args, stage_paths, report):
     report.stage_durations_ms["stage4"] = dur
 
 
+def _copy_nexacrolib(src: pathlib.Path, target_dir: pathlib.Path) -> int:
+    """Copy <src> into <target_dir>/nxui/nexacrolib/. Returns file count."""
+    src = pathlib.Path(src).resolve()
+    if not src.exists():
+        raise StageFailure(f"--nexacrolib-from path not found: {src}")
+    dest = target_dir / "nxui" / "nexacrolib"
+    dest.mkdir(parents=True, exist_ok=True)
+    count = 0
+    for src_file in src.rglob("*"):
+        if src_file.is_dir():
+            continue
+        rel = src_file.relative_to(src)
+        out = dest / rel
+        out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src_file, out)
+        count += 1
+    return count
+
+
 def _run_stage5(args, stage_paths, report):
-    if args.target_project is None:
+    if args.target_project is None and args.shell_mode == "none":
         report.stages_run.append("stage5-skipped")
         return
-    target = pathlib.Path(args.target_project).resolve()
-    if not target.exists():
+    target = pathlib.Path(args.target_project).resolve() if args.target_project else None
+    if target is None:
+        raise StageFailure("--shell-mode requires --target-project")
+    # For shell-mode, the target may be a fresh project root; create if missing
+    if args.shell_mode != "none":
+        target.mkdir(parents=True, exist_ok=True)
+    elif not target.exists():
         raise StageFailure(f"--target-project does not exist: {target}")
     # Load blueprint entities
     import yaml as _yaml
     bp_path = args.out_dir / "1-wiki" / "_blueprint.yaml"
     data = _yaml.safe_load(bp_path.read_text(encoding="utf-8"))
     entities = data.get("entities", []) if isinstance(data, dict) else []
+
+    # ----- Growth-16: optional shell pass before per-domain overlay -----
+    if args.shell_mode != "none":
+        nexacro_skill_root = (
+            stage_paths.stage4 / ".claude" / "skills"
+            / "karpathy-rdb-nexacro" / "patterns"
+        )
+        try:
+            t0s = time.monotonic()
+            shell_report = stage5_overlay.run_overlay(
+                ui="nexacro-shell",
+                out_dir=args.out_dir,
+                target_dir=target,
+                domain_slug=args.package.split(".")[-1],
+                domain_label=args.domain,
+                service_pascal=args.service_name or _derive_service_pascal(
+                    args.package.split(".")[-1]
+                ),
+                blueprint_entities=entities,
+                overlay_force=args.overlay_force,
+                shell_variant=args.shell_mode,
+                shell_branding={"app_id": args.shell_app_id},
+                nexacro_skill_root=nexacro_skill_root,
+            )
+            shell_dur = int((time.monotonic() - t0s) * 1000)
+        except RuntimeError as exc:
+            raise StageFailure(f"stage5 shell conflict: {exc}") from exc
+        report.overlay_report = shell_report
+        report.stage_durations_ms["stage5-shell"] = shell_dur
+        if args.nexacrolib_from is not None:
+            copied = _copy_nexacrolib(args.nexacrolib_from, target)
+            report.stage_durations_ms["stage5-nexacrolib"] = copied
+        # Shell-only run (no Stage 3/4 outputs yet) → record and return
+        domain_artifacts = (args.out_dir / "3-mybatis").exists() or (
+            args.out_dir / "4-nexacro"
+        ).exists()
+        if not domain_artifacts:
+            report.stages_run.append("stage5")
+            return
     # Overlay slug must match Stage 3's actual Java package + Stage 4's xfdl
     # output, which derive from --package (e.g. com.example.order -> "order").
     # args.domain_slug can fall back to "domain" for non-ASCII domain names

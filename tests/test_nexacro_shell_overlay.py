@@ -1,5 +1,6 @@
 # tests/test_nexacro_shell_overlay.py
 """Tests for nexacro_shell_overlay (Growth-16 P2)."""
+import os
 import pathlib
 import pytest
 
@@ -89,6 +90,50 @@ def test_shell_overlay_sdi_variant_uses_frame_sdi(tmp_path):
     assert "divWork" in body
     # MDI frame must NOT have been rendered for SDI variant
     assert not (tmp_path / "nxui" / "packageN" / "frame" / "frameMDI.xfdl").exists()
+
+
+def test_shell_overlay_frame_filenames_are_case_exact(tmp_path):
+    """Regression: Windows filesystem is case-insensitive, so ``Path.exists``
+    happily resolves ``frameMdi.xfdl`` when the runtime looks up
+    ``frameMDI.xfdl``. Linux WAR deployment is case-sensitive — a mismatch
+    breaks the workFrame reference inside frameMain.xfdl.
+
+    Enumerate the directory via ``os.listdir`` (case-preserving) and assert
+    every produced filename matches the expected casing exactly, AND that
+    frameMain.xfdl's ``work_frame`` value names a real file in the dir.
+    """
+    ui_overlay_registry.dispatch("nexacro-shell", **_common_kwargs(tmp_path))
+    frame_dir = tmp_path / "nxui" / "packageN" / "frame"
+    actual = set(os.listdir(frame_dir))
+    expected_mdi = {
+        "frameMain.xfdl", "frameMDI.xfdl",
+        "frameLeft.xfdl", "frameTop.xfdl", "frameLogin.xfdl",
+    }
+    assert expected_mdi.issubset(actual), (
+        f"case-exact mismatch — expected {expected_mdi}, got {actual}"
+    )
+    # The buggy past output "frameMdi.xfdl" must NOT exist
+    assert "frameMdi.xfdl" not in actual, (
+        "frame template key 'frame_mdi' must render as 'frameMDI.xfdl' "
+        "(variant acronym preserved), not 'frameMdi.xfdl'"
+    )
+
+    # And frameMain.xfdl's workFrame must reference a real on-disk file
+    main_text = (frame_dir / "frameMain.xfdl").read_text(encoding="utf-8")
+    assert "frameMDI.xfdl" in main_text, "frameMain must reference frameMDI.xfdl"
+    # Cross-check: the referenced name resolves case-exactly
+    assert "frameMDI.xfdl" in actual
+
+
+def test_shell_overlay_sdi_frame_filename_is_case_exact(tmp_path):
+    """Same regression for SDI variant — frame_sdi → frameSDI.xfdl."""
+    kwargs = _common_kwargs(tmp_path)
+    kwargs["shell_variant"] = "SDI"
+    ui_overlay_registry.dispatch("nexacro-shell", **kwargs)
+    frame_dir = tmp_path / "nxui" / "packageN" / "frame"
+    actual = set(os.listdir(frame_dir))
+    assert "frameSDI.xfdl" in actual, f"missing frameSDI.xfdl in {actual}"
+    assert "frameSdi.xfdl" not in actual, "frame_sdi must render as frameSDI.xfdl"
 
 
 def test_shell_overlay_extra_services_appended(tmp_path):

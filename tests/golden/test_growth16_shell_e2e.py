@@ -116,3 +116,49 @@ def test_standalone_shell_with_nexacrolib_copy(tmp_path):
     nxlib = target / "nxui" / "nexacrolib"
     assert (nxlib / "components" / "Grid.xcdl").exists()
     assert (nxlib / "manifest.xml").exists()
+
+
+def test_growth19_one_pass_korean_labels_and_typedef_merge(tmp_path):
+    """Growth-19 — 1-pass shell × per-domain integration contract.
+
+    Asserts the three things that prove the round-trip works:
+      1. frameLeft.xfdl ds_menu rows use Korean labels from seed `display`
+         (preserved as blueprint `label_ko`, propagated by shell adapter).
+      2. typedefinition.xml carries BOTH the shell-emitted `svc` Service AND
+         the per-domain Service prefixid (typedef_merger 1-pass).
+      3. overlay report has menu_skipped (explicit shell-mode contract),
+         not menu_warning (which would indicate an unexpected fallback).
+    """
+    from scaffold_orchestrator import run_scaffold, StageFailure  # noqa: PLC0415
+
+    target = tmp_path / "newproj"
+    target.mkdir()
+
+    args = _build_args(tmp_path, target)
+    try:
+        run_scaffold(args)
+    except StageFailure as exc:
+        pytest.fail(f"StageFailure during Growth-19 1-pass run: {exc}")
+
+    # 1. Korean labels in frameLeft ds_menu
+    frame_left = (target / "nxui" / "packageN" / "frame" / "frameLeft.xfdl").read_text(
+        encoding="utf-8"
+    )
+    for label in ("배송사", "배송", "배송 상품", "배송 추적"):
+        assert f'<Col id="label">{label}</Col>' in frame_left, (
+            f"frameLeft ds_menu missing Korean label '{label}' — "
+            "Stage 1 label_ko propagation or shell adapter wiring broke"
+        )
+
+    # 2. typedefinition.xml: shell `svc` AND per-domain `shipping` Service entries
+    typedef = (target / "nxui" / "packageN" / "typedefinition.xml").read_text(
+        encoding="utf-8"
+    )
+    assert 'prefixid="svc"' in typedef, "shell svc Service missing from typedef"
+    assert 'prefixid="shipping"' in typedef, (
+        "per-domain shipping Service missing from typedef — typedef_merger broken"
+    )
+
+    # 3. Overlay report shape: menu intentionally skipped, no warning
+    report_md = (args.out_dir / "scaffold-report.md").read_text(encoding="utf-8")
+    assert "stage5" in report_md

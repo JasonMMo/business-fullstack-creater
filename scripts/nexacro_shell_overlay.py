@@ -148,6 +148,10 @@ def _shell_overlay_run(
     # Accept-and-ignore (signature parity with _nexacro_overlay_run)
     source_pkg_prefix: str = "com.example",
     target_pkg_prefix: str = "com.nexacro.uiadapter",
+    # Growth-17b: Maven build artifacts
+    maven_group_id: str = "com.example",
+    maven_artifact_id: Optional[str] = None,
+    maven_version: str = "0.1.0-SNAPSHOT",
     **_unused,
 ) -> dict:
     if nexacro_skill_root is None:
@@ -178,6 +182,7 @@ def _shell_overlay_run(
         shell_menu or [], blueprint_entities or [], domain_slug
     )
 
+    artifact_id = maven_artifact_id or f"{domain_slug}-shell"
     ctx_common = {
         "title": branding.get("app_title", domain_label or "Application"),
         "brand_text": branding.get("brand_text", domain_label or "Application"),
@@ -191,6 +196,14 @@ def _shell_overlay_run(
         "app_id": branding.get("app_id", "packageN"),
         "work_frame": "frameMDI" if shell_variant == "MDI" else "frameSDI",
         "menu_items": menu_items,
+        "domain_slug": domain_slug,
+        "domain_label": domain_label,
+        "shell_variant": shell_variant,
+        "target_pkg_prefix": target_pkg_prefix,
+        "source_pkg_prefix": source_pkg_prefix,
+        "maven_group_id": maven_group_id,
+        "maven_artifact_id": artifact_id,
+        "maven_version": maven_version,
     }
 
     report: dict = {
@@ -198,23 +211,29 @@ def _shell_overlay_run(
         "frames_rendered": [],
         "typedef_rendered": "",
         "xadl_rendered": "",
+        "build_files_rendered": [],
         "menu_entries": len(menu_items),
         "backed_up": [],
         "conflicts": [],
         "source": resolved.source,
     }
 
+    pkg_path = target_pkg_prefix.replace(".", "/")
+
     # Conflict scan
-    targets: list[tuple[pathlib.Path, pathlib.Path]] = []
+    targets: list[tuple[pathlib.Path, pathlib.Path, str]] = []
     for name, tpl in resolved.frames.items():
         # name → frame{Main|MDI|Left|Top|Login|SDI}.xfdl
         out_name = _frame_filename(name)
-        targets.append((tpl, frame_dir / f"{out_name}.xfdl"))
-    targets.append((resolved.typedef_template, pkg_dir / "typedefinition.xml"))
-    targets.append((resolved.xadl_template, pkg_dir / "packageN.xadl"))
+        targets.append((tpl, frame_dir / f"{out_name}.xfdl", "frame"))
+    targets.append((resolved.typedef_template, pkg_dir / "typedefinition.xml", "typedef"))
+    targets.append((resolved.xadl_template, pkg_dir / "packageN.xadl", "xadl"))
+    for tpl, rel in resolved.build_files:
+        rel_resolved = rel.replace("{pkg_path}", pkg_path)
+        targets.append((tpl, target_dir / rel_resolved, "build"))
 
     if not overlay_force:
-        for _tpl, dest in targets:
+        for _tpl, dest, _kind in targets:
             if dest.exists():
                 report["conflicts"].append(str(dest))
         if report["conflicts"]:
@@ -228,17 +247,20 @@ def _shell_overlay_run(
     pkg_dir.mkdir(parents=True, exist_ok=True)
     frame_dir.mkdir(parents=True, exist_ok=True)
 
-    for tpl, dest in targets:
+    for tpl, dest, kind in targets:
+        dest.parent.mkdir(parents=True, exist_ok=True)
         _safe_backup(dest, report)
         rendered = _render(tpl, ctx_common)
         dest.write_text(rendered, encoding="utf-8")
         rel = str(dest.relative_to(target_dir))
-        if dest.suffix == ".xfdl":
+        if kind == "frame":
             report["frames_rendered"].append(rel)
-        elif dest.name == "typedefinition.xml":
+        elif kind == "typedef":
             report["typedef_rendered"] = rel
-        elif dest.name == "packageN.xadl":
+        elif kind == "xadl":
             report["xadl_rendered"] = rel
+        elif kind == "build":
+            report["build_files_rendered"].append(rel)
 
     return report
 

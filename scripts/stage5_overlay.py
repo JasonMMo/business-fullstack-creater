@@ -143,6 +143,11 @@ def _nexacro_overlay_run(
     source_pkg_prefix: str = "com.example",
     target_pkg_prefix: str = "com.nexacro.uiadapter",
     shell_mode: str = "none",
+    # Growth-24: accepted for signature parity with the react adapter; the
+    # Nexacro shell handles auth wiring via SHELL/auth templates (Growth-21a),
+    # so this is intentionally ignored here.
+    auth_mode: str = "none",
+    auth_lane: str = "jakarta",
 ) -> dict:
     """Nexacro UIAdapter overlay (xfdl + menu + typedef + Java package rename).
 

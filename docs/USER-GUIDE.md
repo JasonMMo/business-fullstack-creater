@@ -584,6 +584,10 @@ python scripts/form_gen.py compile \
 | `--target-project <dir>` | — | **Phase F.** Stage 5 overlay 대상 (`/nexacro-fullstack-starter` 산출 root). 미지정 시 Stage 5 skip |
 | `--overlay-force` | `false` | **Phase F.** Stage 5 가 기존 파일 덮어쓰기 허용 (`.bak` 자동 생성). 기본은 충돌 시 fail-fast |
 | `--target-package-prefix <java.pkg>` | `com.nexacro.uiadapter` | **v0.4.2.** Stage 5 가 Java/MyBatis XML 을 rewrite 할 target 패키지 prefix. source prefix 는 `--package` 마지막 segment 를 제외한 전체로 자동 도출 |
+| `--ui nexacro\|react` | `nexacro` | **v0.5 H4.** Stage 5 UI overlay adapter. `react` 는 `frontend/src/api/*.ts` fetch 모듈 emit |
+| `--shell-mode none\|MDI\|SDI` | `none` | **Growth-16.** 비어있는 target 위에 standalone nexacro shell 렌더 (`<target>/nxui/packageN/` 5 frame + typedefinition.xml + packageN.xadl). `none` 은 기존 overlay-only 동작 유지 |
+| `--nexacrolib-from <dir>` | — | **Growth-16.** 지정 시 nexacrolib 트리를 `<target>/nxui/nexacrolib/` 로 복사 (shell-mode 와 함께 사용) |
+| `--shell-app-id <name>` | `packageN` | **Growth-16.** shell adapter 의 `branding.app_id`. 기본은 `packageN` |
 
 **Stage 5 overlay 동작 요약:**
 
@@ -597,6 +601,65 @@ python scripts/form_gen.py compile \
 **Idempotency:**
 - 동일 명령 2회 실행: menu row 중복 추가 0, Service entry 중복 0, `.bak` 파일 1개만 (one-shot 백업)
 - 단, 2회차는 java/xfdl 이 이미 존재 → `--overlay-force` 필요 (의도적)
+
+---
+
+### 3.6 Growth-16 — standalone SHELL (`--shell-mode`)
+
+**의도:** `/nexacro-fullstack-starter` 가 없거나 맞지 않는 환경에서도 한 번의 명령으로 **완성된 standalone nexacro 프로젝트**가 떨어지도록 한다. shell adapter 가 frame/typedef/xadl 을 직접 렌더하고, 그 위에 도메인 overlay 를 얹는다.
+
+**언제 쓰는가:**
+- 신규 프로젝트 0→1: 빈 디렉터리에 바로 WAR-ready 트리 만들기
+- 자체 nexacro 패키지(예: `packageN`)를 가진 사내 표준이 별도로 있을 때
+- starter 의존을 끊고 5-repo 만으로 closure 를 유지하고 싶을 때
+
+**원클릭 예시 — 배송관리 SDI:**
+```powershell
+python scripts/scaffold_cli.py `
+  --domain "배송관리" --preset "배송관리" `
+  --package com.example.shipping --service-name Shipping `
+  --dialect hsqldb `
+  --out .\shipping-scaffold `
+  --target-project .\shipping-app `
+  --shell-mode SDI `
+  --nexacrolib-from D:\nexacro\nexacrolib `
+  --shell-app-id packageN
+```
+
+산출:
+```
+shipping-app/
+├── nxui/
+│   ├── packageN/
+│   │   ├── frame/  (frameMain, frameSDI, frameLeft, frameTop, frameLogin)
+│   │   ├── typedefinition.xml
+│   │   ├── packageN.xadl
+│   │   └── shipping/  (도메인 xfdl)
+│   └── nexacrolib/  (선택: --nexacrolib-from 시 복사)
+└── src/main/java/com/nexacro/uiadapter/shipping/  (Java overlay)
+```
+
+**Variant — MDI vs SDI:**
+| Variant | work_frame | 용도 |
+| :-- | :-- | :-- |
+| `MDI` | `frameMDI` | 탭 기반 다중 문서 (`openTab`/`closeTab`) |
+| `SDI` | `frameSDI` | 단일 문서 교체 — 가벼운 단일 워크플로 |
+
+**Frame 3-tier 우선순위 (per file):**
+1. `blueprint.shell.frame_overrides[<name>]` (project-local)
+2. `.claude/skills/karpathy-rdb-nexacro/patterns/SHELL/variants/<variant>/<name>.xfdl.j2`
+3. `.../variants/MDI/<name>.xfdl.j2` (shared fallback)
+
+→ 새 variant 를 만들 때 한 개 frame 만 차별화하면 나머지는 MDI 가 자동으로 채운다.
+
+**shell↔도메인 overlay 분담:**
+- `ds_menu` (frameLeft) — **shell adapter** 가 blueprint entities 로부터 trees row 생성 (권위적 소스)
+- `frameLogin.xfdl` 의 `dsSample` — **shell-mode 시 의도적으로 없음**; per-domain overlay 의 menu inject 단계는 자동 soft-warn 으로 skip (`menu_warning` 보고)
+
+**5축 복리 환류:**
+- Backend: 없음 (shell 은 frontend 전용)
+- Middle: 없음
+- Frontend: `patterns/SHELL/` 가 새 pattern kind. 신 variant 추가 시 `variants/<NAME>/` 디렉터리 + manifest 1줄
 
 ---
 
@@ -878,4 +941,4 @@ python scripts/scaffold_cli.py --domain "주문관리" --wiki-mode preset --pres
 
 ---
 
-*Last updated: 2026-05-20 — Gap 2~6: workflow service template (state machine 자동화) · React overlay 7-pattern parity (D2/F1/C1/L2/MD/TR/RO) · V002 validator FK side 정정 (belongs_to FROM-side 검사) · pattern resolver 회귀 freeze. 이전: 2026-05-19 Growth-8 (`fn_export_dataset` 어댑터), v0.5 Phase H1 어댑터 contract foundation, v0.4.2 (`--target-package-prefix`), Phase F (Stage 5 자동 overlay), Phase E (HSQLDB / data.sql / 단일 Service).*
+*Last updated: 2026-05-20 — Growth-16: standalone SHELL pattern (`--shell-mode none|MDI|SDI` + `--nexacrolib-from` + `--shell-app-id`) — starter 없이도 단일 명령으로 WAR-ready 트리 산출. MDI/SDI variant 3-tier frame fallback, ds_menu 권위적 소스 이전. 이전: Gap 2~6 (workflow service template · React overlay 7-pattern parity · V002 validator FK side · pattern resolver freeze), Growth-8 (`fn_export_dataset`), v0.5 H1 어댑터 contract, v0.4.2 (`--target-package-prefix`), Phase F (Stage 5 자동 overlay), Phase E (HSQLDB / data.sql / 단일 Service).*

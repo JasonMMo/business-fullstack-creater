@@ -333,6 +333,15 @@ def _nexacro_overlay_run(
                 f"  missing          : {missing}\n"
                 "  → Add the missing columns to dsSample <ColumnInfo>, or map them in blueprint."
             )
+        except RuntimeError as exc:
+            # e.g. SHELL-rendered frameLogin uses ds_menu (Growth-16) so dsSample
+            # is intentionally absent. Treat as a soft warning rather than aborting
+            # the entire overlay; the shell adapter already populates ds_menu.
+            report["menu_warning"] = (
+                f"frameLogin.xfdl menu injection skipped: {exc}. "
+                "If this project uses the Growth-16 SHELL shell, the shell adapter "
+                "already populates ds_menu in frameLeft from blueprint entities."
+            )
 
     # -----------------------------------------------------------------------
     # Step 5: Typedef merge

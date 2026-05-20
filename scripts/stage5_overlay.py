@@ -142,6 +142,7 @@ def _nexacro_overlay_run(
     overlay_force: bool = False,
     source_pkg_prefix: str = "com.example",
     target_pkg_prefix: str = "com.nexacro.uiadapter",
+    shell_mode: str = "none",
 ) -> dict:
     """Nexacro UIAdapter overlay (xfdl + menu + typedef + Java package rename).
 
@@ -152,6 +153,7 @@ def _nexacro_overlay_run(
         backed_up: list[str]      paths of .bak files created
         renamed_imports: int      count of files where package/import rewrite happened
         menu_warning: Optional[str]  user-facing schema mismatch message, None if OK
+        menu_skipped: Optional[str]  reason when menu injection was intentionally skipped (shell_mode)
         typedef_added: bool       True if a new <Service> was inserted
         conflicts: list[str]      conflicting files (only if overlay_force=False and a clash exists)
     """
@@ -165,6 +167,7 @@ def _nexacro_overlay_run(
         "backed_up": [],
         "renamed_imports": 0,
         "menu_warning": None,
+        "menu_skipped": None,
         "typedef_added": False,
         "conflicts": [],
         # Growth-8: relative path of emitted Export.xjs helper, or None
@@ -296,7 +299,15 @@ def _nexacro_overlay_run(
     # Step 4: Menu injection
     # -----------------------------------------------------------------------
     frame_login = target_dir / "nxui" / "packageN" / "frame" / "frameLogin.xfdl"
-    if not frame_login.exists():
+    if shell_mode != "none":
+        # Growth-19: Standalone shell renders its own frameLogin (login form only,
+        # no dsSample) and populates ds_menu in frameLeft from blueprint.entities
+        # via the shell adapter. dsSample-based menu injection is intentionally
+        # skipped — this is the documented contract, not a warning condition.
+        report["menu_skipped"] = (
+            f"shell_mode={shell_mode}: menu owned by shell adapter (ds_menu in frameLeft)"
+        )
+    elif not frame_login.exists():
         report["menu_warning"] = (
             f"frameLogin.xfdl not found at {frame_login}; skipping menu injection"
         )

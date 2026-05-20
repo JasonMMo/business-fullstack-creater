@@ -361,6 +361,155 @@ def test_md_without_one_to_many_relation_skips_component(tmp_path):
     assert report["react_components_written"] == []
 
 
+def test_d2_pattern_emits_grid_page(tmp_path):
+    """Gap 5: D2 entity emits <Pascal>D2Page.tsx with master grid + save."""
+    out = _make_out_dir(tmp_path)
+    target = tmp_path / "target"
+    entities = [{"name": "customer", "pattern": "D2"}]
+    react_overlay.run(
+        out_dir=out,
+        target_dir=target,
+        domain_slug="orders",
+        domain_label="주문",
+        service_pascal="Order",
+        blueprint_entities=entities,
+    )
+    page = (target / "frontend" / "src" / "pages" / "customer"
+            / "CustomerD2Page.tsx")
+    assert page.exists()
+    body = page.read_text(encoding="utf-8")
+    assert "CustomerD2Page" in body
+    assert "selectDataListMap" in body
+    assert "saveDataListMap" in body
+
+
+def test_f1_pattern_emits_form_page(tmp_path):
+    """Gap 5: F1 entity emits single-record form page."""
+    out = _make_out_dir(tmp_path)
+    target = tmp_path / "target"
+    entities = [{"name": "customer", "pattern": "F1"}]
+    react_overlay.run(
+        out_dir=out,
+        target_dir=target,
+        domain_slug="orders",
+        domain_label="주문",
+        service_pascal="Order",
+        blueprint_entities=entities,
+    )
+    page = (target / "frontend" / "src" / "pages" / "customer"
+            / "CustomerF1Page.tsx")
+    assert page.exists()
+    body = page.read_text(encoding="utf-8")
+    assert "CustomerF1Page" in body
+    assert "<form" in body
+
+
+def test_c1_pattern_emits_card_page(tmp_path):
+    """Gap 5: C1 entity emits card-grid page."""
+    out = _make_out_dir(tmp_path)
+    target = tmp_path / "target"
+    entities = [{"name": "customer", "pattern": "C1"}]
+    react_overlay.run(
+        out_dir=out,
+        target_dir=target,
+        domain_slug="orders",
+        domain_label="주문",
+        service_pascal="Order",
+        blueprint_entities=entities,
+    )
+    page = (target / "frontend" / "src" / "pages" / "customer"
+            / "CustomerC1Page.tsx")
+    assert page.exists()
+    body = page.read_text(encoding="utf-8")
+    assert "CustomerC1Page" in body
+    assert "card" in body.lower()
+
+
+def test_l2_pattern_emits_list_detail_page(tmp_path):
+    """Gap 5: L2 entity emits left-list + right-detail page."""
+    out = _make_out_dir(tmp_path)
+    target = tmp_path / "target"
+    entities = [{"name": "customer", "pattern": "L2"}]
+    react_overlay.run(
+        out_dir=out,
+        target_dir=target,
+        domain_slug="orders",
+        domain_label="주문",
+        service_pascal="Order",
+        blueprint_entities=entities,
+    )
+    page = (target / "frontend" / "src" / "pages" / "customer"
+            / "CustomerL2Page.tsx")
+    assert page.exists()
+    body = page.read_text(encoding="utf-8")
+    assert "CustomerL2Page" in body
+    assert "setSelected" in body
+    assert "detail" in body.lower()
+
+
+def test_ro_pattern_emits_readonly_page_with_csv(tmp_path):
+    """Gap 5: RO entity emits read-only page with CSV export button."""
+    out = _make_out_dir(tmp_path)
+    target = tmp_path / "target"
+    entities = [{"name": "customer", "pattern": "RO"}]
+    react_overlay.run(
+        out_dir=out,
+        target_dir=target,
+        domain_slug="orders",
+        domain_label="주문",
+        service_pascal="Order",
+        blueprint_entities=entities,
+    )
+    page = (target / "frontend" / "src" / "pages" / "customer"
+            / "CustomerROPage.tsx")
+    assert page.exists()
+    body = page.read_text(encoding="utf-8")
+    assert "CustomerROPage" in body
+    assert "exportToCsv" in body
+    # RO must NOT expose save button
+    assert "saveDataListMap" not in body
+
+
+def test_all_seven_patterns_reported_in_components_written(tmp_path):
+    """Gap 5: report.react_components_written must list all 7 supported patterns."""
+    out = _make_out_dir(tmp_path)
+    target = tmp_path / "target"
+    # Pre-populate endpoints for the entities below
+    mybatis = out / "3-mybatis"
+    payload = json.loads((mybatis / "endpoints.json").read_text("utf-8"))
+    for ename in ("e_d2", "e_f1", "e_c1", "e_l2", "e_ro", "e_md", "e_tr", "e_md_child"):
+        payload["endpoints"][ename] = {
+            "select_datalist_map": {"method": "POST", "path": f"/api/{ename}/select_datalist_map"},
+            "save_datalist_map": {"method": "POST", "path": f"/api/{ename}/save_datalist_map"},
+        }
+    (mybatis / "endpoints.json").write_text(json.dumps(payload), "utf-8")
+
+    entities = [
+        {"name": "e_d2", "pattern": "D2"},
+        {"name": "e_f1", "pattern": "F1"},
+        {"name": "e_c1", "pattern": "C1"},
+        {"name": "e_l2", "pattern": "L2"},
+        {"name": "e_ro", "pattern": "RO"},
+        {"name": "e_md", "pattern": "MD",
+         "relations": [{"from": "e_md", "to": "e_md_child",
+                        "cardinality": "1:N", "fk": {"column": "parent_id"}}]},
+        {"name": "e_md_child"},
+        {"name": "e_tr", "pattern": "TR",
+         "relations": [{"from": "e_tr", "to": "e_tr",
+                        "cardinality": "self", "fk": {"column": "parent_id"}}]},
+    ]
+    report = react_overlay.run(
+        out_dir=out,
+        target_dir=target,
+        domain_slug="orders",
+        domain_label="주문",
+        service_pascal="Order",
+        blueprint_entities=entities,
+    )
+    patterns_seen = sorted({c["pattern"] for c in report["react_components_written"]})
+    assert patterns_seen == ["C1", "D2", "F1", "L2", "MD", "RO", "TR"]
+
+
 def test_dispatch_via_registry(tmp_path):
     out = _make_out_dir(tmp_path)
     target = tmp_path / "target"

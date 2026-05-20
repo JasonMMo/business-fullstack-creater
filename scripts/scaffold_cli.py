@@ -166,6 +166,31 @@ def _build_parser() -> argparse.ArgumentParser:
         dest="shell_app_id",
         help="branding.app_id passed to the shell adapter (default: packageN).",
     )
+    p.add_argument(
+        "--auth-mode",
+        choices=("none", "session", "jwt", "oauth2"),
+        default="none",
+        dest="auth_mode",
+        help=(
+            "Growth-21a: SHELL Spring Security auth bundle. "
+            "'none' (default) emits no auth classes. "
+            "'session' = form-login + BCrypt + JDBC UserDetailsService. "
+            "'jwt' = session + JwtTokenProvider (Bearer). "
+            "'oauth2' = jwt + OAuth2 starter + JIT provisioning."
+        ),
+    )
+    p.add_argument(
+        "--auth-lane",
+        choices=("jakarta", "javax"),
+        default="jakarta",
+        dest="auth_lane",
+        help=(
+            "Growth-23: SHELL auth bundle servlet flavor. "
+            "'jakarta' (default) = Spring Security 6 + jakarta.servlet. "
+            "'javax' = Spring Security 5 + javax.servlet. "
+            "Ignored when --auth-mode=none."
+        ),
+    )
     return p
 
 
@@ -225,6 +250,8 @@ def main(argv=None):
             pathlib.Path(a.nexacrolib_from).resolve() if a.nexacrolib_from else None
         ),
         shell_app_id=a.shell_app_id,
+        auth_mode=a.auth_mode,
+        auth_lane=a.auth_lane,
     )
 
     try:

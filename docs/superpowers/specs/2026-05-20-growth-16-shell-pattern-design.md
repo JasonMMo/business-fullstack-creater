@@ -95,11 +95,11 @@ scaffold_cli --ui nexacro-shell --shell-mode MDI
 ```yaml
 shell:
   kind: SHELL            # 고정값
-  variant: MDI           # MDI | SDI
+  variant: MDI           # MDI | SDI | <사용자 등록 variant id>
   title: 배송관리 시스템
   login:
     enabled: true        # false면 frameLogin 생략 + frameMain 직진입
-    template: minimal    # minimal | none | (향후 oauth)
+    template: minimal    # minimal | none | <등록된 login template id>
   menu:
     root_label: 업무 메뉴
     domains:
@@ -108,10 +108,33 @@ shell:
         sort: 10
         entities: [delivery, courier, delivery_tracking]
       # 미지정 시 _blueprint.yaml 의 entities 에서 domain 별로 자동 그룹핑
+    extensions:                    # 성장 슬롯: 도메인 외 사용자 정의 메뉴 행
+      - id: dashboard
+        label: 대시보드
+        sort: 5
+        target: nxui/packageN/_custom_/dashboard.xfdl   # 사용자 작성 form
+      - id: settings
+        label: 설정
+        sort: 999
+        target: nxui/packageN/_custom_/settings.xfdl
+  typedef:                         # 성장 슬롯: 14-endpoint 외 커스텀 service
+    extra_services:
+      - prefixid: report
+        url: /uiadapter/report/
+      - prefixid: external
+        url: https://api.partner.example.com/
+  frame_overrides:                 # 성장 슬롯: 사용자 frame 으로 교체
+    frame_top: ./local_frames/my_top.xfdl     # project-local 우선
+    # frame_left: ... (지정 시 SHELL 의 frame_left.xfdl.j2 무시)
   branding:
     header_text: My Company
     favicon: null
 ```
+
+**확장 슬롯 정책**:
+- `menu.extensions` 는 자동 메뉴 트리에 merge (sort 키로 정렬)
+- `typedef.extra_services` 는 합성된 `<Services>` 노드에 append
+- `frame_overrides` 는 frame 렌더 우선순위: **project local > skill local > global catalog**
 
 `shell:` 블록이 없으면 다음 기본값 추론:
 - variant: MDI
@@ -124,27 +147,64 @@ shell:
 pattern: SHELL
 kind: shell                    # 기존 entity-level pattern 과 구분
 applies_to: project            # entity 가 아닌 project 단위
+extensible: true               # 성장 슬롯: 사용자 등록 variant 허용
 variants:
   - id: MDI
     display: Multi-Document Interface
     frames: [frame_main, frame_mdi, frame_left, frame_top, frame_login]
+    builtin: true
   - id: SDI
     display: Single-Document Interface
     frames: [frame_main, frame_sdi, frame_left, frame_top, frame_login]
+    builtin: true
+  # 사용자 등록 variant 예시 (다음 프로젝트가 contribute 또는 local 등록)
+  # - id: TAB
+  #   display: Tabbed Workspace
+  #   frames: [frame_main, frame_tab, frame_left, frame_top, frame_login]
+  #   builtin: false
+  #   source: project-local | skill-local | global-catalog
 inputs:
   required: [blueprint.entities, blueprint.shell.menu]
-  optional: [blueprint.shell.login, blueprint.shell.branding]
+  optional: [blueprint.shell.login, blueprint.shell.branding, blueprint.shell.frame_overrides]
 outputs:
   - nxui/packageN/frame/*.xfdl
   - nxui/packageN/typedefinition.xml
   - nxui/packageN/packageN.xadl
 version: 1
+migration:
+  # frame_signature 가 변경되어 v2 가 필요한 경우 정책
+  policy: "blueprint.shell.manifest_version 명시 시 그 버전 강제, 미지정 시 최신"
+  v1_to_v2_breaking:
+    # 향후 v2 도입 시 채워질 호환 깨지는 frame 목록 (현재는 빈)
+    - placeholder
 ```
+
+**Variant 확장 절차** (사용자가 신규 variant 등록):
+1. (local) `<project>/.karpathy-rdb-nexacro/patterns/SHELL/variants/<ID>/` 에 `frame_*.xfdl.j2` 작성 + manifest entry 추가
+2. (global) `/karpathy-rdb-nexacro contribute --kind shell-variant <ID>` 로 skill 패턴에 환류 (Phase 후속)
+3. dispatch 시 우선순위: **project local > skill local > global catalog**
 
 ### 3-5. Pattern_loader 확장
 기존 `pattern_loader.resolve(name)` 은 entity-level pattern 만 다룸. SHELL 은 다음과 같이 구분:
 - `pattern_loader.resolve_shell(variant: str)` — 신규 함수, manifest.yaml 로드 + variant 검증 + frame 목록 반환.
+- variant 미발견 시 fallback: project local → skill local → global catalog 순회.
 - 엔티티 pattern resolve 경로는 unchanged.
+
+### 3-6. Entity ↔ Shell Wiring (성장 슬롯)
+
+SHELL 은 entity 패턴(D2/F1/C1/L2/MD/TR/RO) 과 다음과 같이 연결:
+
+| 트리거 | MDI 동작 | SDI 동작 |
+|---|---|---|
+| 사용자가 frame_left 메뉴에서 entity 클릭 | 신규 work tab 으로 entity 의 기본 패턴 xfdl open (frameMDI 영역) | frame_main 의 work 영역 swap (이전 form unload) |
+| entity 의 기본 패턴 결정 | `blueprint.entities[*].pattern` (이미 존재) 그대로 사용 | 동일 |
+| L2 master-detail 패턴 entity | 단일 work tab 안에서 leftPane + detail | 단일 work 영역 안에서 좌우 split |
+| MD 멀티-detail | 탭 그리드 1개 + detail | 동일 |
+
+**Wiring 정의 위치**: `SHELL/manifest.yaml` 에 `entity_open_strategy:` 신규 필드(향후 v2).
+**현재 v1**: 하드코딩된 strategy = "open as work tab in MDI / replace work area in SDI". 사용자 override 는 `blueprint.shell.menu.entities[*].open_as` 로 (예: `open_as: dialog`).
+
+이 wiring 이 명시되어야 entity 패턴이 추가될 때 SHELL 패턴이 자동으로 그 entity 를 메뉴 + open 동작에 흡수할 수 있다 — **3축 복리식 성장에서 Frontend 축의 누적 효과**.
 
 ## 4. 변경 영향도 (Blast Radius)
 
@@ -190,6 +250,7 @@ version: 1
 | R4 | SHELL 패턴이 entity 패턴과 혼동 | resolve 충돌 | `kind: shell` + `applies_to: project` 로 구분. `resolve_shell` 별도 함수 |
 | R5 | SDI variant 적용 가능 도메인이 명확하지 않음 | 활용도 저하 | Phase 1 에서는 MDI 우선 구현, SDI 는 manifest 만 + Phase 2 에서 골든 |
 | R6 | 한국어 디렉터리명 (배송관리) → WAR 빌드 시 인코딩 이슈 | mvn 실패 | 이미 v0.4.2 G3 에서 검증됨 (Korean-domain golden 통과). 동일 path 처리 재사용 |
+| R7 | nexacroN-fullstack starter 가 향후 정책 변경(예: 14→16 endpoint) 시 SHELL 의 typedef extra_services 와 충돌 | runtime endpoint 미스매치 | (a) `SHELL/manifest.yaml` 에 `compatible_starter_version: ">=1.x"` 명시. (b) starter freeze tag(v0.x) 와 SHELL manifest 의 호환성 매트릭스를 `docs/compat-matrix.md` 로 누적. (c) `--ui nexacro-shell` 은 starter 와 독립이므로 정책 변경의 직접 영향은 없으나, merge 회귀 fixture 가 starter 버전 변경을 감지하면 알람 |
 
 ## 7. 결정과 트레이드오프 (Decisions)
 
@@ -220,16 +281,16 @@ version: 1
 
 상세 plan 은 `2026-05-20-growth-16-shell-pattern-plan.md` 에서 정의. 본 spec 은 phase 윤곽만:
 
-| Phase | 산출물 | Gate |
-|---|---|---|
-| P1 | SHELL/manifest.yaml + frame_*.xfdl.j2 (MDI) + pattern_loader.resolve_shell | pytest: resolve_shell 단위 + 7 패턴 회귀 0 |
-| P2 | nexacro_shell_overlay.py + ui_overlay_registry 등록 + 단위 테스트 | pytest: overlay 단위 + 기존 nexacro adapter 회귀 0 |
-| P3 | scaffold_orchestrator + scaffold_cli --shell-mode wiring | pytest: CLI 인자 파싱 + 기존 --ui nexacro 회귀 0 |
-| P4 | 배송관리 1도메인 standalone golden E2E (xfdl/typedef/packageN.xadl byte diff) | mvn package WAR 빌드 성공 (옵션) |
-| P5 | SDI variant manifest 등록 + golden | pytest: SDI 골든 통과 |
-| P6 | blueprint-spec.md (`shell:` 블록) + USER-GUIDE.md + 5축 자체 리뷰 | 평균 ≥ 4 PASS |
+| Phase | 산출물 | Gate | 미니 5축 예측 (1·2·3·4·5) |
+|---|---|---|---|
+| P1 | SHELL/manifest.yaml + frame_*.xfdl.j2 (MDI) + pattern_loader.resolve_shell | pytest: resolve_shell 단위 + 7 패턴 회귀 0 | 3·3·5·2·5 (자산 신규, WAR 미완) |
+| P2 | nexacro_shell_overlay.py + ui_overlay_registry 등록 + 단위 테스트 | pytest: overlay 단위 + 기존 nexacro adapter 회귀 0 | 4·3·4·3·5 |
+| P3 | scaffold_orchestrator + scaffold_cli --shell-mode wiring | pytest: CLI 인자 파싱 + 기존 --ui nexacro 회귀 0 | 4·3·3·3·5 |
+| P4 | 배송관리 1도메인 standalone golden E2E (xfdl/typedef/packageN.xadl byte diff) | mvn package WAR 빌드 성공 (옵션) | 5·5·4·5·5 |
+| P5 | SDI variant manifest 등록 + golden | pytest: SDI 골든 통과 | 5·5·5·5·5 |
+| P6 | blueprint-spec.md (`shell:` 블록) + USER-GUIDE.md + 5축 자체 리뷰 | 평균 ≥ 4 PASS | 5·5·5·4·5 |
 
-각 Phase 종료 시 5축 자체 리뷰 + per-file commit.
+각 Phase 종료 시 5축 자체 리뷰(미니) 수행 — 평균 < 3 발견 시 다음 Phase 진입 전 멈추고 보고. Per-file commit 필수.
 
 ## 9. 5축 자체 리뷰 예측 (CLAUDE.md 기준)
 
@@ -261,6 +322,12 @@ V8. 5축 자체 리뷰 평균 ≥ 3.
 - F3. 다국어 메뉴 라벨 (현재는 도메인 라벨 단일)
 - F4. Theme/branding 풀 지원 (현재는 header_text + favicon 만)
 - F5. React shell pattern (`ui="react-shell"`) — 동일 SHELL/manifest.yaml 의 frame 정의를 React 페이지로 렌더
+- F6. **`/karpathy-rdb-nexacro contribute --kind shell` 의 글로벌 카탈로그 승급 경로**:
+  - 사용자가 신규 SHELL variant 또는 frame_override 를 project-local 에 작성
+  - `contribute --kind shell-variant <ID>` 또는 `contribute --kind frame-override <name>` 으로 skill 패턴 디렉터리로 환류
+  - skill 누적이 일정 임계치(예: 동일 variant 가 3 프로젝트 이상에서 등장) 도달 시 글로벌 카탈로그로 promote
+  - 이 경로가 있어야 SHELL 패턴이 "한번 만들고 끝" 이 아닌 **3축 복리식 성장의 Frontend 축 실체** 가 됨
+  - Phase 후속(별도 spec) 으로 다룸 — 본 spec scope 아님
 
 ## 12. 참조
 

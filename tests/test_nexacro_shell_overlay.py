@@ -204,3 +204,81 @@ def test_shell_overlay_extra_services_appended(tmp_path):
     )
     assert 'prefixid="auth"' in td
     assert 'url="./services/auth/"' in td
+
+
+# --- Growth-18: dialect-aware shell scaffolding ---------------------------
+
+
+def _build_kwargs(tmp_path: pathlib.Path, dialect: str) -> dict:
+    kwargs = _common_kwargs(tmp_path)
+    kwargs["target_pkg_prefix"] = "com.acme.shipping"
+    kwargs["maven_group_id"] = "com.acme"
+    kwargs["maven_artifact_id"] = "shipping-shell"
+    kwargs["maven_version"] = "0.2.0-SNAPSHOT"
+    kwargs["dialect"] = dialect
+    return kwargs
+
+
+def test_shell_overlay_hsqldb_default_keeps_legacy_datasource(tmp_path):
+    """No `dialect` kwarg should preserve historical HSQLDB output (back-compat)."""
+    kwargs = _common_kwargs(tmp_path)
+    kwargs["target_pkg_prefix"] = "com.acme.shipping"
+    kwargs["maven_group_id"] = "com.acme"
+    kwargs["maven_artifact_id"] = "shipping-shell"
+    ui_overlay_registry.dispatch("nexacro-shell", **kwargs)
+    yml = (tmp_path / "src" / "main" / "resources" / "application.yml").read_text(encoding="utf-8")
+    assert "jdbc:hsqldb:mem:shipping" in yml
+    assert "org.hsqldb.jdbc.JDBCDriver" in yml
+    assert "mode: always" in yml
+    pom = (tmp_path / "pom.xml").read_text(encoding="utf-8")
+    assert "<artifactId>hsqldb</artifactId>" in pom
+    assert "<groupId>org.hsqldb</groupId>" in pom
+
+
+def test_shell_overlay_postgres_dialect_emits_postgres_yml_and_pom(tmp_path):
+    """The contract bug Growth-18 caught — `--dialect postgres` MUST flow into
+    application.yml AND pom.xml. Otherwise the rendered scaffold ships an
+    hsqldb-only Spring Boot app even though Stage 2 emitted Postgres DDL."""
+    ui_overlay_registry.dispatch("nexacro-shell", **_build_kwargs(tmp_path, "postgres"))
+    yml = (tmp_path / "src" / "main" / "resources" / "application.yml").read_text(encoding="utf-8")
+    assert "jdbc:postgresql://localhost:5432/shipping" in yml
+    assert "org.postgresql.Driver" in yml
+    assert "username: postgres" in yml
+    # mode: embedded is the safe default for real DBs (user owns migrations)
+    assert "mode: embedded" in yml
+    # No HSQLDB JDBC residue (comment text about HSQLDB is fine)
+    assert "jdbc:hsqldb" not in yml.lower()
+    assert "org.hsqldb.jdbc.jdbcdriver" not in yml.lower()
+
+    pom = (tmp_path / "pom.xml").read_text(encoding="utf-8")
+    assert "<groupId>org.postgresql</groupId>" in pom
+    assert "<artifactId>postgresql</artifactId>" in pom
+    assert "<postgresql.version>" in pom
+    # No HSQLDB driver dep should be left over
+    assert "<artifactId>hsqldb</artifactId>" not in pom
+
+
+def test_shell_overlay_mysql_dialect_emits_mysql_yml_and_pom(tmp_path):
+    ui_overlay_registry.dispatch("nexacro-shell", **_build_kwargs(tmp_path, "mysql"))
+    yml = (tmp_path / "src" / "main" / "resources" / "application.yml").read_text(encoding="utf-8")
+    assert "jdbc:mysql://localhost:3306/shipping" in yml
+    assert "com.mysql.cj.jdbc.Driver" in yml
+    assert "mode: embedded" in yml
+    assert "jdbc:hsqldb" not in yml.lower()
+
+    pom = (tmp_path / "pom.xml").read_text(encoding="utf-8")
+    assert "<groupId>com.mysql</groupId>" in pom
+    assert "<artifactId>mysql-connector-j</artifactId>" in pom
+    assert "<mysql.connector.version>" in pom
+    assert "<artifactId>hsqldb</artifactId>" not in pom
+
+
+def test_shell_overlay_unknown_dialect_falls_back_to_hsqldb(tmp_path):
+    """Defensive: unknown dialect string should not crash — fall back to hsqldb
+    (the legacy default). The Stage 2 CLI already constrains choices, so this
+    only fires if a programmatic caller passes garbage."""
+    ui_overlay_registry.dispatch(
+        "nexacro-shell", **_build_kwargs(tmp_path, "snowflake")
+    )
+    yml = (tmp_path / "src" / "main" / "resources" / "application.yml").read_text(encoding="utf-8")
+    assert "jdbc:hsqldb:mem:shipping" in yml

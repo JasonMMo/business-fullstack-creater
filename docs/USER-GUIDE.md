@@ -663,6 +663,62 @@ shipping-app/
 
 ---
 
+### 3.7 Growth-17 — standalone shell 을 진짜 buildable 프로젝트로
+
+3.6 의 standalone shell 은 **frontend 자산만** 떨어졌다. 실제 `mvn package` 까지 한 번에 가도록 세 가지 보강이 들어갔다.
+
+**Growth-17a — frame filename casing 계약 (Linux WAR 안전):**
+- `frame_mdi` 템플릿 키는 항상 `frameMDI.xfdl` 로 렌더 (소문자 `frameMdi` 금지)
+- Windows 는 case-insensitive 라 통과하지만, Linux WAR 배포 시 `frameMain.xfdl` 안의 `work_frame="frameMDI"` 참조가 깨진다 — 회귀 테스트로 잠금
+
+**Growth-17b — Maven 빌드 디스크립터 4종 자동 생성:**
+
+SHELL manifest 의 `build:` 섹션이 다음 4 파일을 프로젝트 루트에 렌더한다:
+
+| 파일 | 역할 |
+| :-- | :-- |
+| `pom.xml` | Spring Boot 3.3.5 + jakarta uiadapter + tobesoft-snapshots Nexus. `nxui/packageN` 을 `static/packageN` 으로 Boot static resource 로 번들. `{{*}}` Maven custom delimiter 로 `BACKEND_URL` 치환 지원 |
+| `src/main/java/{pkg_path}/Application.java` | `@SpringBootApplication` + `@MapperScan("{target_pkg_prefix}.{domain_slug}.mapper")` — Stage 3 매퍼 인터페이스가 `@Mapper` annotation 없이 등록되도록 |
+| `src/main/resources/application.yml` | HSQLDB in-memory + mybatis `mapper-locations: classpath:mybatis/mapper/**/*.xml` + uiadapter context-path `/uiadapter` |
+| `src/main/java/{pkg_path}/{domain_slug}/domain/NexacroBase.java` | Stage 3 nexacro-lane POJO 들이 `extends NexacroBase` (import 없는 same-package 참조) 하므로 **같은 패키지에** 위치해야 한다. `DataSetRowTypeAccessor` 구현 — uiadapter 가 `_RowType_` per row 보존 |
+
+**Growth-17c — `mvn package` 1회 실빌드 스모크:**
+
+배송관리 standalone shell scaffold 위에서 실제 `mvn package` 를 돌려 fat-jar 생성을 검증. 스모크 도중 다음 3개 contract bug 가 발견·수정됨:
+1. `NexacroBase.java` 미생성 → 4× `cannot find symbol`
+2. `application.yml` `mapper-locations` 가 실제 emit 경로(`mybatis/mapper/`)와 불일치
+3. `data-locations: classpath:data.sql` 가 standalone flow 에서 없는 파일을 참조 → Boot 시작 실패
+
+**스모크 명령:**
+```powershell
+# 0. scaffold (Growth-16 명령 그대로)
+python scripts/scaffold_cli.py --domain "배송관리" --preset "배송관리" `
+  --package com.acme.shipping --service-name Shipping --dialect hsqldb `
+  --out .\shipping-scaffold --target-project .\shipping-app `
+  --shell-mode MDI --target-package-prefix com.acme.shipping
+
+# 1. 실빌드
+cd .\shipping-app
+mvn -B -DskipTests package
+
+# 2. fat-jar 확인 (Spring Boot repackaged)
+ls .\target\shipping-shell-*-SNAPSHOT.jar       # ~50 MB
+ls .\target\shipping-shell-*-SNAPSHOT.jar.original  # ~40 KB (pre-repackage)
+
+# 3. 실행
+java -jar .\target\shipping-shell-0.1.0-SNAPSHOT.jar
+# → http://localhost:8080/uiadapter/  (REST + nxui 정적 자원 same-origin)
+```
+
+**검증 포인트 (fat-jar 내부):**
+```
+BOOT-INF/classes/com/acme/shipping/Application.class                       # Boot main
+BOOT-INF/classes/com/acme/shipping/shipping/domain/NexacroBase.class       # 컴파일 통과 증거
+BOOT-INF/classes/static/packageN/frame/frameMDI.xfdl                       # nxui 번들
+```
+
+---
+
 ## 4. 통합 — Stage 3+4 → nexacro-fullstack-starter overlay
 
 핸드오프 계약 전문은 [`needs/Plugin참조/3. Middle+Frontend - Stage 3→4 nexacro 핸드오프 계약.md`](../needs/Plugin%EC%B0%B8%EC%A1%B0/3.%20Middle%2BFrontend%20-%20Stage%203%E2%86%924%20nexacro%20%ED%95%B8%EB%93%9C%EC%98%A4%ED%94%84%20%EA%B3%84%EC%95%BD.md) 참조.

@@ -133,3 +133,91 @@ def test_pascalcase_to_kebab_naming():
     assert live_overlay._pascal_to_kebab("AccountMapper.xml") == "account-mapper.xml"
     assert live_overlay._pascal_to_kebab("JournalEntryMapper.xml") == "journalentry-mapper.xml"
     assert live_overlay._pascal_to_kebab("LedgerEntryMapper.xml") == "ledgerentry-mapper.xml"
+
+
+# ---- Growth-36: Stage 3 actual layout (com.nexacro.uiadapter.<slug> + 3-mybatis/resources/) ----
+
+@pytest.fixture
+def stage3_scaffold(tmp_path):
+    """Mirror real Stage 3 layout: com.nexacro.uiadapter.<slug>, sql under 3-mybatis/resources."""
+    scaffold = tmp_path / "sales-growth33-javax"
+    java_root = scaffold / "3-mybatis" / "src" / "main" / "java" / "com" / "nexacro" / "uiadapter" / "sales"
+    (java_root / "controller").mkdir(parents=True)
+    (java_root / "controller" / "LeadController.java").write_text(
+        "package com.nexacro.uiadapter.sales.controller;\npublic class LeadController {}\n",
+        encoding="utf-8",
+    )
+    (java_root / "domain").mkdir()
+    (java_root / "domain" / "Lead.java").write_text(
+        "package com.nexacro.uiadapter.sales.domain;\npublic class Lead {}\n",
+        encoding="utf-8",
+    )
+    res = scaffold / "3-mybatis" / "src" / "main" / "resources"
+    res.mkdir(parents=True)
+    (res / "schema.sql").write_text("CREATE TABLE lead (id BIGINT IDENTITY PRIMARY KEY);\n", encoding="utf-8")
+    (res / "data.sql").write_text("INSERT INTO lead(id) VALUES(0);\n", encoding="utf-8")
+    mapper_dir = res / "mybatis" / "mapper"
+    mapper_dir.mkdir(parents=True)
+    (mapper_dir / "LeadMapper.xml").write_text(
+        "<?xml version='1.0'?><mapper namespace='com.nexacro.uiadapter.sales.mapper.LeadMapper'/>",
+        encoding="utf-8",
+    )
+    return scaffold
+
+
+def test_derive_domain_slug_from_nexacro_package(stage3_scaffold):
+    assert live_overlay.derive_domain_slug(stage3_scaffold) == "sales"
+
+
+def test_derive_domain_slug_returns_none_when_absent(tmp_path):
+    empty = tmp_path / "empty"
+    (empty / "3-mybatis" / "src" / "main" / "java" / "com" / "nexacro" / "uiadapter").mkdir(parents=True)
+    assert live_overlay.derive_domain_slug(empty) is None
+
+
+def test_discover_scaffold_auto_derives_slug(stage3_scaffold):
+    plan = live_overlay.discover_scaffold(stage3_scaffold)
+    assert plan.domain_slug == "sales"
+    assert plan.schema_sql.exists() and "3-mybatis" in str(plan.schema_sql)
+    assert plan.data_sql.exists() and "3-mybatis" in str(plan.data_sql)
+    assert plan.mapper_xml_dir.exists() and plan.mapper_xml_dir.name == "mapper"
+    assert plan.java_src.exists()
+    java_files = list(plan.java_src.rglob("*.java"))
+    assert any(f.name == "LeadController.java" for f in java_files)
+
+
+def test_discover_scaffold_prefers_stage3_sql_over_2ddl(tmp_path):
+    """When BOTH 2-ddl/schema.sql and 3-mybatis/.../schema.sql exist, Stage 3 wins."""
+    scaffold = tmp_path / "dual"
+    java_root = scaffold / "3-mybatis" / "src" / "main" / "java" / "com" / "nexacro" / "uiadapter" / "finance"
+    java_root.mkdir(parents=True)
+    (java_root / "Dummy.java").write_text("package com.nexacro.uiadapter.finance;class Dummy{}", encoding="utf-8")
+    res = scaffold / "3-mybatis" / "src" / "main" / "resources"
+    res.mkdir(parents=True)
+    (res / "schema.sql").write_text("-- stage3\n", encoding="utf-8")
+    (res / "data.sql").write_text("-- stage3\n", encoding="utf-8")
+    (res / "mybatis" / "mapper").mkdir(parents=True)
+    ddl = scaffold / "2-ddl"
+    ddl.mkdir()
+    (ddl / "schema.sql").write_text("-- stage2\n", encoding="utf-8")
+    (ddl / "data.sql").write_text("-- stage2\n", encoding="utf-8")
+    plan = live_overlay.discover_scaffold(scaffold)
+    assert plan.schema_sql.read_text(encoding="utf-8") == "-- stage3\n"
+    assert plan.data_sql.read_text(encoding="utf-8") == "-- stage3\n"
+
+
+def test_discover_scaffold_explicit_slug_still_supported(fake_scaffold):
+    """Back-compat: explicit slug param keeps legacy com.example.<slug> path."""
+    plan = live_overlay.discover_scaffold(fake_scaffold, "finance")
+    assert plan.domain_slug == "finance"
+    assert "com" in str(plan.java_src)
+
+
+def test_discover_scaffold_raises_when_slug_cannot_be_derived(tmp_path):
+    """No Stage 3 java tree → cannot derive → explicit error (no silent fallback)."""
+    scaffold = tmp_path / "no-java"
+    (scaffold / "2-ddl").mkdir(parents=True)
+    (scaffold / "2-ddl" / "schema.sql").write_text(";", encoding="utf-8")
+    (scaffold / "2-ddl" / "data.sql").write_text(";", encoding="utf-8")
+    with pytest.raises(ValueError, match="domain slug"):
+        live_overlay.discover_scaffold(scaffold)

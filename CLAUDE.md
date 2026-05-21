@@ -37,10 +37,10 @@
 
 | # | 계층 | 검증 방법 | 빠지면 못 잡는 것 |
 |---|---|---|---|
-| 1 | **단위 (pytest)** | 각 레포 `pytest` 그린 | 로직 회귀 |
-| 2 | **JDBC 스모크** | dialect별 (a) schema apply, (b) seed insert, (c) FK/CHECK 위반 시도, (d) **도메인 invariant** 검증(예: 재무 double-entry, 주문 합계, audit 무결성) — HSQLDB 인-메모리로 충분 | dialect 컨트랙트(HSQLDB IDENTITY 0-base 트랩 §3.11) + 도메인 규칙 위반 |
-| 3 | **Maven 빌드** | Stage 3+5 산출물이 실제 `mvn -q package` 통과 | annotation/패키지/Jakarta vs javax import 깨짐 |
-| 4 | **라이브 WAS 스모크** | runner 위에서 기동 → endpoint POST → **HTTP 200 + ErrorCode=0 + 기대 dataset 행수** 동시 확인. `/full-test <lane>` 의 L4 단계가 `live_overlay`+`live_runner`+`live_probe` 로 자동 수행 (Growth-35). 절차/판정: USER-GUIDE §3.12 | lane × MyBatis × NexacroResult 직렬화 스택 깨짐, 컨테이너 응답 수준 dialect 영향(예: ID=0 payload 노출) |
+| 1 | **단위 (pytest)** | 각 레포 `pytest` 그린. sibling repo 0 개 발견 시 silent True 금지 — **FAIL** 처리(Growth-37) | 로직 회귀, worktree/sandbox 갭 |
+| 2 | **JDBC 스모크** | dialect별 (a) schema apply, (b) seed insert, (c) FK/CHECK 위반 시도, (d) **도메인 invariant** 검증(예: 재무 double-entry, 주문 합계, audit 무결성) — HSQLDB 인-메모리. `HSQLDB_JAR` env 부재 시 **SKIP=PASS**(Growth-37) | dialect 컨트랙트(HSQLDB IDENTITY 0-base 트랩 §3.11) + 도메인 규칙 위반 |
+| 3 | **Maven 빌드** | Stage 3+5 산출물이 실제 `mvn -q package` 통과. pom 탐색은 `5-overlay/pom.xml` → `3-mybatis/pom.xml` → root 순(Growth-38) — Stage 3-only scaffold 도 빌드 가능 | annotation/패키지/Jakarta vs javax import 깨짐 |
+| 4 | **라이브 WAS 스모크** | runner 위에서 기동 → endpoint **lane-aware** 호출(nexacro 는 POST envelope, jakarta/javax/vanilla 는 GET JSON) → **HTTP 200 + ErrorCode=0(또는 JSON list) + 기대 dataset 행수** 동시 확인. `/full-test <lane>` 의 L4 단계가 `live_overlay`+`live_runner`+`live_probe` 로 자동 수행(Growth-35~38). 잘못된 lane 은 진입 즉시 `ValueError`, post-ready 바인드 지연 자동 retry. 절차/판정: USER-GUIDE §3.12 | lane × MyBatis × NexacroResult 직렬화 스택 깨짐, 컨테이너 응답 수준 dialect 영향(예: ID=0 payload 노출) |
 
 **판정 규칙 (4단계 라벨링):**
 - 4계층 모두 PASS → **"풀테스트 그린"**

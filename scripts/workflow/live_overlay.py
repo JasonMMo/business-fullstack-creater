@@ -32,25 +32,84 @@ class OverlayResult:
     files_edited: list[Path] = field(default_factory=list)
 
 
-def discover_scaffold(scaffold_dir: Path, domain_slug: str) -> OverlayPlan:
-    """Walk scaffold output (Stage 2 DDL + Stage 3 mybatis) for the given domain."""
+_RESERVED_SUBPKGS = {"controller", "service", "mapper", "domain", "config", "dto", "vo", "util", "impl"}
+
+
+def derive_domain_slug(scaffold_dir: Path) -> str | None:
+    """Find unique sub-package under com.nexacro.uiadapter (Stage 3 actual layout).
+
+    Stage 3 emits `com.nexacro.uiadapter.<slug>.{controller,service,mapper,domain}`.
+    Returns the unique <slug> directory name, or None if not derivable.
+    """
+    base = Path(scaffold_dir) / "3-mybatis" / "src" / "main" / "java" / "com" / "nexacro" / "uiadapter"
+    if not base.exists():
+        return None
+    candidates = [
+        d.name for d in base.iterdir()
+        if d.is_dir() and d.name not in _RESERVED_SUBPKGS and not d.name.startswith(".")
+    ]
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
+def _find_sql(scaffold_dir: Path, name: str) -> Path | None:
+    """Try Stage 3 resources first, fall back to legacy 2-ddl/."""
+    for candidate in (
+        scaffold_dir / "3-mybatis" / "src" / "main" / "resources" / name,
+        scaffold_dir / "2-ddl" / name,
+    ):
+        if candidate.exists():
+            return candidate
+    return None
+
+
+def _find_java_src(scaffold_dir: Path, slug: str) -> Path:
+    """Stage 3 actual = com.nexacro.uiadapter.<slug>; legacy fixture = com.example.<slug>."""
+    stage3 = (scaffold_dir / "3-mybatis" / "src" / "main" / "java"
+              / "com" / "nexacro" / "uiadapter" / slug)
+    if stage3.exists():
+        return stage3
+    return (scaffold_dir / "3-mybatis" / "src" / "main" / "java"
+            / "com" / "example" / slug)
+
+
+def _find_mapper_xml_dir(scaffold_dir: Path) -> Path:
+    """Stage 3 actual = mybatis/mapper (singular); legacy fixture = mybatis/mappers."""
+    res = scaffold_dir / "3-mybatis" / "src" / "main" / "resources"
+    for sub in ("mapper", "mappers"):
+        candidate = res / "mybatis" / sub
+        if candidate.exists():
+            return candidate
+    return res / "mybatis" / "mappers"
+
+
+def discover_scaffold(scaffold_dir: Path, domain_slug: str | None = None) -> OverlayPlan:
+    """Walk scaffold output (Stage 2 DDL + Stage 3 mybatis) for the given (or derived) domain.
+
+    Slug resolution: explicit arg wins; else parse `com.nexacro.uiadapter.<slug>` from Stage 3.
+    SQL resolution: prefer `3-mybatis/src/main/resources/{schema,data}.sql`, fall back to `2-ddl/`.
+    """
     scaffold_dir = Path(scaffold_dir)
-    schema_sql = scaffold_dir / "2-ddl" / "schema.sql"
-    if not schema_sql.exists():
-        raise FileNotFoundError(f"schema.sql not found at {schema_sql}")
-    data_sql = scaffold_dir / "2-ddl" / "data.sql"
-    if not data_sql.exists():
-        raise FileNotFoundError(f"data.sql not found at {data_sql}")
-    java_src = (scaffold_dir / "3-mybatis" / "src" / "main" / "java"
-                / "com" / "example" / domain_slug)
-    mapper_xml_dir = (scaffold_dir / "3-mybatis" / "src" / "main" / "resources"
-                     / "mybatis" / "mappers")
+    if domain_slug is None:
+        domain_slug = derive_domain_slug(scaffold_dir)
+        if domain_slug is None:
+            raise ValueError(
+                f"could not derive domain slug from {scaffold_dir} — no unique sub-package "
+                "under 3-mybatis/.../com/nexacro/uiadapter/. Pass slug explicitly."
+            )
+    schema_sql = _find_sql(scaffold_dir, "schema.sql")
+    if schema_sql is None:
+        raise FileNotFoundError(f"schema.sql not found under {scaffold_dir} (checked 3-mybatis/resources and 2-ddl)")
+    data_sql = _find_sql(scaffold_dir, "data.sql")
+    if data_sql is None:
+        raise FileNotFoundError(f"data.sql not found under {scaffold_dir} (checked 3-mybatis/resources and 2-ddl)")
     return OverlayPlan(
         domain_slug=domain_slug,
         schema_sql=schema_sql,
         data_sql=data_sql,
-        mapper_xml_dir=mapper_xml_dir,
-        java_src=java_src,
+        mapper_xml_dir=_find_mapper_xml_dir(scaffold_dir),
+        java_src=_find_java_src(scaffold_dir, domain_slug),
     )
 
 

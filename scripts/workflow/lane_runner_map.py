@@ -42,7 +42,22 @@ def lane_probe_url(lane: str, port: int, entity: str) -> str:
     return f"http://localhost:{port}/api/{entity}"
 
 
-# Growth-40: CRUD round-trip via REST bulk-save (POST `/api/<entity>` with _rowType).
-# Nexacro envelope CRUD (dsInsert/dsDelete payload) is deferred to a follow-up Growth.
+# Growth-40/42: CRUD round-trip dispatch.
+#   REST   — POST `/api/<entity>` with _rowType (jakarta/javax/vanilla)
+#   ENVELOPE — POST `/uiadapter/<entity>/save_datalist_map.do` with <Row Type=...> (nexacro)
+_LANE_CRUD_KIND = {
+    "nexacro": "envelope",
+    "jakarta": "rest",
+    "javax": "rest",
+    "vanilla": "rest",
+}
+
+def lane_crud_kind(lane: str) -> str:
+    """Return the CRUD wire-protocol the lane speaks: 'rest', 'envelope', or 'none'."""
+    if lane not in _LANE_CRUD_KIND:
+        raise ValueError(f"unknown lane: {lane}. valid: {sorted(_LANE_CRUD_KIND)}")
+    return _LANE_CRUD_KIND[lane]
+
 def lane_supports_crud(lane: str) -> bool:
-    return lane_probe_kind(lane) == "rest"
+    """Backward-compat shim — True iff the lane has any CRUD dispatch (rest OR envelope)."""
+    return lane_crud_kind(lane) in ("rest", "envelope")

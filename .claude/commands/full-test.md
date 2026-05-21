@@ -1,7 +1,7 @@
 ---
 name: business-fullstack-creater:full-test
 description: 4-layer 풀테스트 자동 실행 (pytest / JDBC / mvn / live WAS) + 라벨 자동판정
-argument-hint: <lane> [domain]
+argument-hint: <lane> [domain] [--json]
 ---
 
 # /full-test — 4-layer 풀테스트 자동 실행

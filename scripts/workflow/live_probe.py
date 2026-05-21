@@ -9,6 +9,7 @@ All three must hold for `ok=True`. Two of three → partial WAS verdict (the
 caller can map this onto the "라이브 WAS 부분검증" label).
 """
 from __future__ import annotations
+import json
 import re
 import urllib.error
 import urllib.request as urllib_request
@@ -113,5 +114,51 @@ def probe_endpoint(
         except Exception:
             pass
         return parse_response(text, http_status=e.code)
+    except Exception as e:
+        return ProbeResult(http_status=0, raw=str(e))
+
+
+def parse_json_response(body_text: str, http_status: int) -> ProbeResult:
+    """HTTP 200 + JSON list with ≥1 element → ok=True.
+
+    Stage 3 REST controllers (jakarta/javax/vanilla) emit `List<Map<String,Object>>`.
+    """
+    if http_status != 200:
+        return ProbeResult(http_status=http_status, raw=body_text)
+    try:
+        payload = json.loads(body_text)
+    except (ValueError, TypeError):
+        return ProbeResult(http_status=http_status, raw=body_text)
+    if not isinstance(payload, list):
+        return ProbeResult(http_status=http_status, error_code=0, row_count=0, ok=False, raw=body_text)
+    row_count = len(payload)
+    return ProbeResult(
+        http_status=http_status,
+        error_code=0,
+        row_count=row_count,
+        ok=row_count >= 1,
+        raw=body_text,
+    )
+
+
+def probe_endpoint_json(url: str, timeout_sec: float = 30.0) -> ProbeResult:
+    """GET URL, parse JSON list verdict. Use for jakarta/javax/vanilla REST lanes."""
+    req = urllib_request.Request(
+        url,
+        headers={"Accept": "application/json", "User-Agent": "live-probe/0.1"},
+        method="GET",
+    )
+    try:
+        with urllib_request.urlopen(req, timeout=timeout_sec) as resp:
+            status = getattr(resp, "status", 200)
+            text = resp.read().decode("utf-8", errors="replace")
+            return parse_json_response(text, http_status=status)
+    except urllib.error.HTTPError as e:
+        text = ""
+        try:
+            text = e.read().decode("utf-8", errors="replace") if e.fp else ""
+        except Exception:
+            pass
+        return parse_json_response(text, http_status=e.code)
     except Exception as e:
         return ProbeResult(http_status=0, raw=str(e))

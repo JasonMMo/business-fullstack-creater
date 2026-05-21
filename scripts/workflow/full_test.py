@@ -20,18 +20,24 @@ from pathlib import Path
 # and `python scripts/workflow/full_test.py` (direct script invocation).
 try:
     from .lane_runner_map import (
-        resolve_runner, lane_label_suffix, lane_probe_kind, lane_probe_url, lane_supports_crud,
+        resolve_runner, lane_label_suffix, lane_probe_kind, lane_probe_url,
+        lane_supports_crud, lane_crud_kind,
     )
-    from . import learn_log, cleanup_runner, live_overlay, live_runner, live_probe, live_crud, jdbc_smoke
+    from . import (
+        learn_log, cleanup_runner, live_overlay, live_runner, live_probe,
+        live_crud, live_crud_nexacro, jdbc_smoke,
+    )
 except ImportError:
     _root = str(Path(__file__).resolve().parents[2])
     if _root not in sys.path:
         sys.path.insert(0, _root)
     from scripts.workflow.lane_runner_map import (
-        resolve_runner, lane_label_suffix, lane_probe_kind, lane_probe_url, lane_supports_crud,
+        resolve_runner, lane_label_suffix, lane_probe_kind, lane_probe_url,
+        lane_supports_crud, lane_crud_kind,
     )
     from scripts.workflow import (
-        learn_log, cleanup_runner, live_overlay, live_runner, live_probe, live_crud, jdbc_smoke,
+        learn_log, cleanup_runner, live_overlay, live_runner, live_probe,
+        live_crud, live_crud_nexacro, jdbc_smoke,
     )
 
 SIBLING_REPOS = [
@@ -215,7 +221,9 @@ def run_l4_live(
         print(f"[L4] probe kind={kind} url={url} http={verdict.http_status} errcode={verdict.error_code} rows={verdict.row_count}")
         full = verdict.ok
 
-        # Growth-40: CRUD enrichment — only when caller wants enriched layers and lane is REST.
+        # Growth-40/42: CRUD enrichment — dispatched by lane_crud_kind:
+        #   rest      → live_crud.crud_roundtrip_rest        (jakarta/javax/vanilla)
+        #   envelope  → live_crud_nexacro.crud_roundtrip_envelope (nexacro)
         if layers is not None and full and lane_supports_crud(lane):
             template = live_crud.build_insert_template(plan.data_sql, entity)
             if template is None:
@@ -226,14 +234,25 @@ def run_l4_live(
                 print(f"[L4] CRUD skipped — {layers['L4_crud_reason']}", file=sys.stderr)
             else:
                 insert_row, pk_value = template
-                crud = live_crud.crud_roundtrip_rest(
-                    url, insert_row=insert_row, pk_column="id", pk_value=pk_value,
-                    timeout_sec=L4_PROBE_TIMEOUT_SEC,
-                )
+                ckind = lane_crud_kind(lane)
+                if ckind == "rest":
+                    crud = live_crud.crud_roundtrip_rest(
+                        url, insert_row=insert_row, pk_column="id", pk_value=pk_value,
+                        timeout_sec=L4_PROBE_TIMEOUT_SEC,
+                    )
+                else:  # envelope
+                    save_url = live_crud_nexacro.nexacro_save_url(handle.port, entity)
+                    dataset_id = live_crud_nexacro.nexacro_dataset_id(entity)
+                    crud = live_crud_nexacro.crud_roundtrip_envelope(
+                        select_url=url, save_url=save_url, dataset_id=dataset_id,
+                        insert_row=insert_row, pk_column="id", pk_value=pk_value,
+                        timeout_sec=L4_PROBE_TIMEOUT_SEC,
+                    )
                 layers["L4_crud"] = crud.ok
                 layers["L4_crud_reason"] = crud.reason
+                layers["L4_crud_kind"] = ckind
                 print(
-                    f"[L4] CRUD ok={crud.ok} baseline={crud.baseline_count} "
+                    f"[L4] CRUD kind={ckind} ok={crud.ok} baseline={crud.baseline_count} "
                     f"+1={crud.after_insert_count} final={crud.after_delete_count} "
                     f"reason={crud.reason!r}"
                 )

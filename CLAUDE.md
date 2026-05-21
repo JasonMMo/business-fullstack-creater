@@ -22,8 +22,8 @@
    - 아니면 다음 프로젝트는 같은 출발점에서 시작하게 됨
 2. **새로 발견한 구현 패턴(backend dialect, middle lane, ui overlay)이 어댑터/템플릿으로 등록되었는가?**
    - 아니면 일회성 코드로 휘발됨
-3. **wiki/learn-log.md (또는 동등 위치)에 1줄 기록되었는가?**
-   - 복리식 축적의 단위 행위
+3. **`learn-log.md` 에 1줄 기록되었는가?** (이 파일 = 활동 원장의 단일 진실원천)
+   - 복리식 축적의 단위 행위 — 형식은 `learn-log.md` § 사용 규칙 참조
 
 **원칙 위반 신호**: "이번만 임시로", "다음에 정리하자", "한 번만 쓸 코드인데" — 이 표현이 떠오르면 **반드시 멈추고 catalog/template/preset에 등록할 방법을 먼저 찾는다**.
 
@@ -50,11 +50,13 @@
 
 `nexacroN-fullstack/samples/runners/` 아래 7개 러너가 존재한다. 각 lane 마다 디폴트 + 보조 러너를 지정.
 
-| lane | 디폴트 러너 | 보조 러너 | 검증 상태 |
-|---|---|---|---|
-| **jakarta** | `boot-jdk17-jakarta` (Spring Boot 3.3) | `mvc-jdk17-jakarta`, `egov5-boot-jdk17-jakarta` | ✅ Growth-28 (finance) + Growth-31 (sales) |
-| **javax** | `boot-jdk8-javax` (Spring Boot 2.x) | `mvc-jdk8-javax`, `egov4-boot-jdk8-javax`, `egov4-mvc-jdk8-javax` | ✅ Growth-32 (sales, JAVA_HOME=JDK17/target=1.8) |
-| **vanilla** | (직접 러너 없음 — `javax` 러너에 임포트 후 사용 또는 자체 minimal-servlet 러너 미정) | — | ⚠️ 검증대 부재 — 결정 필요 |
+| lane | 디폴트 러너 | 보조 러너 |
+|---|---|---|
+| **jakarta** | `boot-jdk17-jakarta` (Spring Boot 3.3) | `mvc-jdk17-jakarta`, `egov5-boot-jdk17-jakarta` |
+| **javax** | `boot-jdk8-javax` (Spring Boot 2.x) | `mvc-jdk8-javax`, `egov4-boot-jdk8-javax`, `egov4-mvc-jdk8-javax` |
+| **vanilla** | (직접 러너 없음 — `javax` 러너에 임포트 후 사용 또는 자체 minimal-servlet 러너 미정) | — |
+
+> **검증 상태(✅/⏳/⚠️)는 `learn-log.md` §1 참조.** 이 표는 lane→runner 매핑 규약(변하지 않는 절차)만 담는다.
 
 **선택 규칙:**
 - lane 산출물은 디폴트 러너에서 첫 검증 → 통과 시 lane 전체 라이브 그린
@@ -80,5 +82,6 @@ git -C D:\AI\workspace\nexacroN-fullstack restore samples/runners/boot-jdk17-jak
 
 ## 참조
 
+- 활동 원장: `learn-log.md` (Growth 누적·검증 상태·트랩·미해결 환류 항목 — 단일 진실원천)
 - 정렬 리뷰: `docs/superpowers/specs/2026-05-15-karpathy-alignment-review.md`
 - 실행 플랜: `C:\Users\mo\.claude\plans\delightful-swimming-hanrahan.md`

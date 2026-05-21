@@ -1056,6 +1056,14 @@ git -C D:\AI\workspace\nexacroN-fullstack status --short samples/runners/boot-jd
 
 > **컨벤션:** runner 레포는 "원본 read-only + 오버레이 후 즉시 원복" 원칙으로만 만진다. 영구 변경이 필요하면 그건 runner 자체 PR 사안 — 이 절차의 범위 밖.
 
+**자동화 (Growth-35):** 위 5포인트 overlay + 빌드 + 기동 + 호출 + 정지 + git restore 전체가 `/full-test <lane> [domain]` 의 L4 단계로 자동화돼 있다. 모듈 분리:
+- `scripts/workflow/live_overlay.py` — 5-point overlay (idempotent)
+- `scripts/workflow/live_runner.py` — fat-jar 기동 + `Started Application in N.NNN seconds` ready-poll (timeout 180s)
+- `scripts/workflow/live_probe.py` — nexacro envelope POST + `200 OK + ErrorCode=0 + row_count>=1` 판정 (timeout 30s)
+- `scripts/workflow/full_test.run_l4_live` — 위 3 모듈 + `_mvn_rebuild_runner` orchestration. 라벨링 (full/partial/fail) 은 §3.12 판정 기준과 동일.
+
+**전제 컨벤션 (자동화 작동 조건):** scaffold 디렉터리 이름 = Java sub-package 식별자(`finance`, `sales` 등 ASCII slug). 디폴트 lane→runner 매핑은 `scripts/workflow/lane_runner_map.py` 단일 출처.
+
 **검증 이력 (도메인 × lane × runner):**
 
 | 일자 | Growth | 도메인 | lane | runner | 결과 | 비고 |

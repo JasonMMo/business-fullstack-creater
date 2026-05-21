@@ -340,7 +340,7 @@ def _stub_all_layers_pass(monkeypatch, tmp_path):
     monkeypatch.setattr(full_test, "run_l1_pytest", lambda: True)
     monkeypatch.setattr(full_test, "run_l2_jdbc", lambda s: True)
     monkeypatch.setattr(full_test, "run_l3_mvn", lambda s: True)
-    monkeypatch.setattr(full_test, "run_l4_live", lambda lane, s: (True, True))
+    monkeypatch.setattr(full_test, "run_l4_live", lambda lane, s, **kw: (True, True))
     # silence cleanup + learn-log side-effects
     monkeypatch.setattr(full_test.cleanup_runner, "run", lambda lane: {"ok": True})
     monkeypatch.setattr(full_test.cleanup_runner, "format_report", lambda r: "[cleanup] ok")
@@ -409,10 +409,239 @@ def test_main_nonzero_exit_when_not_full_green(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(full_test, "run_l1_pytest", lambda: True)
     monkeypatch.setattr(full_test, "run_l2_jdbc", lambda s: True)
     monkeypatch.setattr(full_test, "run_l3_mvn", lambda s: True)
-    monkeypatch.setattr(full_test, "run_l4_live", lambda lane, s: (False, True))
+    monkeypatch.setattr(full_test, "run_l4_live", lambda lane, s, **kw: (False, True))
     monkeypatch.setattr(full_test.cleanup_runner, "run", lambda lane: {"ok": True})
     monkeypatch.setattr(full_test.cleanup_runner, "format_report", lambda r: "")
     monkeypatch.setattr(full_test.learn_log, "latest_growth_num", lambda: 99)
     monkeypatch.setattr(full_test.learn_log, "update_label", lambda n, label: None)
     rc = full_test.main(["jakarta", "--json"])
     assert rc != 0
+
+
+# ---------- Growth-40: CRUD enrichment wiring ----------
+
+def test_run_passes_layers_to_run_l4_live(tmp_path, monkeypatch):
+    """run() must pass the layers dict so run_l4_live can write L4_crud/L4_crud_reason."""
+    fake = tmp_path / "s"; fake.mkdir()
+    captured = {}
+
+    def fake_l4(lane, scaffold, layers=None):
+        captured["layers_passed"] = layers
+        # simulate run_l4_live writing CRUD enrichment
+        if layers is not None:
+            layers["L4_crud"] = True
+            layers["L4_crud_reason"] = ""
+        return (True, True)
+
+    monkeypatch.setattr(full_test, "find_latest_scaffold", lambda: fake)
+    monkeypatch.setattr(full_test, "run_l1_pytest", lambda: True)
+    monkeypatch.setattr(full_test, "run_l2_jdbc", lambda s: True)
+    monkeypatch.setattr(full_test, "run_l3_mvn", lambda s: True)
+    monkeypatch.setattr(full_test, "run_l4_live", fake_l4)
+    monkeypatch.setattr(full_test.cleanup_runner, "run", lambda lane: {"ok": True})
+    monkeypatch.setattr(full_test.cleanup_runner, "format_report", lambda r: "")
+    monkeypatch.setattr(full_test.learn_log, "latest_growth_num", lambda: 99)
+    monkeypatch.setattr(full_test.learn_log, "update_label", lambda n, label: None)
+
+    result = full_test.run("jakarta")
+    assert captured["layers_passed"] is not None
+    assert captured["layers_passed"] is result.layers  # same dict — mutation flows through
+    assert result.layers["L4_crud"] is True
+
+
+def test_json_output_includes_l4_crud(tmp_path, monkeypatch, capsys):
+    """--json payload includes CRUD enrichment fields when L4 wrote them."""
+    import json
+    fake = tmp_path / "s"; fake.mkdir()
+
+    def fake_l4(lane, scaffold, layers=None):
+        if layers is not None:
+            layers["L4_crud"] = False
+            layers["L4_crud_reason"] = "insert failed (status=500, affected=-1)"
+        return (True, True)
+
+    monkeypatch.setattr(full_test, "find_latest_scaffold", lambda: fake)
+    monkeypatch.setattr(full_test, "run_l1_pytest", lambda: True)
+    monkeypatch.setattr(full_test, "run_l2_jdbc", lambda s: True)
+    monkeypatch.setattr(full_test, "run_l3_mvn", lambda s: True)
+    monkeypatch.setattr(full_test, "run_l4_live", fake_l4)
+    monkeypatch.setattr(full_test.cleanup_runner, "run", lambda lane: {"ok": True})
+    monkeypatch.setattr(full_test.cleanup_runner, "format_report", lambda r: "")
+    monkeypatch.setattr(full_test.learn_log, "latest_growth_num", lambda: 99)
+    monkeypatch.setattr(full_test.learn_log, "update_label", lambda n, label: None)
+
+    full_test.main(["jakarta", "--json"])
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["layers"]["L4_crud"] is False
+    assert "insert failed" in payload["layers"]["L4_crud_reason"]
+
+
+def test_run_l4_live_writes_crud_for_rest_lane_when_layers_provided(tmp_path, monkeypatch):
+    """REST lane: when caller passes layers and probe succeeds, CRUD round-trip runs.
+
+    Uses the full run_l4_live (not a stub) but mocks: discover/overlay/build/start/ready/probe/crud.
+    """
+    from scripts.workflow import live_overlay, live_runner, live_probe, live_crud as lc
+
+    scaffold = tmp_path / "scaffold"; scaffold.mkdir()
+    data_sql = tmp_path / "data.sql"; data_sql.touch()
+    mapper_dir = tmp_path / "mappers"; mapper_dir.mkdir()
+    runner_dir = tmp_path / "runner"; runner_dir.mkdir()
+    java_src = tmp_path / "java"; java_src.mkdir()
+
+    plan = live_overlay.OverlayPlan(
+        domain_slug="lead",
+        schema_sql=tmp_path / "schema.sql",
+        data_sql=data_sql,
+        mapper_xml_dir=mapper_dir,
+        java_src=java_src,
+    )
+
+    monkeypatch.setattr(full_test, "runner_path_for", lambda lane: runner_dir)
+    monkeypatch.setattr(live_overlay, "discover_scaffold", lambda d: plan)
+    monkeypatch.setattr(
+        live_overlay, "apply_overlay",
+        lambda r, p: type("X", (), {"files_written": [], "files_edited": []})(),
+    )
+    monkeypatch.setattr(full_test, "_mvn_rebuild_runner", lambda d: True)
+    handle = type("H", (), {"port": 8080, "log_path": tmp_path / "x.log"})()
+    monkeypatch.setattr(live_runner, "start_runner", lambda d: handle)
+    monkeypatch.setattr(live_runner, "wait_until_ready", lambda h, **kw: True)
+    monkeypatch.setattr(live_runner, "stop_runner", lambda h: None)
+    monkeypatch.setattr(full_test, "derive_entity_slug", lambda d: "lead")
+
+    verdict = type("V", (), {"http_status": 200, "error_code": 0, "row_count": 3, "ok": True})()
+    monkeypatch.setattr(live_probe, "probe_endpoint_json", lambda url, **kw: verdict)
+
+    monkeypatch.setattr(lc, "build_insert_template", lambda sql, ent: ({"id": 999001, "code": "L"}, 999001))
+    monkeypatch.setattr(
+        lc, "crud_roundtrip_rest",
+        lambda url, insert_row, pk_column, pk_value, **kw: lc.CrudResult(ok=True, reason=""),
+    )
+
+    layers: dict = {}
+    full, partial = full_test.run_l4_live("jakarta", scaffold, layers=layers)
+    assert full is True
+    assert layers["L4_crud"] is True
+    assert layers["L4_crud_reason"] == ""
+
+
+def test_run_l4_live_crud_skipped_when_layers_not_provided(tmp_path, monkeypatch):
+    """Back-compat: legacy 2-arg call (no layers) skips CRUD entirely."""
+    from scripts.workflow import live_overlay, live_runner, live_probe, live_crud as lc
+
+    scaffold = tmp_path / "scaffold"; scaffold.mkdir()
+    runner_dir = tmp_path / "runner"; runner_dir.mkdir()
+    java_src = tmp_path / "java"; java_src.mkdir()
+    plan = live_overlay.OverlayPlan(
+        domain_slug="lead",
+        schema_sql=tmp_path / "schema.sql",
+        data_sql=tmp_path / "data.sql",
+        mapper_xml_dir=tmp_path / "mappers",
+        java_src=java_src,
+    )
+    plan.mapper_xml_dir.mkdir()
+
+    monkeypatch.setattr(full_test, "runner_path_for", lambda lane: runner_dir)
+    monkeypatch.setattr(live_overlay, "discover_scaffold", lambda d: plan)
+    monkeypatch.setattr(
+        live_overlay, "apply_overlay",
+        lambda r, p: type("X", (), {"files_written": [], "files_edited": []})(),
+    )
+    monkeypatch.setattr(full_test, "_mvn_rebuild_runner", lambda d: True)
+    handle = type("H", (), {"port": 8080, "log_path": tmp_path / "x.log"})()
+    monkeypatch.setattr(live_runner, "start_runner", lambda d: handle)
+    monkeypatch.setattr(live_runner, "wait_until_ready", lambda h, **kw: True)
+    monkeypatch.setattr(live_runner, "stop_runner", lambda h: None)
+    monkeypatch.setattr(full_test, "derive_entity_slug", lambda d: "lead")
+    verdict = type("V", (), {"http_status": 200, "error_code": 0, "row_count": 3, "ok": True})()
+    monkeypatch.setattr(live_probe, "probe_endpoint_json", lambda url, **kw: verdict)
+
+    called = {"n": 0}
+    monkeypatch.setattr(
+        lc, "build_insert_template",
+        lambda *a, **kw: (called.__setitem__("n", called["n"] + 1), None)[1],
+    )
+
+    full, partial = full_test.run_l4_live("jakarta", scaffold)
+    assert full is True
+    assert called["n"] == 0  # CRUD module never touched when layers not passed
+
+
+def test_run_l4_live_crud_records_missing_template(tmp_path, monkeypatch):
+    """REST lane: when no MERGE template found, layers records skip reason."""
+    from scripts.workflow import live_overlay, live_runner, live_probe, live_crud as lc
+
+    scaffold = tmp_path / "scaffold"; scaffold.mkdir()
+    runner_dir = tmp_path / "runner"; runner_dir.mkdir()
+    java_src = tmp_path / "java"; java_src.mkdir()
+    plan = live_overlay.OverlayPlan(
+        domain_slug="lead",
+        schema_sql=tmp_path / "schema.sql",
+        data_sql=tmp_path / "data.sql",
+        mapper_xml_dir=tmp_path / "mappers",
+        java_src=java_src,
+    )
+    plan.mapper_xml_dir.mkdir()
+
+    monkeypatch.setattr(full_test, "runner_path_for", lambda lane: runner_dir)
+    monkeypatch.setattr(live_overlay, "discover_scaffold", lambda d: plan)
+    monkeypatch.setattr(
+        live_overlay, "apply_overlay",
+        lambda r, p: type("X", (), {"files_written": [], "files_edited": []})(),
+    )
+    monkeypatch.setattr(full_test, "_mvn_rebuild_runner", lambda d: True)
+    handle = type("H", (), {"port": 8080, "log_path": tmp_path / "x.log"})()
+    monkeypatch.setattr(live_runner, "start_runner", lambda d: handle)
+    monkeypatch.setattr(live_runner, "wait_until_ready", lambda h, **kw: True)
+    monkeypatch.setattr(live_runner, "stop_runner", lambda h: None)
+    monkeypatch.setattr(full_test, "derive_entity_slug", lambda d: "lead")
+    verdict = type("V", (), {"http_status": 200, "error_code": 0, "row_count": 3, "ok": True})()
+    monkeypatch.setattr(live_probe, "probe_endpoint_json", lambda url, **kw: verdict)
+
+    monkeypatch.setattr(lc, "build_insert_template", lambda *a, **kw: None)
+
+    layers: dict = {}
+    full_test.run_l4_live("jakarta", scaffold, layers=layers)
+    assert layers["L4_crud"] is False
+    assert "no MERGE template" in layers["L4_crud_reason"]
+
+
+def test_run_l4_live_crud_skipped_for_nexacro_lane(tmp_path, monkeypatch):
+    """Nexacro lane: CRUD enrichment is deferred to a future Growth — must NOT run."""
+    from scripts.workflow import live_overlay, live_runner, live_probe, live_crud as lc
+
+    scaffold = tmp_path / "scaffold"; scaffold.mkdir()
+    runner_dir = tmp_path / "runner"; runner_dir.mkdir()
+    java_src = tmp_path / "java"; java_src.mkdir()
+    plan = live_overlay.OverlayPlan(
+        domain_slug="lead",
+        schema_sql=tmp_path / "schema.sql",
+        data_sql=tmp_path / "data.sql",
+        mapper_xml_dir=tmp_path / "mappers",
+        java_src=java_src,
+    )
+    plan.mapper_xml_dir.mkdir()
+
+    monkeypatch.setattr(full_test, "runner_path_for", lambda lane: runner_dir)
+    monkeypatch.setattr(live_overlay, "discover_scaffold", lambda d: plan)
+    monkeypatch.setattr(
+        live_overlay, "apply_overlay",
+        lambda r, p: type("X", (), {"files_written": [], "files_edited": []})(),
+    )
+    monkeypatch.setattr(full_test, "_mvn_rebuild_runner", lambda d: True)
+    handle = type("H", (), {"port": 8080, "log_path": tmp_path / "x.log"})()
+    monkeypatch.setattr(live_runner, "start_runner", lambda d: handle)
+    monkeypatch.setattr(live_runner, "wait_until_ready", lambda h, **kw: True)
+    monkeypatch.setattr(live_runner, "stop_runner", lambda h: None)
+    monkeypatch.setattr(full_test, "derive_entity_slug", lambda d: "lead")
+    verdict = type("V", (), {"http_status": 200, "error_code": 0, "row_count": 3, "ok": True})()
+    monkeypatch.setattr(live_probe, "probe_endpoint", lambda url, **kw: verdict)
+
+    called = {"n": 0}
+    monkeypatch.setattr(lc, "build_insert_template", lambda *a, **kw: (called.__setitem__("n", called["n"] + 1), None)[1])
+
+    layers: dict = {}
+    full_test.run_l4_live("nexacro", scaffold, layers=layers)
+    assert called["n"] == 0
+    assert "L4_crud" not in layers

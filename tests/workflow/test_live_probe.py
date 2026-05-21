@@ -123,3 +123,54 @@ def test_probe_endpoint_returns_failure_on_connection_error(monkeypatch):
     r = live_probe.probe_endpoint("http://localhost:9999/nope")
     assert r.ok is False
     assert r.http_status == 0
+
+
+# ---------- Growth-36: GET + JSON probe variant (jakarta/javax/vanilla REST lanes) ----------
+
+def test_probe_endpoint_json_ok(monkeypatch):
+    captured = {}
+
+    def fake_urlopen(req, timeout=None):
+        captured["url"] = req.full_url
+        captured["method"] = req.get_method()
+        return _FakeResp(b'[{"id":1,"code":"A"},{"id":2,"code":"B"}]', status=200)
+
+    monkeypatch.setattr(live_probe.urllib_request, "urlopen", fake_urlopen)
+    r = live_probe.probe_endpoint_json("http://localhost:8080/api/lead")
+    assert r.ok is True
+    assert r.row_count == 2
+    assert r.error_code == 0
+    assert captured["method"] == "GET"
+    assert captured["url"].endswith("/api/lead")
+
+
+def test_probe_endpoint_json_zero_rows_not_ok(monkeypatch):
+    monkeypatch.setattr(
+        live_probe.urllib_request, "urlopen",
+        lambda req, timeout=None: _FakeResp(b"[]", status=200),
+    )
+    r = live_probe.probe_endpoint_json("http://localhost:8080/api/lead")
+    assert r.row_count == 0
+    assert r.ok is False
+
+
+def test_probe_endpoint_json_http_500(monkeypatch):
+    import urllib.error
+    def fake_urlopen(req, timeout=None):
+        raise urllib.error.HTTPError(req.full_url, 500, "boom", {}, None)
+
+    monkeypatch.setattr(live_probe.urllib_request, "urlopen", fake_urlopen)
+    r = live_probe.probe_endpoint_json("http://localhost:8080/api/lead")
+    assert r.http_status == 500
+    assert r.ok is False
+
+
+def test_probe_endpoint_json_non_list_body_not_ok(monkeypatch):
+    """Stage 3 controller returns List<Map>; dict response is unexpected."""
+    monkeypatch.setattr(
+        live_probe.urllib_request, "urlopen",
+        lambda req, timeout=None: _FakeResp(b'{"error":"oops"}', status=200),
+    )
+    r = live_probe.probe_endpoint_json("http://localhost:8080/api/lead")
+    assert r.row_count == 0
+    assert r.ok is False

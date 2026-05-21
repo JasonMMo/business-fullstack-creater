@@ -17,7 +17,7 @@ from pathlib import Path
 # and `python scripts/workflow/full_test.py` (direct script invocation).
 try:
     from .lane_runner_map import resolve_runner, lane_label_suffix, lane_probe_kind, lane_probe_url
-    from . import learn_log, cleanup_runner, live_overlay, live_runner, live_probe
+    from . import learn_log, cleanup_runner, live_overlay, live_runner, live_probe, jdbc_smoke
 except ImportError:
     _root = str(Path(__file__).resolve().parents[2])
     if _root not in sys.path:
@@ -25,7 +25,7 @@ except ImportError:
     from scripts.workflow.lane_runner_map import (
         resolve_runner, lane_label_suffix, lane_probe_kind, lane_probe_url,
     )
-    from scripts.workflow import learn_log, cleanup_runner, live_overlay, live_runner, live_probe
+    from scripts.workflow import learn_log, cleanup_runner, live_overlay, live_runner, live_probe, jdbc_smoke
 
 SIBLING_REPOS = [
     Path(r"D:\AI\workspace\andrej-karpathy-rdb-skill"),
@@ -60,25 +60,42 @@ def decide_label(layers: dict[str, bool]) -> str:
 
 
 def run_l1_pytest() -> bool:
+    """Run pytest in each sibling repo. FAIL if no repos ran (silent-pass guard)."""
     ok = True
+    ran = 0
     for repo in SIBLING_REPOS:
         if not repo.exists():
             print(f"[L1] skip (not found): {repo}", file=sys.stderr)
             continue
         p = subprocess.run(["pytest", "-q"], cwd=repo, capture_output=True, text=True)
         print(f"[L1] {repo.name}: rc={p.returncode}")
+        ran += 1
         if p.returncode != 0:
             print(p.stdout[-1000:], file=sys.stderr)
             ok = False
+    if ran == 0:
+        print(f"[L1] FAIL: no sibling repos found (checked {len(SIBLING_REPOS)}) — L1 cannot silently pass", file=sys.stderr)
+        return False
     return ok
 
 
 def run_l2_jdbc(scaffold_dir: Path) -> bool:
-    sql = scaffold_dir / "2-ddl"
-    if not sql.exists():
-        print(f"[L2] no DDL output at {sql}", file=sys.stderr)
+    """Apply schema+data to in-memory HSQLDB. Missing jar → SKIP (warn, PASS)."""
+    schema, data = jdbc_smoke.discover_sql(scaffold_dir)
+    if schema is None or data is None:
+        print(f"[L2] no schema/data under {scaffold_dir} (checked 3-mybatis/resources and 2-ddl)", file=sys.stderr)
         return False
-    print(f"[L2] HSQLDB smoke against {sql} — delegated (placeholder PASS)")
+    result = jdbc_smoke.run_smoke(schema, data)
+    if result.skipped:
+        print(f"[L2] SKIPPED: {result.reason}", file=sys.stderr)
+        return True
+    if result.stdout:
+        print(result.stdout.strip())
+    if not result.ok:
+        print(f"[L2] FAIL: {result.reason}", file=sys.stderr)
+        if result.stderr:
+            print(result.stderr.strip()[-800:], file=sys.stderr)
+        return False
     return True
 
 

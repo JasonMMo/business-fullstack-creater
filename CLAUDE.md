@@ -40,7 +40,7 @@
 | 1 | **단위 (pytest)** | 각 레포 `pytest` 그린 | 로직 회귀 |
 | 2 | **JDBC 스모크** | dialect별 (a) schema apply, (b) seed insert, (c) FK/CHECK 위반 시도, (d) **도메인 invariant** 검증(예: 재무 double-entry, 주문 합계, audit 무결성) — HSQLDB 인-메모리로 충분 | dialect 컨트랙트(HSQLDB IDENTITY 0-base 트랩 §3.11) + 도메인 규칙 위반 |
 | 3 | **Maven 빌드** | Stage 3+5 산출물이 실제 `mvn -q package` 통과 | annotation/패키지/Jakarta vs javax import 깨짐 |
-| 4 | **라이브 WAS 스모크** | runner 위에서 기동 → endpoint POST → **HTTP 200 + ErrorCode=0 + 기대 dataset 행수** 동시 확인 (절차: USER-GUIDE §3.12, 검증 후 `git restore` + java 프로세스 정지 필수) | lane × MyBatis × NexacroResult 직렬화 스택 깨짐, 컨테이너 응답 수준 dialect 영향(예: ID=0 payload 노출) |
+| 4 | **라이브 WAS 스모크** | runner 위에서 기동 → endpoint POST → **HTTP 200 + ErrorCode=0 + 기대 dataset 행수** 동시 확인. `/full-test <lane>` 의 L4 단계가 `live_overlay`+`live_runner`+`live_probe` 로 자동 수행 (Growth-35). 절차/판정: USER-GUIDE §3.12 | lane × MyBatis × NexacroResult 직렬화 스택 깨짐, 컨테이너 응답 수준 dialect 영향(예: ID=0 payload 노출) |
 
 **판정 규칙 (4단계 라벨링):**
 - 4계층 모두 PASS → **"풀테스트 그린"**

@@ -19,16 +19,20 @@ from pathlib import Path
 # Support both `python -m scripts.workflow.full_test` (package import)
 # and `python scripts/workflow/full_test.py` (direct script invocation).
 try:
-    from .lane_runner_map import resolve_runner, lane_label_suffix, lane_probe_kind, lane_probe_url
-    from . import learn_log, cleanup_runner, live_overlay, live_runner, live_probe, jdbc_smoke
+    from .lane_runner_map import (
+        resolve_runner, lane_label_suffix, lane_probe_kind, lane_probe_url, lane_supports_crud,
+    )
+    from . import learn_log, cleanup_runner, live_overlay, live_runner, live_probe, live_crud, jdbc_smoke
 except ImportError:
     _root = str(Path(__file__).resolve().parents[2])
     if _root not in sys.path:
         sys.path.insert(0, _root)
     from scripts.workflow.lane_runner_map import (
-        resolve_runner, lane_label_suffix, lane_probe_kind, lane_probe_url,
+        resolve_runner, lane_label_suffix, lane_probe_kind, lane_probe_url, lane_supports_crud,
     )
-    from scripts.workflow import learn_log, cleanup_runner, live_overlay, live_runner, live_probe, jdbc_smoke
+    from scripts.workflow import (
+        learn_log, cleanup_runner, live_overlay, live_runner, live_probe, live_crud, jdbc_smoke,
+    )
 
 SIBLING_REPOS = [
     Path(r"D:\AI\workspace\andrej-karpathy-rdb-skill"),
@@ -160,11 +164,21 @@ def _mvn_rebuild_runner(runner_dir: Path, timeout_sec: int = 600) -> bool:
     return p.returncode == 0
 
 
-def run_l4_live(lane: str, scaffold_dir: Path) -> tuple[bool, bool]:
+def run_l4_live(
+    lane: str,
+    scaffold_dir: Path,
+    layers: dict[str, bool] | None = None,
+) -> tuple[bool, bool]:
     """Apply overlay → rebuild → start runner → probe → stop. Returns (full_pass, partial_pass).
 
     full_pass requires HTTP 200 + ErrorCode=0 + row_count>=1.
     partial_pass means runner reached ready state — verdict short of full.
+
+    Growth-40: if `layers` is provided and the lane supports REST CRUD, an additional
+    CRUD round-trip (insert + verify +1 + delete + verify back-to-baseline) is run.
+    Result is written to layers["L4_crud"] (bool) and layers["L4_crud_reason"] (str).
+    This does NOT affect the (full, partial) return values — CRUD is an enrichment,
+    not a gate, so existing callers/labels are unaffected.
     """
     runner_name = resolve_runner(lane)
     runner_dir = runner_path_for(lane)
@@ -199,7 +213,32 @@ def run_l4_live(lane: str, scaffold_dir: Path) -> tuple[bool, bool]:
         else:
             verdict = live_probe.probe_endpoint(url, timeout_sec=L4_PROBE_TIMEOUT_SEC)
         print(f"[L4] probe kind={kind} url={url} http={verdict.http_status} errcode={verdict.error_code} rows={verdict.row_count}")
-        if verdict.ok:
+        full = verdict.ok
+
+        # Growth-40: CRUD enrichment — only when caller wants enriched layers and lane is REST.
+        if layers is not None and full and lane_supports_crud(lane):
+            template = live_crud.build_insert_template(plan.data_sql, entity)
+            if template is None:
+                layers["L4_crud"] = False
+                layers["L4_crud_reason"] = (
+                    f"no MERGE template found for entity={entity} in {plan.data_sql}"
+                )
+                print(f"[L4] CRUD skipped — {layers['L4_crud_reason']}", file=sys.stderr)
+            else:
+                insert_row, pk_value = template
+                crud = live_crud.crud_roundtrip_rest(
+                    url, insert_row=insert_row, pk_column="id", pk_value=pk_value,
+                    timeout_sec=L4_PROBE_TIMEOUT_SEC,
+                )
+                layers["L4_crud"] = crud.ok
+                layers["L4_crud_reason"] = crud.reason
+                print(
+                    f"[L4] CRUD ok={crud.ok} baseline={crud.baseline_count} "
+                    f"+1={crud.after_insert_count} final={crud.after_delete_count} "
+                    f"reason={crud.reason!r}"
+                )
+
+        if full:
             return (True, True)
         return (False, True)
     finally:
@@ -259,7 +298,7 @@ def run(lane: str, domain: str | None = None) -> FullTestResult:
     layers["L3"] = run_l3_mvn(scaffold)
     if not layers["L3"]:
         return _finalize(layers, lane, scaffold)
-    full, partial = run_l4_live(lane, scaffold)
+    full, partial = run_l4_live(lane, scaffold, layers=layers)
     layers["L4_full"] = full
     layers["L4_partial"] = partial and not full
     result = _finalize(layers, lane, scaffold)

@@ -36,20 +36,23 @@ _RESERVED_SUBPKGS = {"controller", "service", "mapper", "domain", "config", "dto
 
 
 def derive_domain_slug(scaffold_dir: Path) -> str | None:
-    """Find unique sub-package under com.nexacro.uiadapter (Stage 3 actual layout).
+    """Find unique sub-package under com.nexacro.uiadapter (Stage 3 actual) or com.example (legacy).
 
     Stage 3 emits `com.nexacro.uiadapter.<slug>.{controller,service,mapper,domain}`.
+    Legacy fixtures emit `com.example.<slug>.*`. Checks both, in that order.
     Returns the unique <slug> directory name, or None if not derivable.
     """
-    base = Path(scaffold_dir) / "3-mybatis" / "src" / "main" / "java" / "com" / "nexacro" / "uiadapter"
-    if not base.exists():
-        return None
-    candidates = [
-        d.name for d in base.iterdir()
-        if d.is_dir() and d.name not in _RESERVED_SUBPKGS and not d.name.startswith(".")
-    ]
-    if len(candidates) == 1:
-        return candidates[0]
+    base_root = Path(scaffold_dir) / "3-mybatis" / "src" / "main" / "java" / "com"
+    for sub in (("nexacro", "uiadapter"), ("example",)):
+        base = base_root.joinpath(*sub)
+        if not base.exists():
+            continue
+        candidates = [
+            d.name for d in base.iterdir()
+            if d.is_dir() and d.name not in _RESERVED_SUBPKGS and not d.name.startswith(".")
+        ]
+        if len(candidates) == 1:
+            return candidates[0]
     return None
 
 

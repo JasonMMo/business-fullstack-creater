@@ -265,3 +265,66 @@ def test_run_l2_jdbc_passes_on_smoke_ok(tmp_path, monkeypatch):
     monkeypatch.setattr(full_test.jdbc_smoke, "run_smoke",
                         lambda s, d: jdbc_smoke.SmokeResult(ok=True, stdout="[L2] OK"))
     assert full_test.run_l2_jdbc(scaffold) is True
+
+
+# ---- Growth-38: L3 pom search generalization + lane pre-validation ----
+
+def test_find_pom_prefers_overlay(tmp_path):
+    """5-overlay/pom.xml wins when both overlay and 3-mybatis pom exist."""
+    (tmp_path / "5-overlay").mkdir()
+    overlay = tmp_path / "5-overlay" / "pom.xml"
+    overlay.write_text("<project/>", encoding="utf-8")
+    (tmp_path / "3-mybatis").mkdir()
+    (tmp_path / "3-mybatis" / "pom.xml").write_text("<project/>", encoding="utf-8")
+    assert full_test._find_pom(tmp_path) == overlay
+
+
+def test_find_pom_falls_back_to_3mybatis(tmp_path):
+    """When 5-overlay is absent (Stage 3-only scaffold), 3-mybatis/pom.xml is used."""
+    (tmp_path / "3-mybatis").mkdir()
+    p = tmp_path / "3-mybatis" / "pom.xml"
+    p.write_text("<project/>", encoding="utf-8")
+    assert full_test._find_pom(tmp_path) == p
+
+
+def test_find_pom_falls_back_to_root(tmp_path):
+    """Root pom.xml is the last fallback (legacy fixture layout)."""
+    p = tmp_path / "pom.xml"
+    p.write_text("<project/>", encoding="utf-8")
+    assert full_test._find_pom(tmp_path) == p
+
+
+def test_find_pom_returns_none_when_missing(tmp_path):
+    assert full_test._find_pom(tmp_path) is None
+
+
+def test_run_l3_mvn_fails_when_no_pom_anywhere(tmp_path):
+    assert full_test.run_l3_mvn(tmp_path) is False
+
+
+def test_run_l3_mvn_uses_3mybatis_pom_when_overlay_absent(tmp_path, monkeypatch):
+    """Verify L3 actually drives mvn on the 3-mybatis pom when overlay is absent."""
+    pom = tmp_path / "3-mybatis" / "pom.xml"
+    pom.parent.mkdir()
+    pom.write_text("<project/>", encoding="utf-8")
+
+    captured = {}
+    class _Result:
+        returncode = 0
+    def fake_run(cmd, cwd, capture_output, text, timeout):
+        captured["cwd"] = cwd
+        captured["cmd"] = cmd
+        return _Result()
+    monkeypatch.setattr(full_test.subprocess, "run", fake_run)
+    assert full_test.run_l3_mvn(tmp_path) is True
+    assert captured["cwd"] == pom.parent
+
+
+def test_run_rejects_unknown_lane(tmp_path, monkeypatch):
+    """run() must fail fast with clear error before L1/L2/L3, not somewhere deep in L4."""
+    # Make scaffold-finder return a real dir so the lane check is what trips
+    fake = tmp_path / "scaffold"
+    fake.mkdir()
+    monkeypatch.setattr(full_test, "find_latest_scaffold", lambda: fake)
+    with pytest.raises(ValueError, match="unknown lane"):
+        full_test.run("not-a-real-lane")

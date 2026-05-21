@@ -28,3 +28,28 @@ def test_missing_section_raises(tmp_path, monkeypatch):
     monkeypatch.setattr(learn_log, "LEARN_LOG", bad)
     with pytest.raises(ValueError, match="§6"):
         learn_log.latest_growth_num()
+
+
+def test_append_row_preserves_crlf(tmp_learn_log_crlf):
+    """CRITICAL 1: CRLF line endings must round-trip through append_row."""
+    learn_log.append_row("crlf test", today="2026-05-21")
+    raw = tmp_learn_log_crlf.read_bytes()
+    assert b"\r\n" in raw, "CRLF endings were lost after append_row"
+    # Verify no bare LF was introduced (every \n must be preceded by \r)
+    lone_lf_count = raw.count(b"\n") - raw.count(b"\r\n")
+    assert lone_lf_count == 0, f"{lone_lf_count} bare LF(s) introduced by append_row"
+
+
+def test_update_label_raises_on_missing_growth_num(tmp_learn_log):
+    """IMPORTANT 3: update_label must raise ValueError when growth_num not in §6."""
+    with pytest.raises(ValueError, match="Growth-99"):
+        learn_log.update_label(99, "풀테스트 그린")
+
+
+def test_update_label_raises_on_already_labelled(tmp_learn_log):
+    """IMPORTANT 3: update_label must raise ValueError when row already labelled."""
+    learn_log.append_row("foo", today="2026-05-21")
+    learn_log.update_label(33, "풀테스트 그린")
+    # Second call on same row — already labelled, must raise
+    with pytest.raises(ValueError, match="Growth-33"):
+        learn_log.update_label(33, "다시 라벨")

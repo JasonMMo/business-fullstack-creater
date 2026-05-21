@@ -11,7 +11,7 @@ def test_resolve_runner_known(lane, runner):
     assert resolve_runner(lane) == runner
 
 def test_resolve_runner_unknown_raises():
-    with pytest.raises(ValueError, match="unknown lane"):
+    with pytest.raises(ValueError, match=r"unknown lane: kotlin"):
         resolve_runner("kotlin")
 
 def test_vanilla_label_suffix_marks_host_validation():

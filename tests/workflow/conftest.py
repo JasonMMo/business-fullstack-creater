@@ -20,3 +20,13 @@ def tmp_learn_log(tmp_path, monkeypatch):
     log.write_text(SAMPLE_LOG, encoding="utf-8")
     monkeypatch.setattr("scripts.workflow.learn_log.LEARN_LOG", log)
     return log
+
+
+@pytest.fixture()
+def tmp_learn_log_crlf(tmp_path, monkeypatch):
+    """Same content as SAMPLE_LOG but with CRLF line endings."""
+    log = tmp_path / "learn-log-crlf.md"
+    crlf_content = SAMPLE_LOG.replace("\n", "\r\n").encode("utf-8")
+    log.write_bytes(crlf_content)
+    monkeypatch.setattr("scripts.workflow.learn_log.LEARN_LOG", log)
+    return log

@@ -80,7 +80,10 @@ def run_l1_pytest() -> bool:
         if not repo.exists():
             print(f"[L1] skip (not found): {repo}", file=sys.stderr)
             continue
-        p = subprocess.run(["pytest", "-q"], cwd=repo, capture_output=True, text=True)
+        p = subprocess.run(
+            [sys.executable, "-m", "pytest", "-q"],
+            cwd=repo, capture_output=True, text=True,
+        )
         print(f"[L1] {repo.name}: rc={p.returncode}")
         ran += 1
         if p.returncode != 0:

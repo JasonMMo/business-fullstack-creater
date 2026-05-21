@@ -34,16 +34,37 @@
 | # | 계층 | 검증 방법 | 빠지면 못 잡는 것 |
 |---|---|---|---|
 | 1 | **단위 (pytest)** | 각 레포 `pytest` 그린 | 로직 회귀 |
-| 2 | **JDBC 스모크** | dialect별 schema apply + seed insert + FK/CHECK 위반 시도 (HSQLDB 인-메모리 충분) | dialect 컨트랙트(예: HSQLDB IDENTITY 0-base 트랩, §3.11) |
+| 2 | **JDBC 스모크** | dialect별 (a) schema apply, (b) seed insert, (c) FK/CHECK 위반 시도, (d) **도메인 invariant** 검증(예: 재무 double-entry, 주문 합계, audit 무결성) — HSQLDB 인-메모리로 충분 | dialect 컨트랙트(HSQLDB IDENTITY 0-base 트랩 §3.11) + 도메인 규칙 위반 |
 | 3 | **Maven 빌드** | Stage 3+5 산출물이 실제 `mvn -q package` 통과 | annotation/패키지/Jakarta vs javax import 깨짐 |
-| 4 | **라이브 WAS 스모크** | runner 위에서 진짜 기동 → endpoint POST → HTTP 200 + Nexacro envelope payload 확인 (절차: USER-GUIDE §3.12 in-place overlay + `git restore` 원복) | lane × MyBatis × NexacroResult 직렬화 스택 깨짐, 컨테이너 응답 수준 dialect 영향(예: ID=0 노출) |
+| 4 | **라이브 WAS 스모크** | runner 위에서 기동 → endpoint POST → **HTTP 200 + ErrorCode=0 + 기대 dataset 행수** 동시 확인 (절차: USER-GUIDE §3.12, 검증 후 `git restore` + java 프로세스 정지 필수) | lane × MyBatis × NexacroResult 직렬화 스택 깨짐, 컨테이너 응답 수준 dialect 영향(예: ID=0 payload 노출) |
 
-**판정 규칙:**
-- 4계층 모두 PASS → "풀테스트 그린"
-- 1~3 PASS / 4 미실행 → "JDBC + 빌드까지만 검증됨"이라고 명시. 절대 "풀테스트 그린"이라 부르지 않는다.
-- 새 도메인 추가 / dialect 변경 / lane 변경 / shell 변경 시 4계층 다시 돌린다.
+**판정 규칙 (4단계 라벨링):**
+- 4계층 모두 PASS → **"풀테스트 그린"**
+- 4 부분실패 (WAS는 떴으나 응답 깨짐/행수 불일치) → **"라이브 WAS 부분검증"** — 절대 그린 아님
+- 1~3 PASS / 4 미실행 → **"JDBC + 빌드까지만 검증"**
+- 1~2 PASS / 3 미실행 → **"JDBC 까지만 검증"**
 
-**라이브 WAS 스모크 디폴트 러너:** `D:\AI\workspace\nexacroN-fullstack\samples\runners\boot-jdk17-jakarta` (in-place overlay, 검증 후 즉시 원복). 다른 lane(`vanilla`/`javax`)이 검증대로 필요해지면 그 시점에 §3.12 표에 새 러너를 한 줄 추가한다.
+**재실행 트리거:** 새 도메인 / dialect / lane / shell / runner 버전 변경 시 4계층 전체.
+
+**라이브 WAS 검증대 (lane × runner):**
+
+| lane | 디폴트 러너 | 상태 |
+|---|---|---|
+| jakarta | `nexacroN-fullstack/samples/runners/boot-jdk17-jakarta` | ✅ 검증됨 (Growth-28) |
+| vanilla | TBD | ⚠️ **검증대 부재** — 이 lane은 현재 계층 1~3 까지만 검증 가능 |
+| javax | TBD | ⚠️ **검증대 부재** — 이 lane은 현재 계층 1~3 까지만 검증 가능 |
+
+vanilla/javax lane 산출물에 대해서는 "JDBC + 빌드까지만 검증" 라벨이 영구 한계 — 러너 추가(Growth-30)되면 그 시점에 위 표를 갱신한다.
+
+**필수 cleanup 명령 (계층 4 종료 시):**
+
+```powershell
+# 1. java 프로세스 정지 (PID 누락 방지 위해 jdk-17 path 매칭으로 찾기)
+Get-Process java -EA SilentlyContinue | Where-Object { $_.Path -like "*jdk-17*" } | Stop-Process -Force
+# 2. runner 원복 (예: jakarta)
+git -C D:\AI\workspace\nexacroN-fullstack restore samples/runners/boot-jdk17-jakarta/
+# 3. 오버레이 생성 파일 제거 (§3.12 참조)
+```
 
 ## 왜 이 원칙이 중요한가
 

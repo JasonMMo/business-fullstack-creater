@@ -46,15 +46,20 @@
 
 **재실행 트리거:** 새 도메인 / dialect / lane / shell / runner 버전 변경 시 4계층 전체.
 
-**라이브 WAS 검증대 (lane × runner):**
+**라이브 WAS 검증대 (lane × runner) — Growth-30 매트릭스 확정:**
 
-| lane | 디폴트 러너 | 상태 |
-|---|---|---|
-| jakarta | `nexacroN-fullstack/samples/runners/boot-jdk17-jakarta` | ✅ 검증됨 (Growth-28) |
-| vanilla | TBD | ⚠️ **검증대 부재** — 이 lane은 현재 계층 1~3 까지만 검증 가능 |
-| javax | TBD | ⚠️ **검증대 부재** — 이 lane은 현재 계층 1~3 까지만 검증 가능 |
+`nexacroN-fullstack/samples/runners/` 아래 7개 러너가 존재한다. 각 lane 마다 디폴트 + 보조 러너를 지정.
 
-vanilla/javax lane 산출물에 대해서는 "JDBC + 빌드까지만 검증" 라벨이 영구 한계 — 러너 추가(Growth-30)되면 그 시점에 위 표를 갱신한다.
+| lane | 디폴트 러너 | 보조 러너 | 검증 상태 |
+|---|---|---|---|
+| **jakarta** | `boot-jdk17-jakarta` (Spring Boot 3.3) | `mvc-jdk17-jakarta`, `egov5-boot-jdk17-jakarta` | ✅ Growth-28 (boot) |
+| **javax** | `boot-jdk8-javax` (Spring Boot 2.x) | `mvc-jdk8-javax`, `egov4-boot-jdk8-javax`, `egov4-mvc-jdk8-javax` | ⏳ 러너 존재, 첫 검증 대기 |
+| **vanilla** | (직접 러너 없음 — `javax` 러너에 임포트 후 사용 또는 자체 minimal-servlet 러너 미정) | — | ⚠️ 검증대 부재 — 결정 필요 |
+
+**선택 규칙:**
+- lane 산출물은 디폴트 러너에서 첫 검증 → 통과 시 lane 전체 라이브 그린
+- 보조 러너는 lane-내 변종(MVC vs Boot, eGov 통합 여부) 검증 필요 시 사용
+- vanilla lane 은 "javax 러너에 servlet 임포트로 동작 확인" 까지가 현실적 한계 — 그 결과는 "vanilla → javax-host 검증" 라벨로 기록
 
 **필수 cleanup 명령 (계층 4 종료 시):**
 

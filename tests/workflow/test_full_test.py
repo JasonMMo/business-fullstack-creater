@@ -1,5 +1,5 @@
 import pytest
-from scripts.workflow import full_test, live_probe, live_runner
+from scripts.workflow import full_test, live_probe, live_runner, jdbc_smoke
 
 
 def _make_fake_scaffold(root, slug):
@@ -221,3 +221,47 @@ def test_run_l4_live_nexacro_lane_uses_envelope_probe(tmp_path, monkeypatch):
     full, partial = full_test.run_l4_live("nexacro", scaffold)
     assert full is True
     assert envelope_calls["url"] == "http://localhost:8080/uiadapter/account/select_datalist_map.do"
+
+
+# ---- Growth-37: L1 empty-skip guard + L2 real JDBC smoke wiring ----
+
+def test_run_l1_pytest_fails_when_no_sibling_repos_exist(monkeypatch, tmp_path):
+    """If every sibling repo is missing, L1 must FAIL — silent-pass would cascade."""
+    monkeypatch.setattr(full_test, "SIBLING_REPOS", [tmp_path / "ghost-a", tmp_path / "ghost-b"])
+    assert full_test.run_l1_pytest() is False
+
+
+def test_run_l2_jdbc_fails_when_no_schema_or_data(tmp_path):
+    """run_l2_jdbc must FAIL (not silently pass) when scaffold lacks schema/data."""
+    assert full_test.run_l2_jdbc(tmp_path / "empty") is False
+
+
+def test_run_l2_jdbc_passes_when_smoke_skipped(tmp_path, monkeypatch):
+    """Missing HSQLDB_JAR → SKIPPED but L2 returns True (does not block L3/L4)."""
+    scaffold = tmp_path / "s"
+    (scaffold / "2-ddl").mkdir(parents=True)
+    (scaffold / "2-ddl" / "schema.sql").write_text("CREATE TABLE t(id INT);", encoding="utf-8")
+    (scaffold / "2-ddl" / "data.sql").write_text("", encoding="utf-8")
+    monkeypatch.setattr(full_test.jdbc_smoke, "run_smoke",
+                        lambda s, d: jdbc_smoke.SmokeResult(ok=True, skipped=True, reason="test-skip"))
+    assert full_test.run_l2_jdbc(scaffold) is True
+
+
+def test_run_l2_jdbc_fails_on_smoke_error(tmp_path, monkeypatch):
+    scaffold = tmp_path / "s"
+    (scaffold / "2-ddl").mkdir(parents=True)
+    (scaffold / "2-ddl" / "schema.sql").write_text("CREATE TABLE t(id INT);", encoding="utf-8")
+    (scaffold / "2-ddl" / "data.sql").write_text("", encoding="utf-8")
+    monkeypatch.setattr(full_test.jdbc_smoke, "run_smoke",
+                        lambda s, d: jdbc_smoke.SmokeResult(ok=False, reason="exit 1", stderr="bad SQL"))
+    assert full_test.run_l2_jdbc(scaffold) is False
+
+
+def test_run_l2_jdbc_passes_on_smoke_ok(tmp_path, monkeypatch):
+    scaffold = tmp_path / "s"
+    (scaffold / "2-ddl").mkdir(parents=True)
+    (scaffold / "2-ddl" / "schema.sql").write_text("CREATE TABLE t(id INT);", encoding="utf-8")
+    (scaffold / "2-ddl" / "data.sql").write_text("", encoding="utf-8")
+    monkeypatch.setattr(full_test.jdbc_smoke, "run_smoke",
+                        lambda s, d: jdbc_smoke.SmokeResult(ok=True, stdout="[L2] OK"))
+    assert full_test.run_l2_jdbc(scaffold) is True

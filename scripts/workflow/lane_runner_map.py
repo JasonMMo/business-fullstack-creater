@@ -18,3 +18,25 @@ def resolve_runner(lane: str) -> str:
 
 def lane_label_suffix(lane: str) -> str:
     return _LABEL_SUFFIX.get(lane, "")
+
+
+# Growth-36: probe dispatch. Stage 3 emits two controller shapes:
+#   nexacro lane → POST `/uiadapter/<entity>/select_datalist_map.do` + XML envelope
+#   jakarta/javax/vanilla → GET `/api/<entity>` returning List<Map>
+_LANE_PROBE_KIND = {
+    "nexacro": "nexacro",
+    "jakarta": "rest",
+    "javax": "rest",
+    "vanilla": "rest",
+}
+
+def lane_probe_kind(lane: str) -> str:
+    if lane not in _LANE_PROBE_KIND:
+        raise ValueError(f"unknown lane: {lane}. valid: {sorted(_LANE_PROBE_KIND)}")
+    return _LANE_PROBE_KIND[lane]
+
+def lane_probe_url(lane: str, port: int, entity: str) -> str:
+    kind = lane_probe_kind(lane)
+    if kind == "nexacro":
+        return f"http://localhost:{port}/uiadapter/{entity}/select_datalist_map.do"
+    return f"http://localhost:{port}/api/{entity}"

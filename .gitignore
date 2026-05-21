@@ -14,3 +14,6 @@ config/stage-paths.yaml
 .tmp_smoke_*/
 testspace/
 target/
+
+# Scaffold output (Stage 1~5 산출물 — 검증용, 산출물은 git 추적 대상 아님)
+out/

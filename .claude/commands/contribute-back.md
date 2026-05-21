@@ -1,0 +1,32 @@
+# /contribute-back — 환류 누락 차단
+
+CLAUDE.md "복리식 축적 체크리스트" 자동화. Growth 종료 시 사용.
+
+## 인자
+
+없음 (활성 Growth 자동 감지)
+
+## 동작
+
+1. 5개 레포에서 `git log --since=<활성 Growth 시작일> --name-only` 수집
+   - 시작일 감지 실패 시 최근 7일
+2. 변경 path 를 카테고리로 분류:
+   - `presets/*.seed.md`, `catalogs/*.yaml` → catalog (rdb-skill/ddl)
+   - `templates/*/*.j2` → template (rdb-mybatis)
+   - `patterns/*/manifest.yaml` → pattern (rdb-nexacro)
+   - `scripts/dialect*.py` → dialect (rdb-ddl)
+   - 기타 → other (§5 / §6 freeform)
+3. 카테고리별로 환류 위치 안내 + 인터랙티브 Y/N 체크
+4. 미환류 1건 이상 시 Growth 행 라벨에 `(환류 미완)` 자동 부착 + stderr 경고
+
+## 실행
+
+```powershell
+python scripts/workflow/contribute_back.py
+```
+
+## 결과 해석
+
+- `환류 대상 없음.` → 변경 0건. 정상 종료.
+- `=== 환류 후보 ===` 표시 → LLM 이 각 카테고리에 대해 사용자 확인.
+- `[warn] 환류 미완 후보 있음` → §2~§5 에 1줄씩 환류 후 명령 재실행.

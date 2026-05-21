@@ -1064,6 +1064,23 @@ git -C D:\AI\workspace\nexacroN-fullstack status --short samples/runners/boot-jd
 
 **전제 컨벤션 (자동화 작동 조건):** scaffold 디렉터리 이름 = Java sub-package 식별자(`finance`, `sales` 등 ASCII slug). 디폴트 lane→runner 매핑은 `scripts/workflow/lane_runner_map.py` 단일 출처.
 
+**자동화 보강 이력 (Growth-36 ~ 38):** Growth-35 베이스 위에 누적된 견고성·일반화 개선. 이전 절차 변경 없이 더 많은 scaffold/lane 모양을 흡수한다.
+
+| Growth | 영역 | 변경 |
+|---|---|---|
+| Growth-36 | L4 lane-aware | (1) `live_overlay.discover_scaffold` — Stage 3 실 출력(`com.nexacro.uiadapter.<slug>.*` / `3-mybatis/src/main/resources/{schema,data}.sql` / `mybatis/mapper/`) **및** legacy fixture(`com.example.<slug>` / `2-ddl/` / `mybatis/mappers/`) 양쪽 자동 도출. (2) `lane_runner_map.lane_probe_kind/url` 신설 — `nexacro` 는 `POST /uiadapter/<entity>/select_datalist_map.do` 엔벨로프 / `jakarta·javax·vanilla` 는 `GET /api/<entity>` JSON. `run_l4_live` 가 lane 별 `probe_endpoint` vs `probe_endpoint_json` 자동 선택. (3) `derive_entity_slug` kebab/PascalCase 양형 지원. |
+| Growth-37 | L1 + L2 실구현 | (1) L2 가 placeholder 였던 것을 실제 JDBC smoke 로 교체 — `_jdbc_smoke.java` (JDK 11+ single-file source-mode, HSQLDB in-mem, `^^` separator) + `jdbc_smoke.py` 래퍼. `HSQLDB_JAR` env 미설정·jar 부재 시 `skipped=True` 로 L3/L4 비차단. `discover_sql` 은 Stage 3 우선 → `2-ddl/` fallback. (2) L1 silent-pass guard — sibling repo 0 개 실행 시 silent True 대신 False (worktree/sandbox 갭 노출). |
+| Growth-38 | L3 + L4 견고성 | (1) `_find_pom` 헬퍼 — 탐색 순서 `5-overlay/pom.xml` → `3-mybatis/pom.xml` → root `pom.xml`. Stage 3-only scaffold(오버레이 미실행)도 빌드 가능. (2) `live_probe.probe_endpoint(_json)` 에 `retries`/`retry_delay_sec` 파라미터 — urlopen 예외(connection refused/timeout)에만 재시도, `HTTPError` 는 즉시 surface(실응답이므로 재시도하면 안 됨). ready-poll 직후 바인드 지연으로 거부 한두 번 발생하는 케이스 자동 흡수. (3) lane pre-validation — `run()` 진입부에서 `resolve_runner(lane)` 호출, 잘못된 lane 인자는 L1/L2/L3 낭비 없이 즉시 `ValueError`. |
+
+**L1~L4 동작 요약 (보강 후):**
+
+| 계층 | 모듈 | 정상 | 스킵 가능 조건 |
+|---|---|---|---|
+| L1 pytest | `run_l1_pytest` | 4 sibling repo 각각 `pytest -q` → all-green | repo 0 개 실행 시 **FAIL** (silent pass 금지) |
+| L2 JDBC smoke | `jdbc_smoke.run_smoke` | schema + data 적용 + 옵션 invariant | `HSQLDB_JAR` env 미설정 / jar 부재 → **SKIP (PASS)** |
+| L3 Maven build | `run_l3_mvn` | `_find_pom` 발견 후 `mvn -q package -DskipTests` | pom 부재 시 **FAIL** (3-mybatis/5-overlay/root 모두 부재) |
+| L4 live WAS | `run_l4_live` | overlay → mvn rebuild → start → ready-poll → lane-aware probe → stop | lane × runner 매핑 부재 시 **`run()` 진입 즉시 ValueError** (L1~L3 낭비 안 함) |
+
 **검증 이력 (도메인 × lane × runner):**
 
 | 일자 | Growth | 도메인 | lane | runner | 결과 | 비고 |

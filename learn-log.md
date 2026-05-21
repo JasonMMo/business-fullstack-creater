@@ -134,6 +134,7 @@ YYYY-MM-DD | Growth-N | <kind> | <name> | <domain/lane/dialect> | <한줄요약>
 | Growth-32 | 2026-05-21 | javax lane × 영업관리 라이브 검증 + codegen bug 4건 |
 | Growth-33 | 2026-05-21 | javax lane re-검증 (regenerated, no manual edits) — pytest/JDBC/Maven/Spring context PASS, 엔드포인트 응답은 runner Jackson dep 결함으로 500 → **"라이브 WAS 부분검증"**. codegen 결함 2건 환류 (#245 seed sentinel, #246 `@Mapper` 어노테이션). 새 gap G-Jackson 등록. |
 | Growth-34 | 2026-05-21 | Claude Code workflow A안 (구현 완료) — `/cleanup-runner`, `/growth-start`, `/full-test`, `/contribute-back` 4 슬래시 커맨드 + `scripts/workflow/` 6 모듈 + 30 테스트(전부 그린). settings.local.json 슬림. CLAUDE.md 풀테스트/체크리스트 섹션에 자동 실행 힌트 1줄씩 환류. |
+| Growth-35 | 2026-05-21 | B-plan L4 live WAS 실구현 — `live_overlay` (5-point overlay, idempotent) + `live_runner` (Spring Boot fat-jar 기동 + ready-poll, 180s timeout) + `live_probe` (nexacro envelope POST + 200/ErrorCode/row_count 판정, 30s timeout) 3 모듈 신규 + `full_test.run_l4_live` 가 placeholder 에서 overlay→`mvn package`→start→wait_until_ready→probe→stop orchestration 으로 교체. 22 신규 테스트(6 overlay + 8 runner + 8 probe) + 7 wiring 테스트 — 60/60 전 그린. CLAUDE.md L4 행 / USER-GUIDE §3.12 자동화 노트 환류. **전제 컨벤션**: scaffold 디렉터리 이름 = Java sub-package 식별자(ASCII slug). `sales-growth33-javax` 같은 hyphen 포함 dir 은 컨벤션 위배 — slug 자동 도출 또는 도메인 매개변수화는 Growth-36 후보. |
 
 ---
 

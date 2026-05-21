@@ -607,17 +607,21 @@ def test_run_l4_live_crud_records_missing_template(tmp_path, monkeypatch):
     assert "no MERGE template" in layers["L4_crud_reason"]
 
 
-def test_run_l4_live_crud_skipped_for_nexacro_lane(tmp_path, monkeypatch):
-    """Nexacro lane: CRUD enrichment is deferred to a future Growth — must NOT run."""
-    from scripts.workflow import live_overlay, live_runner, live_probe, live_crud as lc
+def test_run_l4_live_nexacro_lane_dispatches_envelope_crud(tmp_path, monkeypatch):
+    """Growth-42: nexacro lane runs envelope CRUD (NOT REST), and records kind=envelope."""
+    from scripts.workflow import (
+        live_overlay, live_runner, live_probe, live_crud as lc,
+        live_crud_nexacro as lcn,
+    )
 
     scaffold = tmp_path / "scaffold"; scaffold.mkdir()
+    data_sql = tmp_path / "data.sql"; data_sql.touch()
     runner_dir = tmp_path / "runner"; runner_dir.mkdir()
     java_src = tmp_path / "java"; java_src.mkdir()
     plan = live_overlay.OverlayPlan(
         domain_slug="lead",
         schema_sql=tmp_path / "schema.sql",
-        data_sql=tmp_path / "data.sql",
+        data_sql=data_sql,
         mapper_xml_dir=tmp_path / "mappers",
         java_src=java_src,
     )
@@ -638,10 +642,33 @@ def test_run_l4_live_crud_skipped_for_nexacro_lane(tmp_path, monkeypatch):
     verdict = type("V", (), {"http_status": 200, "error_code": 0, "row_count": 3, "ok": True})()
     monkeypatch.setattr(live_probe, "probe_endpoint", lambda url, **kw: verdict)
 
-    called = {"n": 0}
-    monkeypatch.setattr(lc, "build_insert_template", lambda *a, **kw: (called.__setitem__("n", called["n"] + 1), None)[1])
+    monkeypatch.setattr(lc, "build_insert_template", lambda sql, ent: ({"id": 999001, "code": "L"}, 999001))
+
+    rest_called = {"n": 0}
+    monkeypatch.setattr(
+        lc, "crud_roundtrip_rest",
+        lambda *a, **kw: (rest_called.__setitem__("n", rest_called["n"] + 1),
+                         lc.CrudResult(ok=True))[1],
+    )
+
+    envelope_calls: list = []
+    def fake_envelope(select_url, save_url, dataset_id, insert_row, pk_column, pk_value, **kw):
+        envelope_calls.append({
+            "select_url": select_url, "save_url": save_url,
+            "dataset_id": dataset_id, "pk_column": pk_column, "pk_value": pk_value,
+        })
+        return lcn.CrudResult(ok=True, reason="")
+    monkeypatch.setattr(lcn, "crud_roundtrip_envelope", fake_envelope)
 
     layers: dict = {}
     full_test.run_l4_live("nexacro", scaffold, layers=layers)
-    assert called["n"] == 0
-    assert "L4_crud" not in layers
+
+    assert rest_called["n"] == 0, "REST CRUD must not run for nexacro lane"
+    assert len(envelope_calls) == 1, "Envelope CRUD must run exactly once for nexacro lane"
+    call = envelope_calls[0]
+    assert call["dataset_id"] == "dsLead"
+    assert call["select_url"].endswith("/uiadapter/lead/select_datalist_map.do")
+    assert call["save_url"].endswith("/uiadapter/lead/save_datalist_map.do")
+    assert call["pk_value"] == 999001
+    assert layers["L4_crud"] is True
+    assert layers["L4_crud_kind"] == "envelope"

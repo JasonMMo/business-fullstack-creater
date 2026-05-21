@@ -174,3 +174,61 @@ def test_probe_endpoint_json_non_list_body_not_ok(monkeypatch):
     r = live_probe.probe_endpoint_json("http://localhost:8080/api/lead")
     assert r.row_count == 0
     assert r.ok is False
+
+
+# ---------- Growth-38: retry-on-transient-failure ----------
+
+def test_probe_endpoint_retries_on_connection_error_then_succeeds(monkeypatch):
+    """First call raises (post-ready transient), second call succeeds — retries=2 covers it."""
+    calls = {"n": 0}
+    def flaky_urlopen(req, timeout=None):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise OSError("connection refused")
+        return _FakeResp(OK_RESPONSE.encode("utf-8"), status=200)
+    monkeypatch.setattr(live_probe.urllib_request, "urlopen", flaky_urlopen)
+    monkeypatch.setattr(live_probe.time, "sleep", lambda s: None)
+    r = live_probe.probe_endpoint("http://localhost:8080/x", retries=2, retry_delay_sec=0.0)
+    assert r.ok is True
+    assert calls["n"] == 2
+
+
+def test_probe_endpoint_gives_up_after_retries_exhausted(monkeypatch):
+    calls = {"n": 0}
+    def boom(req, timeout=None):
+        calls["n"] += 1
+        raise OSError("nope")
+    monkeypatch.setattr(live_probe.urllib_request, "urlopen", boom)
+    monkeypatch.setattr(live_probe.time, "sleep", lambda s: None)
+    r = live_probe.probe_endpoint("http://localhost:8080/x", retries=3, retry_delay_sec=0.0)
+    assert r.ok is False
+    assert r.http_status == 0
+    assert calls["n"] == 4  # initial + 3 retries
+
+
+def test_probe_endpoint_json_retries_on_transient(monkeypatch):
+    calls = {"n": 0}
+    def flaky(req, timeout=None):
+        calls["n"] += 1
+        if calls["n"] < 2:
+            raise OSError("not yet")
+        return _FakeResp(b'[{"id":1}]', status=200)
+    monkeypatch.setattr(live_probe.urllib_request, "urlopen", flaky)
+    monkeypatch.setattr(live_probe.time, "sleep", lambda s: None)
+    r = live_probe.probe_endpoint_json("http://localhost:8080/api/x", retries=2, retry_delay_sec=0.0)
+    assert r.ok is True
+    assert calls["n"] == 2
+
+
+def test_probe_endpoint_no_retry_on_http_error(monkeypatch):
+    """HTTPError (4xx/5xx) is a real response — don't retry, surface immediately."""
+    import urllib.error
+    calls = {"n": 0}
+    def fake(req, timeout=None):
+        calls["n"] += 1
+        raise urllib.error.HTTPError(req.full_url, 500, "boom", {}, None)
+    monkeypatch.setattr(live_probe.urllib_request, "urlopen", fake)
+    monkeypatch.setattr(live_probe.time, "sleep", lambda s: None)
+    r = live_probe.probe_endpoint("http://localhost:8080/x", retries=3, retry_delay_sec=0.0)
+    assert r.http_status == 500
+    assert calls["n"] == 1

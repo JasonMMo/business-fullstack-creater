@@ -9,8 +9,11 @@ Layer responsibilities (delegated to existing scripts/CLIs):
 This module does NOT reimplement those layers — it orchestrates and labels.
 """
 from __future__ import annotations
+import argparse
+import json
 import subprocess
 import sys
+from dataclasses import dataclass, field
 from pathlib import Path
 
 # Support both `python -m scripts.workflow.full_test` (package import)
@@ -211,7 +214,36 @@ def find_latest_scaffold() -> Path | None:
     return max(dirs, key=lambda d: d.stat().st_mtime, default=None)
 
 
-def run(lane: str, domain: str | None = None) -> str:
+@dataclass
+class FullTestResult:
+    """Structured outcome of run() — `str(result)` returns the label for legacy callers."""
+    label: str
+    layers: dict[str, bool] = field(default_factory=dict)
+    lane: str = ""
+    scaffold: Path | None = None
+
+    def __str__(self) -> str:
+        return self.label
+
+    def to_dict(self) -> dict:
+        return {
+            "label": self.label,
+            "lane": self.lane,
+            "scaffold": str(self.scaffold) if self.scaffold is not None else None,
+            "layers": dict(self.layers),
+        }
+
+
+def _finalize(layers: dict[str, bool], lane: str, scaffold: Path | None) -> FullTestResult:
+    return FullTestResult(
+        label=decide_label(layers) + lane_label_suffix(lane),
+        layers=layers,
+        lane=lane,
+        scaffold=scaffold,
+    )
+
+
+def run(lane: str, domain: str | None = None) -> FullTestResult:
     # Fail fast on bad lane — don't burn L1/L2/L3 only to crash inside L4
     resolve_runner(lane)
     scaffold = Path(domain) if domain and Path(domain).exists() else find_latest_scaffold()
@@ -220,33 +252,58 @@ def run(lane: str, domain: str | None = None) -> str:
     layers: dict[str, bool] = {}
     layers["L1"] = run_l1_pytest()
     if not layers["L1"]:
-        return decide_label(layers)
+        return _finalize(layers, lane, scaffold)
     layers["L2"] = run_l2_jdbc(scaffold)
     if not layers["L2"]:
-        return decide_label(layers)
+        return _finalize(layers, lane, scaffold)
     layers["L3"] = run_l3_mvn(scaffold)
     if not layers["L3"]:
-        return decide_label(layers)
+        return _finalize(layers, lane, scaffold)
     full, partial = run_l4_live(lane, scaffold)
     layers["L4_full"] = full
     layers["L4_partial"] = partial and not full
-    label = decide_label(layers) + lane_label_suffix(lane)
+    result = _finalize(layers, lane, scaffold)
     # always cleanup after L4
-    print(cleanup_runner.format_report(cleanup_runner.run(lane)))
+    print(cleanup_runner.format_report(cleanup_runner.run(lane)), file=sys.stderr)
     # update learn-log label on active Growth
     try:
         n = learn_log.latest_growth_num()
-        learn_log.update_label(n, label)
+        learn_log.update_label(n, result.label)
     except Exception as e:
         print(f"[learn-log] label update skipped: {e}", file=sys.stderr)
-    return label
+    return result
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    p = argparse.ArgumentParser(prog="full_test.py", description="4-layer full-test orchestrator")
+    p.add_argument("lane", help="jakarta | javax | vanilla | nexacro")
+    p.add_argument("domain", nargs="?", default=None, help="scaffold dir (default: latest under ./out)")
+    p.add_argument("--json", action="store_true", help="emit structured JSON to stdout (human text → stderr)")
+    return p
+
+
+def main(argv: list[str] | None = None) -> int:
+    """CLI entry. Returns 0 on '풀테스트 그린', non-zero otherwise — CI can branch on rc."""
+    args = _build_parser().parse_args(argv)
+    if args.json:
+        # Re-route per-layer prints to stderr so stdout stays JSON-only
+        import builtins
+        orig_print = builtins.print
+        def _stderr_print(*a, **kw):
+            kw.setdefault("file", sys.stderr)
+            orig_print(*a, **kw)
+        builtins.print = _stderr_print
+        try:
+            result = run(args.lane, args.domain)
+        finally:
+            builtins.print = orig_print
+        sys.stdout.write(json.dumps(result.to_dict(), ensure_ascii=False))
+        sys.stdout.write("\n")
+    else:
+        result = run(args.lane, args.domain)
+        print(f"\nLABEL: {result.label}")
+    return 0 if result.layers.get("L4_full") else 1
 
 
 if __name__ == "__main__":
-    if len(sys.argv) < 2:
-        print("usage: full_test.py <lane> [domain-path]", file=sys.stderr)
-        sys.exit(2)
-    lane = sys.argv[1]
-    domain = sys.argv[2] if len(sys.argv) > 2 else None
-    label = run(lane, domain)
-    print(f"\nLABEL: {label}")
+    sys.exit(main())

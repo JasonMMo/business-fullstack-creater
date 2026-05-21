@@ -1062,11 +1062,28 @@ git -C D:\AI\workspace\nexacroN-fullstack status --short samples/runners/boot-jd
 |---|---|---|---|---|---|---|
 | 2026-05-21 | Growth-28 | 재무관리 (finance) | nexacro (jakarta-for-nexacro) | boot-jdk17-jakarta | ✅ 200 OK · ErrorCode=0 · 2행 · 첫행 ID=0 | `/uiadapter/account/select_datalist_map.do` |
 | 2026-05-21 | Growth-31 | 영업관리 (sales/CRM) | nexacro (jakarta-for-nexacro) | boot-jdk17-jakarta | ✅ 200 OK · ErrorCode=0 · 2행 · 첫행 ID=0 | `/uiadapter/lead/select_datalist_map.do` · 예약어 `LEAD` 인용 필요 · IDENTITY 0-base 트랩이 seed FK(`sales_activity.opportunity_id`) 에 재발 → seed 를 `0,1` 로 정정 후 통과 |
+| 2026-05-21 | Growth-32 | 영업관리 (sales/CRM) | javax (vanilla REST + javax imports) | boot-jdk8-javax (Spring Boot 2.7, JAVA_HOME=JDK17/target=1.8) | ✅ 200 OK · 3행 · id=1,2,3 (explicit-id MERGE 패턴) | `/uiadapter/api/lead` · `/uiadapter/api/opportunity` (FK 정상) · seed `MERGE ... VALUES(id,...)` 로 IDENTITY 우회 → 0-base 트랩 회피 · Stage 3 javax 템플릿 4건 버그 발견(아래 §3.12 부록 참조) |
 
 **Growth-31 추가 발견 (이 절차의 일반화 가치):**
 - 절차 자체가 **재무관리 외 도메인**에서도 그대로 작동 — overlay 5포인트 표 (Application.java / application.yml / `<domain>-schema.sql` / `<domain>-data.sql` / mapper XML rename) 가 도메인-agnostic 임이 입증됨
 - HSQLDB IDENTITY 0-base 트랩이 **intra-domain FK seed** 에서도 동일하게 재현 — `seed-conventions.md` 의 "first-row id=0" 주의가 cross-FK 가 아닌 도메인 내부에서도 필수
 - SQL:2008 예약어(`LEAD`)는 quoted identifier(`"LEAD"`) 로 schema · seed · mapper SQL 3 곳 모두 동시 수정 필요 — Stage 2 DDL 생성기가 자동 인용해 주므로 overlay 시점에는 schema/data 만 손대면 됨 (mapper 는 그대로 통과)
+
+**Growth-32 추가 발견 (javax lane 첫 라이브 검증 — 코드 생성 버그 4건):**
+
+오버레이 시점에 손으로 패치하여 통과시켰으나, **상류(Stage 2/3 템플릿)에 반드시 환류해야 할 결함**:
+
+| # | 단계 | 결함 | 회피책 (overlay 시점) | 환류 위치 |
+|---|---|---|---|---|
+| 1 | Stage 2 seed | `MERGE` 의 `ON` 절이 `s.id` 를 참조하지만 `s` 튜플에 `id` 컬럼 누락 — HSQLDB 파서 에러 + IDENTITY 0-base 트랩 재발 | `VALUES(...)` 에 명시적 `id` 포함 + `AS s(id, ...)` 컬럼 추가 | `andrej-karpathy-rdb-ddl` seed 템플릿 — explicit-id MERGE 패턴을 기본화 |
+| 2 | Stage 3 domain | `com.example.<domain>.domain.*` 에 `javax.persistence.@Id/@Column/@Transient` 어노테이션 부착 → JPA 의존성 없는 runner 에서 컴파일 실패. 또한 Map-based mapper 가 직접 소비하므로 **사용처 없음** | overlay 시 domain 디렉터리 통째로 삭제 | `andrej-karpathy-rdb-mybatis` javax lane 템플릿 — Map-only consumer 일 때 domain 생성 스킵하거나 어노테이션 제거 |
+| 3 | Stage 3 service iface | `select_*(Map<String,String>)`, `void save_*(...)` — impl 은 `Map<String,Object>` + `int` 반환 → 인터페이스 불일치 컴파일 실패 | regex 패치: `Map<String, String>` → `Map<String, Object>`, `void (save_\w+_datalist_map)\(` → `int $1(` | `service-interface.javax.java.j2` — impl 시그니처와 동기화 |
+| 4 | Stage 3 mapper iface | `void insert/update/delete (Map<String,Object>)` — ServiceImpl 은 `n += mapper.insert_*(row)` → `int + void` 컴파일 실패 | regex 패치: `void (insert_\w+\|update_\w+\|delete_\w+)\(` → `int $1(` | `mapper-interface.javax.java.j2` — CRUD 반환형 `int` 통일 |
+
+**lane 일반화 시사점:**
+- javax lane URL 컨벤션은 `/api/<entity>` (REST) 이지 `/uiadapter/<entity>/<method>.do` (NexacroResult) 가 아님 — 검증 endpoint 호출 시 lane 별 path 형태 차이를 반드시 확인
+- javax lane 산출물도 `Map<String,Object>` payload 직렬화로 endpoint 응답이 잘 도는지 확인하는 단계가 추가로 필요 (NexacroResult 가 가려주던 Map ↔ JSON 직렬화 책임이 Jackson 으로 이관됨)
+- JDK 8 source/target 컴파일은 JDK 17 JAVA_HOME 으로도 가능 — pom.xml 의 `<source>1.8</source><target>1.8</target>` 이 진실 (사용자 환경에 JDK 8 부재 시 우회로)
 
 ---
 

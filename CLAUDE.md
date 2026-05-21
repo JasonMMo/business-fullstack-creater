@@ -27,6 +27,24 @@
 
 **원칙 위반 신호**: "이번만 임시로", "다음에 정리하자", "한 번만 쓸 코드인데" — 이 표현이 떠오르면 **반드시 멈추고 catalog/template/preset에 등록할 방법을 먼저 찾는다**.
 
+## 풀테스트 검증 절차 (mandatory)
+
+"풀테스트", "전체 검증", "E2E 검증" 같은 요청이 오면 **반드시 다음 4계층을 모두** 통과해야 완료로 본다. 어느 한 계층이라도 빠지면 풀테스트가 아니다.
+
+| # | 계층 | 검증 방법 | 빠지면 못 잡는 것 |
+|---|---|---|---|
+| 1 | **단위 (pytest)** | 각 레포 `pytest` 그린 | 로직 회귀 |
+| 2 | **JDBC 스모크** | dialect별 schema apply + seed insert + FK/CHECK 위반 시도 (HSQLDB 인-메모리 충분) | dialect 컨트랙트(예: HSQLDB IDENTITY 0-base 트랩, §3.11) |
+| 3 | **Maven 빌드** | Stage 3+5 산출물이 실제 `mvn -q package` 통과 | annotation/패키지/Jakarta vs javax import 깨짐 |
+| 4 | **라이브 WAS 스모크** | runner 위에서 진짜 기동 → endpoint POST → HTTP 200 + Nexacro envelope payload 확인 (절차: USER-GUIDE §3.12 in-place overlay + `git restore` 원복) | lane × MyBatis × NexacroResult 직렬화 스택 깨짐, 컨테이너 응답 수준 dialect 영향(예: ID=0 노출) |
+
+**판정 규칙:**
+- 4계층 모두 PASS → "풀테스트 그린"
+- 1~3 PASS / 4 미실행 → "JDBC + 빌드까지만 검증됨"이라고 명시. 절대 "풀테스트 그린"이라 부르지 않는다.
+- 새 도메인 추가 / dialect 변경 / lane 변경 / shell 변경 시 4계층 다시 돌린다.
+
+**라이브 WAS 스모크 디폴트 러너:** `D:\AI\workspace\nexacroN-fullstack\samples\runners\boot-jdk17-jakarta` (in-place overlay, 검증 후 즉시 원복). 다른 lane(`vanilla`/`javax`)이 검증대로 필요해지면 그 시점에 §3.12 표에 새 러너를 한 줄 추가한다.
+
 ## 왜 이 원칙이 중요한가
 
 사용자 의도 verbatim:

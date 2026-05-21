@@ -1026,14 +1026,28 @@ Invoke-WebRequest -Uri "http://localhost:8080/uiadapter/account/select_datalist_
 
 HTTP **200 OK**, `ErrorCode=0`, 2 행. **첫 행 `ID=0`** — §3.11 의 HSQLDB IDENTITY 0-base 트랩이 **JDBC 수준이 아닌 컨테이너 응답에서도 동일 재현**된다. dialect 환류가 schema 만이 아니라 응답 payload 까지 영향을 미친다는 증거.
 
-**원복 (반드시 수행):**
+**원복 (반드시 3단계 모두 수행):**
 
 ```powershell
+# 1) WAS 정지 — 누락 시 :8080 leak 으로 다음 검증 실패
+Get-Process java -EA SilentlyContinue | Where-Object { $_.Path -like "*jdk-17*" } | Stop-Process -Force
+
+# 2) 추적 파일 원복
 git -C D:\AI\workspace\nexacroN-fullstack restore samples/runners/boot-jdk17-jakarta/src/main/java/com/nexacro/uiadapter/Application.java
 git -C D:\AI\workspace\nexacroN-fullstack restore samples/runners/boot-jdk17-jakarta/src/main/resources/application.yml
+
+# 3) 오버레이로 신규 생성한 파일 제거
 Remove-Item -Recurse -Force samples\runners\boot-jdk17-jakarta\src\main\java\com\example
 Remove-Item -Force samples\...\finance-schema.sql, finance-data.sql, mybatis\mappers\{account,...}-mapper.xml
+
+# 검증: 다음 명령이 empty 출력이어야 한다
+git -C D:\AI\workspace\nexacroN-fullstack status --short samples/runners/boot-jdk17-jakarta/
 ```
+
+**판정 기준 (4계층 중 layer 4):**
+- ✅ PASS: HTTP 200 + `ErrorCode=0` + 기대 dataset 행수 일치 + 기대 컬럼 모두 존재
+- ⚠️ 부분검증: WAS 는 떴지만 위 4 조건 중 하나라도 미달 — "라이브 WAS 부분검증" 라벨
+- ❌ FAIL: WAS 기동 실패 / 5xx / 응답 dataset 미존재
 
 **언제 이 절차를 다시 쓰나:**
 - 새 도메인 산출물의 **응답 직렬화** 가 의심될 때 (Map vs DataSet, 한글 컬럼명, BigDecimal 등)

@@ -40,3 +40,9 @@ def lane_probe_url(lane: str, port: int, entity: str) -> str:
     if kind == "nexacro":
         return f"http://localhost:{port}/uiadapter/{entity}/select_datalist_map.do"
     return f"http://localhost:{port}/api/{entity}"
+
+
+# Growth-40: CRUD round-trip via REST bulk-save (POST `/api/<entity>` with _rowType).
+# Nexacro envelope CRUD (dsInsert/dsDelete payload) is deferred to a follow-up Growth.
+def lane_supports_crud(lane: str) -> bool:
+    return lane_probe_kind(lane) == "rest"

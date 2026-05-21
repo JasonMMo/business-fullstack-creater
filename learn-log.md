@@ -95,7 +95,7 @@ YYYY-MM-DD | Growth-N | <kind> | <name> | <domain/lane/dialect> | <한줄요약>
 
 발견 시 task를 만들고 여기 1줄로 인덱싱. 해결 시 줄긋고 commit SHA 첨부.
 
-- **task #240** — Stage 2 seed MERGE explicit-id 패턴 기본화 (Growth-32 발견)
+- ~~**task #240** — Stage 2 seed MERGE explicit-id 패턴 기본화 (Growth-32 발견)~~ → fixed in `andrej-karpathy-rdb-ddl` c1c2a6b (seed_gen.py) + e0f27ba (regression tests), 107 passed
 - **task #241** — Stage 3 javax lane orphan JPA domain 제거 (Growth-32 발견)
 - **task #242** — Stage 3 javax service interface 시그니처 동기화 (Growth-32 발견)
 - **task #243** — Stage 3 javax mapper interface CRUD 반환형 int 통일 (Growth-32 발견)

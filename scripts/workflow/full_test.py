@@ -16,13 +16,15 @@ from pathlib import Path
 # Support both `python -m scripts.workflow.full_test` (package import)
 # and `python scripts/workflow/full_test.py` (direct script invocation).
 try:
-    from .lane_runner_map import resolve_runner, lane_label_suffix
+    from .lane_runner_map import resolve_runner, lane_label_suffix, lane_probe_kind, lane_probe_url
     from . import learn_log, cleanup_runner, live_overlay, live_runner, live_probe
 except ImportError:
     _root = str(Path(__file__).resolve().parents[2])
     if _root not in sys.path:
         sys.path.insert(0, _root)
-    from scripts.workflow.lane_runner_map import resolve_runner, lane_label_suffix
+    from scripts.workflow.lane_runner_map import (
+        resolve_runner, lane_label_suffix, lane_probe_kind, lane_probe_url,
+    )
     from scripts.workflow import learn_log, cleanup_runner, live_overlay, live_runner, live_probe
 
 SIBLING_REPOS = [
@@ -99,11 +101,20 @@ def runner_path_for(lane: str) -> Path:
 
 
 def derive_entity_slug(mapper_xml_dir: Path) -> str | None:
-    """Pick the first kebab-case mapper, return URL slug (account-mapper.xml → 'account')."""
-    xmls = sorted(mapper_xml_dir.glob("*-mapper.xml"))
-    if not xmls:
-        return None
-    return xmls[0].name.removesuffix("-mapper.xml")
+    """Pick the first mapper, return URL slug.
+
+    Handles both kebab-case (`account-mapper.xml` → 'account') and PascalCase
+    (`AccountMapper.xml` → 'account'). Stage 3 emits PascalCase pre-overlay;
+    overlay renames to kebab-case in the runner — either may show up depending
+    on whether we read the scaffold or runner copy.
+    """
+    kebab = sorted(mapper_xml_dir.glob("*-mapper.xml"))
+    if kebab:
+        return kebab[0].name.removesuffix("-mapper.xml")
+    pascal = sorted(p for p in mapper_xml_dir.glob("*Mapper.xml"))
+    if pascal:
+        return pascal[0].name.removesuffix("Mapper.xml").lower()
+    return None
 
 
 def _mvn_rebuild_runner(runner_dir: Path, timeout_sec: int = 600) -> bool:
@@ -131,12 +142,12 @@ def run_l4_live(lane: str, scaffold_dir: Path) -> tuple[bool, bool]:
         print(f"[L4] runner dir missing: {runner_dir}", file=sys.stderr)
         return (False, False)
 
-    slug = scaffold_dir.name
     try:
-        plan = live_overlay.discover_scaffold(scaffold_dir, slug)
-    except FileNotFoundError as e:
+        plan = live_overlay.discover_scaffold(scaffold_dir)
+    except (FileNotFoundError, ValueError) as e:
         print(f"[L4] scaffold incomplete: {e}", file=sys.stderr)
         return (False, False)
+    slug = plan.domain_slug
 
     result = live_overlay.apply_overlay(runner_dir, plan)
     print(f"[L4] overlay applied: {len(result.files_written)} written, {len(result.files_edited)} edited")
@@ -150,9 +161,13 @@ def run_l4_live(lane: str, scaffold_dir: Path) -> tuple[bool, bool]:
             print(f"[L4] runner did not reach ready state (see {handle.log_path})", file=sys.stderr)
             return (False, False)
         entity = derive_entity_slug(plan.mapper_xml_dir) or slug
-        url = f"http://localhost:{handle.port}/uiadapter/{entity}/select_datalist_map.do"
-        verdict = live_probe.probe_endpoint(url, timeout_sec=L4_PROBE_TIMEOUT_SEC)
-        print(f"[L4] probe url={url} http={verdict.http_status} errcode={verdict.error_code} rows={verdict.row_count}")
+        url = lane_probe_url(lane, handle.port, entity)
+        kind = lane_probe_kind(lane)
+        if kind == "rest":
+            verdict = live_probe.probe_endpoint_json(url, timeout_sec=L4_PROBE_TIMEOUT_SEC)
+        else:
+            verdict = live_probe.probe_endpoint(url, timeout_sec=L4_PROBE_TIMEOUT_SEC)
+        print(f"[L4] probe kind={kind} url={url} http={verdict.http_status} errcode={verdict.error_code} rows={verdict.row_count}")
         if verdict.ok:
             return (True, True)
         return (False, True)

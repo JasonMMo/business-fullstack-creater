@@ -92,7 +92,7 @@ def test_run_l4_live_full_pass(tmp_path, monkeypatch):
         lambda url, **kw: live_probe.ProbeResult(http_status=200, error_code=0, row_count=2, ok=True),
     )
 
-    full, partial = full_test.run_l4_live("jakarta", scaffold)
+    full, partial = full_test.run_l4_live("nexacro", scaffold)
     assert full is True
     assert partial is True
 
@@ -111,7 +111,7 @@ def test_run_l4_live_partial_when_probe_fails(tmp_path, monkeypatch):
         lambda url, **kw: live_probe.ProbeResult(http_status=500, error_code=-999, ok=False),
     )
 
-    full, partial = full_test.run_l4_live("jakarta", scaffold)
+    full, partial = full_test.run_l4_live("nexacro", scaffold)
     assert full is False
     assert partial is True
 
@@ -126,7 +126,7 @@ def test_run_l4_live_fail_when_runner_doesnt_start(tmp_path, monkeypatch):
     monkeypatch.setattr(full_test.live_runner, "wait_until_ready", lambda *a, **kw: False)
     monkeypatch.setattr(full_test.live_runner, "stop_runner", lambda *a, **kw: None)
 
-    full, partial = full_test.run_l4_live("jakarta", scaffold)
+    full, partial = full_test.run_l4_live("nexacro", scaffold)
     assert full is False
     assert partial is False
 
@@ -136,12 +136,88 @@ def test_run_l4_live_fail_when_rebuild_fails(tmp_path, monkeypatch):
     runner = _make_fake_runner(tmp_path)
     monkeypatch.setattr(full_test, "runner_path_for", lambda lane: runner)
     monkeypatch.setattr(full_test, "_mvn_rebuild_runner", lambda d: False)
-    full, partial = full_test.run_l4_live("jakarta", scaffold)
+    full, partial = full_test.run_l4_live("nexacro", scaffold)
     assert (full, partial) == (False, False)
 
 
 def test_run_l4_live_fail_when_runner_dir_missing(tmp_path, monkeypatch):
     scaffold = _make_fake_scaffold(tmp_path, "finance")
     monkeypatch.setattr(full_test, "runner_path_for", lambda lane: tmp_path / "does-not-exist")
-    full, partial = full_test.run_l4_live("jakarta", scaffold)
+    full, partial = full_test.run_l4_live("nexacro", scaffold)
     assert (full, partial) == (False, False)
+
+
+# ---- Growth-36: lane-aware probe dispatch (REST JSON for jakarta/javax/vanilla) ----
+
+def _make_stage3_scaffold(root, slug):
+    """Mirror real Stage 3 layout: com.nexacro.uiadapter.<slug>, sql under 3-mybatis/resources, mapper singular."""
+    scaffold = root / f"{slug}-stage3"
+    java_root = scaffold / "3-mybatis" / "src" / "main" / "java" / "com" / "nexacro" / "uiadapter" / slug
+    (java_root / "controller").mkdir(parents=True)
+    (java_root / "controller" / "LeadController.java").write_text(
+        f"package com.nexacro.uiadapter.{slug}.controller;\npublic class LeadController {{}}\n",
+        encoding="utf-8",
+    )
+    res = scaffold / "3-mybatis" / "src" / "main" / "resources"
+    res.mkdir(parents=True)
+    (res / "schema.sql").write_text("CREATE TABLE lead (id BIGINT);", encoding="utf-8")
+    (res / "data.sql").write_text("INSERT INTO lead(id) VALUES(0);", encoding="utf-8")
+    mapper_dir = res / "mybatis" / "mapper"
+    mapper_dir.mkdir(parents=True)
+    (mapper_dir / "LeadMapper.xml").write_text("<?xml version='1.0'?><mapper/>", encoding="utf-8")
+    return scaffold
+
+
+@pytest.mark.parametrize("lane", ["jakarta", "javax", "vanilla"])
+def test_run_l4_live_rest_lane_uses_json_probe(lane, tmp_path, monkeypatch):
+    """jakarta/javax/vanilla Stage 3 emits /api/<entity> REST → must use probe_endpoint_json, not envelope."""
+    scaffold = _make_stage3_scaffold(tmp_path, "sales")
+    runner = _make_fake_runner(tmp_path)
+    monkeypatch.setattr(full_test, "runner_path_for", lambda lane: runner)
+    monkeypatch.setattr(full_test, "_mvn_rebuild_runner", lambda d: True)
+    handle = live_runner.LiveRunnerHandle(process=None, log_path=runner / "was.log", port=8080)
+    monkeypatch.setattr(full_test.live_runner, "start_runner", lambda *a, **kw: handle)
+    monkeypatch.setattr(full_test.live_runner, "wait_until_ready", lambda *a, **kw: True)
+    monkeypatch.setattr(full_test.live_runner, "stop_runner", lambda *a, **kw: None)
+
+    json_calls = {"count": 0, "url": None}
+    def fake_json_probe(url, **kw):
+        json_calls["count"] += 1
+        json_calls["url"] = url
+        return live_probe.ProbeResult(http_status=200, error_code=0, row_count=3, ok=True)
+    def envelope_should_not_be_called(url, **kw):
+        raise AssertionError(f"envelope probe must not run for lane={lane}; url={url}")
+
+    monkeypatch.setattr(full_test.live_probe, "probe_endpoint_json", fake_json_probe)
+    monkeypatch.setattr(full_test.live_probe, "probe_endpoint", envelope_should_not_be_called)
+
+    full, partial = full_test.run_l4_live(lane, scaffold)
+    assert full is True and partial is True
+    assert json_calls["count"] == 1
+    assert json_calls["url"] == "http://localhost:8080/api/lead"
+
+
+def test_run_l4_live_nexacro_lane_uses_envelope_probe(tmp_path, monkeypatch):
+    """nexacro lane → POST `/uiadapter/<entity>/select_datalist_map.do` envelope."""
+    scaffold = _make_fake_scaffold(tmp_path, "finance")
+    runner = _make_fake_runner(tmp_path)
+    monkeypatch.setattr(full_test, "runner_path_for", lambda lane: runner)
+    monkeypatch.setattr(full_test, "_mvn_rebuild_runner", lambda d: True)
+    handle = live_runner.LiveRunnerHandle(process=None, log_path=runner / "was.log", port=8080)
+    monkeypatch.setattr(full_test.live_runner, "start_runner", lambda *a, **kw: handle)
+    monkeypatch.setattr(full_test.live_runner, "wait_until_ready", lambda *a, **kw: True)
+    monkeypatch.setattr(full_test.live_runner, "stop_runner", lambda *a, **kw: None)
+
+    envelope_calls = {"url": None}
+    def fake_envelope(url, **kw):
+        envelope_calls["url"] = url
+        return live_probe.ProbeResult(http_status=200, error_code=0, row_count=1, ok=True)
+    def json_should_not_be_called(url, **kw):
+        raise AssertionError(f"REST JSON probe must not run for nexacro lane; url={url}")
+
+    monkeypatch.setattr(full_test.live_probe, "probe_endpoint", fake_envelope)
+    monkeypatch.setattr(full_test.live_probe, "probe_endpoint_json", json_should_not_be_called)
+
+    full, partial = full_test.run_l4_live("nexacro", scaffold)
+    assert full is True
+    assert envelope_calls["url"] == "http://localhost:8080/uiadapter/account/select_datalist_map.do"

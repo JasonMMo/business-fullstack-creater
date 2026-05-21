@@ -99,16 +99,27 @@ def run_l2_jdbc(scaffold_dir: Path) -> bool:
     return True
 
 
+def _find_pom(scaffold_dir: Path) -> Path | None:
+    """Locate the buildable pom under scaffold. Order: 5-overlay → 3-mybatis → root.
+
+    Stage 3-only scaffolds (no overlay step run yet) still have 3-mybatis/pom.xml;
+    root pom.xml is the legacy fixture layout.
+    """
+    for rel in ("5-overlay/pom.xml", "3-mybatis/pom.xml", "pom.xml"):
+        p = scaffold_dir / rel
+        if p.exists():
+            return p
+    return None
+
+
 def run_l3_mvn(scaffold_dir: Path) -> bool:
-    pom = scaffold_dir / "5-overlay" / "pom.xml"
-    if not pom.exists():
-        pom = scaffold_dir / "pom.xml"
-    if not pom.exists():
-        print(f"[L3] no pom.xml under {scaffold_dir}", file=sys.stderr)
+    pom = _find_pom(scaffold_dir)
+    if pom is None:
+        print(f"[L3] no pom.xml under {scaffold_dir} (checked 5-overlay/3-mybatis/root)", file=sys.stderr)
         return False
     p = subprocess.run(["mvn", "-q", "package", "-DskipTests"],
                        cwd=pom.parent, capture_output=True, text=True, timeout=600)
-    print(f"[L3] mvn rc={p.returncode}")
+    print(f"[L3] mvn rc={p.returncode} (pom={pom})")
     return p.returncode == 0
 
 
@@ -201,6 +212,8 @@ def find_latest_scaffold() -> Path | None:
 
 
 def run(lane: str, domain: str | None = None) -> str:
+    # Fail fast on bad lane — don't burn L1/L2/L3 only to crash inside L4
+    resolve_runner(lane)
     scaffold = Path(domain) if domain and Path(domain).exists() else find_latest_scaffold()
     if scaffold is None:
         raise FileNotFoundError("no scaffold directory found (pass [domain] or run /scaffold first)")

@@ -968,6 +968,82 @@ ps.setLong(1, fpId);
 
 ---
 
+### 3.12 Growth-28 — 라이브 WAS 스모크 (`boot-jdk17-jakarta` runner 오버레이)
+
+**목적:** Stage 3 산출물(controller/service/mapper) 이 **실제 Spring Boot WAS 위에서** Nexacro envelope 으로 호출됐을 때 `200 OK` + `output1` dataset 을 돌려주는지 한 번이라도 확인한다. JDBC-수준 스모크(§3.11)는 schema/seed 까지만 보장하므로, lane(`jakarta`) × MyBatis × NexacroResult 직렬화 stack 전체는 별도 검증이 필요하다.
+
+**대상 runner:** `D:\AI\workspace\nexacroN-fullstack\samples\runners\boot-jdk17-jakarta` (Spring Boot 3.3.5 + JDK 17 + MyBatis-Spring-Boot 3.0.3 + HSQLDB 2.7.3)
+
+**원리 — in-place overlay + git restore:** runner 레포를 **영구히** 수정하지 않는다. 오버레이 → 빌드 → 호출 → 확인 → `git restore` 로 원복. 이 절차로 runner 가 "검증대"로 재사용 가능 + nexacroN-fullstack 쪽 히스토리 오염 없음.
+
+**5 가지 오버레이 포인트** (재무관리 v5 예시):
+
+| # | 위치 | 변경 |
+|---|---|---|
+| 1 | `Application.java` | `scanBasePackages = {"com.nexacro.uiadapter", "com.example.finance"}` + `@MapperScan(basePackages = {"com.nexacro.uiadapter.mapper", "com.example.finance.mapper"})` — 도메인 mapper 인터페이스가 per-interface `@Mapper` 를 안 달기 때문에 클래스-레벨 스캔 필수 |
+| 2 | `src/main/resources/application.yml` | `schema-locations: classpath:schema.sql,classpath:finance-schema.sql` + `data-locations: classpath:data.sql,classpath:finance-data.sql` (콤마 누적) |
+| 3 | `src/main/resources/finance-schema.sql` (신규) | Stage 2 산출 `schema.sql` 의 `;` → **`^^`** 치환. runner 의 `spring.sql.init.separator: "^^"` 컨벤션에 맞춤 |
+| 4 | `src/main/resources/finance-data.sql` (신규) | 최소 2 row seed (account 2건 + fiscal_period 1건). `;` → `^^` 동일 |
+| 5 | `src/main/resources/mybatis/mappers/{account,fiscalperiod,journalentry,ledgerentry}-mapper.xml` | Stage 3 PascalCase `AccountMapper.xml` → kebab-case `account-mapper.xml` (runner glob `*-mapper.xml` 매칭) |
+
+**자바 소스 + 매퍼 XML 본체:** `src/main/java/com/example/finance/**` 17 파일 + 4 mapper XML 을 그대로 복사 (rename 만 필요).
+
+**WAS 기동 — JDK 17 명시 (PATH 가 JDK 21 이어도 안전):**
+
+```powershell
+Start-Process -FilePath "C:\Program Files\Java\jdk-17\bin\java.exe" `
+  -ArgumentList "-jar","<runner>\target\runner-boot-jdk17-jakarta-0.1.0-SNAPSHOT.jar" `
+  -RedirectStandardOutput was.log -RedirectStandardError was.err -PassThru
+# 기동 신호: "Started Application in N.NNN seconds"
+```
+
+**호출 — Nexacro envelope:**
+
+```powershell
+$body = @'
+<?xml version="1.0" encoding="UTF-8"?>
+<Root xmlns="http://www.nexacroplatform.com/platform/dataset">
+<Parameters></Parameters>
+<Dataset id="dsSearch"><ColumnInfo><Column id="searchKeyword" type="STRING" size="100"/></ColumnInfo><Rows><Row><Col id="searchKeyword"></Col></Row></Rows></Dataset>
+</Root>
+'@
+Invoke-WebRequest -Uri "http://localhost:8080/uiadapter/account/select_datalist_map.do" `
+  -Method POST -ContentType "application/xml" -Body $body -UseBasicParsing
+```
+
+**검증된 응답 (2026-05-21):**
+
+```xml
+<Parameters><Parameter id="ErrorCode" type="int">0</Parameter></Parameters>
+<Dataset id="output1">
+  <ColumnInfo>... CODE, ID, TYPE, NAME ...</ColumnInfo>
+  <Rows>
+    <Row><Col id="CODE">1000</Col><Col id="ID">0</Col><Col id="TYPE">asset</Col>...</Row>
+    <Row><Col id="CODE">4000</Col><Col id="ID">1</Col><Col id="TYPE">revenue</Col>...</Row>
+  </Rows>
+</Dataset>
+```
+
+HTTP **200 OK**, `ErrorCode=0`, 2 행. **첫 행 `ID=0`** — §3.11 의 HSQLDB IDENTITY 0-base 트랩이 **JDBC 수준이 아닌 컨테이너 응답에서도 동일 재현**된다. dialect 환류가 schema 만이 아니라 응답 payload 까지 영향을 미친다는 증거.
+
+**원복 (반드시 수행):**
+
+```powershell
+git -C D:\AI\workspace\nexacroN-fullstack restore samples/runners/boot-jdk17-jakarta/src/main/java/com/nexacro/uiadapter/Application.java
+git -C D:\AI\workspace\nexacroN-fullstack restore samples/runners/boot-jdk17-jakarta/src/main/resources/application.yml
+Remove-Item -Recurse -Force samples\runners\boot-jdk17-jakarta\src\main\java\com\example
+Remove-Item -Force samples\...\finance-schema.sql, finance-data.sql, mybatis\mappers\{account,...}-mapper.xml
+```
+
+**언제 이 절차를 다시 쓰나:**
+- 새 도메인 산출물의 **응답 직렬화** 가 의심될 때 (Map vs DataSet, 한글 컬럼명, BigDecimal 등)
+- 새 lane(`vanilla`/`javax`) 어댑터가 NexacroResult 와 호환되는지 첫 검증할 때
+- `@MapperScan` / `scanBasePackages` 외에 또 다른 오버레이 지점이 생기면 위 표에 한 줄 추가
+
+> **컨벤션:** runner 레포는 "원본 read-only + 오버레이 후 즉시 원복" 원칙으로만 만진다. 영구 변경이 필요하면 그건 runner 자체 PR 사안 — 이 절차의 범위 밖.
+
+---
+
 ## 4. 통합 — Stage 3+4 → nexacro-fullstack-starter overlay
 
 핸드오프 계약 전문은 [`needs/Plugin참조/3. Middle+Frontend - Stage 3→4 nexacro 핸드오프 계약.md`](../needs/Plugin%EC%B0%B8%EC%A1%B0/3.%20Middle%2BFrontend%20-%20Stage%203%E2%86%924%20nexacro%20%ED%95%B8%EB%93%9C%EC%98%A4%ED%94%84%20%EA%B3%84%EC%95%BD.md) 참조.

@@ -53,7 +53,7 @@
 | lane | 디폴트 러너 | 보조 러너 | 검증 상태 |
 |---|---|---|---|
 | **jakarta** | `boot-jdk17-jakarta` (Spring Boot 3.3) | `mvc-jdk17-jakarta`, `egov5-boot-jdk17-jakarta` | ✅ Growth-28 (finance) + Growth-31 (sales) |
-| **javax** | `boot-jdk8-javax` (Spring Boot 2.x) | `mvc-jdk8-javax`, `egov4-boot-jdk8-javax`, `egov4-mvc-jdk8-javax` | ⏳ 러너 존재, 첫 검증 대기 |
+| **javax** | `boot-jdk8-javax` (Spring Boot 2.x) | `mvc-jdk8-javax`, `egov4-boot-jdk8-javax`, `egov4-mvc-jdk8-javax` | ✅ Growth-32 (sales, JAVA_HOME=JDK17/target=1.8) |
 | **vanilla** | (직접 러너 없음 — `javax` 러너에 임포트 후 사용 또는 자체 minimal-servlet 러너 미정) | — | ⚠️ 검증대 부재 — 결정 필요 |
 
 **선택 규칙:**

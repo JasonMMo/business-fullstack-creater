@@ -11,6 +11,7 @@ caller can map this onto the "라이브 WAS 부분검증" label).
 from __future__ import annotations
 import json
 import re
+import time
 import urllib.error
 import urllib.request as urllib_request
 from dataclasses import dataclass
@@ -85,12 +86,18 @@ def probe_endpoint(
     url: str,
     envelope: Optional[str] = None,
     timeout_sec: float = 30.0,
+    retries: int = 0,
+    retry_delay_sec: float = 1.0,
 ) -> ProbeResult:
     """POST nexacro envelope to URL, return parsed verdict.
 
     Connection errors collapse to http_status=0 (caller treats as L4 FAIL).
     HTTP-level errors (4xx/5xx) preserve the status code and attempt to parse
     any response body — useful for inspecting ErrorCode in 500 responses.
+
+    `retries` retries ONLY on transport-level failures (urlopen raised, no HTTP
+    response). HTTPError is a real response — surfaced immediately, no retry.
+    Useful for post-ready transient refusals before the connector binds.
     """
     body = (envelope or build_envelope()).encode("utf-8")
     req = urllib_request.Request(
@@ -102,20 +109,25 @@ def probe_endpoint(
         },
         method="POST",
     )
-    try:
-        with urllib_request.urlopen(req, timeout=timeout_sec) as resp:
-            status = getattr(resp, "status", 200)
-            text = resp.read().decode("utf-8", errors="replace")
-            return parse_response(text, http_status=status)
-    except urllib.error.HTTPError as e:
-        text = ""
+    last_err = ""
+    for attempt in range(retries + 1):
         try:
-            text = e.read().decode("utf-8", errors="replace") if e.fp else ""
-        except Exception:
-            pass
-        return parse_response(text, http_status=e.code)
-    except Exception as e:
-        return ProbeResult(http_status=0, raw=str(e))
+            with urllib_request.urlopen(req, timeout=timeout_sec) as resp:
+                status = getattr(resp, "status", 200)
+                text = resp.read().decode("utf-8", errors="replace")
+                return parse_response(text, http_status=status)
+        except urllib.error.HTTPError as e:
+            text = ""
+            try:
+                text = e.read().decode("utf-8", errors="replace") if e.fp else ""
+            except Exception:
+                pass
+            return parse_response(text, http_status=e.code)
+        except Exception as e:
+            last_err = str(e)
+            if attempt < retries:
+                time.sleep(retry_delay_sec)
+    return ProbeResult(http_status=0, raw=last_err)
 
 
 def parse_json_response(body_text: str, http_status: int) -> ProbeResult:
@@ -141,24 +153,38 @@ def parse_json_response(body_text: str, http_status: int) -> ProbeResult:
     )
 
 
-def probe_endpoint_json(url: str, timeout_sec: float = 30.0) -> ProbeResult:
-    """GET URL, parse JSON list verdict. Use for jakarta/javax/vanilla REST lanes."""
+def probe_endpoint_json(
+    url: str,
+    timeout_sec: float = 30.0,
+    retries: int = 0,
+    retry_delay_sec: float = 1.0,
+) -> ProbeResult:
+    """GET URL, parse JSON list verdict. Use for jakarta/javax/vanilla REST lanes.
+
+    Retry semantics match probe_endpoint: transport failures retry, HTTPError
+    surfaces immediately.
+    """
     req = urllib_request.Request(
         url,
         headers={"Accept": "application/json", "User-Agent": "live-probe/0.1"},
         method="GET",
     )
-    try:
-        with urllib_request.urlopen(req, timeout=timeout_sec) as resp:
-            status = getattr(resp, "status", 200)
-            text = resp.read().decode("utf-8", errors="replace")
-            return parse_json_response(text, http_status=status)
-    except urllib.error.HTTPError as e:
-        text = ""
+    last_err = ""
+    for attempt in range(retries + 1):
         try:
-            text = e.read().decode("utf-8", errors="replace") if e.fp else ""
-        except Exception:
-            pass
-        return parse_json_response(text, http_status=e.code)
-    except Exception as e:
-        return ProbeResult(http_status=0, raw=str(e))
+            with urllib_request.urlopen(req, timeout=timeout_sec) as resp:
+                status = getattr(resp, "status", 200)
+                text = resp.read().decode("utf-8", errors="replace")
+                return parse_json_response(text, http_status=status)
+        except urllib.error.HTTPError as e:
+            text = ""
+            try:
+                text = e.read().decode("utf-8", errors="replace") if e.fp else ""
+            except Exception:
+                pass
+            return parse_json_response(text, http_status=e.code)
+        except Exception as e:
+            last_err = str(e)
+            if attempt < retries:
+                time.sleep(retry_delay_sec)
+    return ProbeResult(http_status=0, raw=last_err)

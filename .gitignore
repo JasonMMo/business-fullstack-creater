@@ -8,3 +8,9 @@ tests/golden/*/db/
 tests/golden/*/_blueprint.yaml
 tests/golden/*/compile-report.md
 config/stage-paths.yaml
+
+# E2E / live-WAS smoke artifacts (Growth-28+ in-place overlay pattern)
+.tmp_e2e_*/
+.tmp_smoke_*/
+testspace/
+target/

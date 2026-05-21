@@ -1056,6 +1056,18 @@ git -C D:\AI\workspace\nexacroN-fullstack status --short samples/runners/boot-jd
 
 > **컨벤션:** runner 레포는 "원본 read-only + 오버레이 후 즉시 원복" 원칙으로만 만진다. 영구 변경이 필요하면 그건 runner 자체 PR 사안 — 이 절차의 범위 밖.
 
+**검증 이력 (도메인 × lane × runner):**
+
+| 일자 | Growth | 도메인 | lane | runner | 결과 | 비고 |
+|---|---|---|---|---|---|---|
+| 2026-05-21 | Growth-28 | 재무관리 (finance) | nexacro (jakarta-for-nexacro) | boot-jdk17-jakarta | ✅ 200 OK · ErrorCode=0 · 2행 · 첫행 ID=0 | `/uiadapter/account/select_datalist_map.do` |
+| 2026-05-21 | Growth-31 | 영업관리 (sales/CRM) | nexacro (jakarta-for-nexacro) | boot-jdk17-jakarta | ✅ 200 OK · ErrorCode=0 · 2행 · 첫행 ID=0 | `/uiadapter/lead/select_datalist_map.do` · 예약어 `LEAD` 인용 필요 · IDENTITY 0-base 트랩이 seed FK(`sales_activity.opportunity_id`) 에 재발 → seed 를 `0,1` 로 정정 후 통과 |
+
+**Growth-31 추가 발견 (이 절차의 일반화 가치):**
+- 절차 자체가 **재무관리 외 도메인**에서도 그대로 작동 — overlay 5포인트 표 (Application.java / application.yml / `<domain>-schema.sql` / `<domain>-data.sql` / mapper XML rename) 가 도메인-agnostic 임이 입증됨
+- HSQLDB IDENTITY 0-base 트랩이 **intra-domain FK seed** 에서도 동일하게 재현 — `seed-conventions.md` 의 "first-row id=0" 주의가 cross-FK 가 아닌 도메인 내부에서도 필수
+- SQL:2008 예약어(`LEAD`)는 quoted identifier(`"LEAD"`) 로 schema · seed · mapper SQL 3 곳 모두 동시 수정 필요 — Stage 2 DDL 생성기가 자동 인용해 주므로 overlay 시점에는 schema/data 만 손대면 됨 (mapper 는 그대로 통과)
+
 ---
 
 ## 4. 통합 — Stage 3+4 → nexacro-fullstack-starter overlay

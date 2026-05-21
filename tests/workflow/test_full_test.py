@@ -328,3 +328,91 @@ def test_run_rejects_unknown_lane(tmp_path, monkeypatch):
     monkeypatch.setattr(full_test, "find_latest_scaffold", lambda: fake)
     with pytest.raises(ValueError, match="unknown lane"):
         full_test.run("not-a-real-lane")
+
+
+# ---- Growth-39: --json output mode + structured result ----
+
+def _stub_all_layers_pass(monkeypatch, tmp_path):
+    """Helper: mock every layer so main()/run() finish without doing real work."""
+    fake = tmp_path / "scaffold-x"
+    fake.mkdir()
+    monkeypatch.setattr(full_test, "find_latest_scaffold", lambda: fake)
+    monkeypatch.setattr(full_test, "run_l1_pytest", lambda: True)
+    monkeypatch.setattr(full_test, "run_l2_jdbc", lambda s: True)
+    monkeypatch.setattr(full_test, "run_l3_mvn", lambda s: True)
+    monkeypatch.setattr(full_test, "run_l4_live", lambda lane, s: (True, True))
+    # silence cleanup + learn-log side-effects
+    monkeypatch.setattr(full_test.cleanup_runner, "run", lambda lane: {"ok": True})
+    monkeypatch.setattr(full_test.cleanup_runner, "format_report", lambda r: "[cleanup] ok")
+    monkeypatch.setattr(full_test.learn_log, "latest_growth_num", lambda: 99)
+    monkeypatch.setattr(full_test.learn_log, "update_label", lambda n, label: None)
+    return fake
+
+
+def test_run_returns_result_object_with_layers(tmp_path, monkeypatch):
+    """run() returns a FullTestResult dataclass (not bare string) with layers/lane/scaffold."""
+    fake = _stub_all_layers_pass(monkeypatch, tmp_path)
+    result = full_test.run("jakarta")
+    assert result.label == "풀테스트 그린"
+    assert result.layers["L1"] is True
+    assert result.layers["L2"] is True
+    assert result.layers["L3"] is True
+    assert result.layers["L4_full"] is True
+    assert result.lane == "jakarta"
+    assert str(result.scaffold) == str(fake)
+
+
+def test_full_test_result_str_is_label(tmp_path, monkeypatch):
+    """str(result) == label keeps `print(run(...))` callers working unchanged."""
+    _stub_all_layers_pass(monkeypatch, tmp_path)
+    result = full_test.run("jakarta")
+    assert str(result) == result.label
+
+
+def test_main_json_mode_emits_structured_json(tmp_path, monkeypatch, capsys):
+    """--json: stdout is parseable JSON with label/layers/lane/scaffold; exit 0 on green."""
+    import json
+    _stub_all_layers_pass(monkeypatch, tmp_path)
+    rc = full_test.main(["jakarta", "--json"])
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["label"] == "풀테스트 그린"
+    assert payload["lane"] == "jakarta"
+    assert payload["layers"]["L4_full"] is True
+    assert "scaffold" in payload
+    assert rc == 0
+
+
+def test_main_text_mode_prints_label_line(tmp_path, monkeypatch, capsys):
+    """Without --json, the legacy `LABEL: ...` text line is preserved."""
+    _stub_all_layers_pass(monkeypatch, tmp_path)
+    rc = full_test.main(["jakarta"])
+    captured = capsys.readouterr()
+    assert "LABEL: 풀테스트 그린" in captured.out
+    assert rc == 0
+
+
+def test_main_json_mode_keeps_human_output_off_stdout(tmp_path, monkeypatch, capsys):
+    """--json: layer progress prints (cleanup banner etc.) must not pollute stdout JSON."""
+    import json
+    _stub_all_layers_pass(monkeypatch, tmp_path)
+    full_test.main(["jakarta", "--json"])
+    captured = capsys.readouterr()
+    # stdout must be a single JSON document, fully parseable end-to-end
+    json.loads(captured.out)  # would raise if anything else got mixed in
+
+
+def test_main_nonzero_exit_when_not_full_green(tmp_path, monkeypatch, capsys):
+    """Anything short of 풀테스트 그린 → exit code != 0 so CI can branch on it."""
+    fake = tmp_path / "s"; fake.mkdir()
+    monkeypatch.setattr(full_test, "find_latest_scaffold", lambda: fake)
+    monkeypatch.setattr(full_test, "run_l1_pytest", lambda: True)
+    monkeypatch.setattr(full_test, "run_l2_jdbc", lambda s: True)
+    monkeypatch.setattr(full_test, "run_l3_mvn", lambda s: True)
+    monkeypatch.setattr(full_test, "run_l4_live", lambda lane, s: (False, True))
+    monkeypatch.setattr(full_test.cleanup_runner, "run", lambda lane: {"ok": True})
+    monkeypatch.setattr(full_test.cleanup_runner, "format_report", lambda r: "")
+    monkeypatch.setattr(full_test.learn_log, "latest_growth_num", lambda: 99)
+    monkeypatch.setattr(full_test.learn_log, "update_label", lambda n, label: None)
+    rc = full_test.main(["jakarta", "--json"])
+    assert rc != 0

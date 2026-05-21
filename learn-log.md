@@ -88,6 +88,9 @@ YYYY-MM-DD | Growth-N | <kind> | <name> | <domain/lane/dialect> | <한줄요약>
 | **explicit-id MERGE 패턴** | Growth-32 | seed의 `MERGE USING (VALUES(...))`에 명시적 `id` 포함하면 IDENTITY 트랩 + `s.id` 참조 누락을 한 번에 회피. Stage 2 seed 템플릿 기본화 대상 (task #240). |
 | **javax lane URL 컨벤션** | Growth-32 | `/api/<entity>` (REST). `/uiadapter/<entity>/<method>.do` 는 nexacro lane 한정. |
 | **JDK8 source/target on JDK17 JAVA_HOME** | Growth-32 | pom.xml `<source>1.8</source><target>1.8</target>` 가 진실. 사용자 환경에 JDK8 없을 때 우회로. |
+| **Spring Boot mapper bean = `@Mapper` 어노테이션 진실원천** | Growth-33 | `boot-jdk8-javax` runner는 `Application.java`에 `@MapperScan` 없음 → MyBatis starter 자동검출이 `@Mapper` per-interface 만 신뢰. 템플릿 (mapper-interface.rest.j2 + mapper-interface.j2) 모두 `@Mapper` 기본 탑재로 환류 (task #246). |
+| **타입-aware seed sentinel** | Growth-33 | timestamp/datetime/time 컬럼은 문자열 'TBD' → `CURRENT_TIMESTAMP`/`CURRENT_TIME` 로 자동 치환. dialect-agnostic. (task #245) |
+| **REST controller URL = snake_case** | Growth-33 | 생성된 `@RequestMapping` 은 `/api/<table_name>` (snake_case). camelCase 호출은 404. 스모크 테스트 작성 시 주의. |
 
 ---
 
@@ -99,6 +102,9 @@ YYYY-MM-DD | Growth-N | <kind> | <name> | <domain/lane/dialect> | <한줄요약>
 - ~~**task #241** — Stage 3 javax/jakarta 도메인 orphan JPA 어노테이션 제거 (Growth-32 발견)~~ → fixed in `andrej-karpathy-rdb-mybatis` 9188339 (javax) + 04fe964 (jakarta), 둘 다 plain POJO
 - ~~**task #242** — Stage 3 REST lane service interface 시그니처 동기화 (Growth-32 발견)~~ → fixed in `andrej-karpathy-rdb-mybatis` e696861 (service-interface.rest.j2) + 59e9ef1 (codegen iface_suffix routing)
 - ~~**task #243** — Stage 3 REST lane mapper interface CRUD 반환형 int 통일 (Growth-32 발견)~~ → fixed in `andrej-karpathy-rdb-mybatis` a82cdb8 (mapper-interface.rest.j2) + 59e9ef1 (codegen iface_suffix routing). 회귀: 283d755 (javax tests) + 255a1bf (jakarta tests + nexacro sanity), 85 passed
+- ~~**task #245** — Stage 2 seed 타입-aware sentinel (Growth-33 발견, datetime 컬럼에 'TBD' 문자열 삽입 → HSQLDB 파싱 실패)~~ → fixed in `andrej-karpathy-rdb-ddl` d7f36e0 (seed_gen.py type detection) + 8163012 (regression test)
+- ~~**task #246** — Stage 3 REST lane mapper interface `@Mapper` 어노테이션 누락 (Growth-33 발견, Spring Boot MyBatis starter auto-discovery 의존)~~ → fixed in `andrej-karpathy-rdb-mybatis` 0657292 (mapper-interface.rest.j2) + 5d4bc68 (mapper-interface.j2 일관성). 회귀: 3644050 (javax test) + a87bee9 (jakarta test). Golden 갱신: a227d5e (CustomerMapper) + c8d0f9f (AddressMapper). 87/87 passed
+- **gap G-Jackson** (Growth-33 라이브 검증 부분실패 원인) — `boot-jdk8-javax` runner classpath의 Jackson 버전이 `JsonToken.valueDescFor` (2.16+) 미보유 → NexacroResult 직렬화 시 `NoSuchMethodError`. 컨트롤러는 정상 도달, 핸들러는 정상 호출됨. 환류 방향: runner 의존성 업그레이드 또는 NexacroResult-Jackson 격리 어댑터. **codegen 결함 아님** — runner-side dep 문제.
 
 ---
 
@@ -126,6 +132,7 @@ YYYY-MM-DD | Growth-N | <kind> | <name> | <domain/lane/dialect> | <한줄요약>
 | Growth-29~30 | 2026-05 | 풀테스트 4계층 절차 자체 리뷰 + 검증대 매트릭스 |
 | Growth-31 | 2026-05-21 | jakarta lane × 영업관리 라이브 검증 (cross-domain) |
 | Growth-32 | 2026-05-21 | javax lane × 영업관리 라이브 검증 + codegen bug 4건 |
+| Growth-33 | 2026-05-21 | javax lane re-검증 (regenerated, no manual edits) — pytest/JDBC/Maven/Spring context PASS, 엔드포인트 응답은 runner Jackson dep 결함으로 500 → **"라이브 WAS 부분검증"**. codegen 결함 2건 환류 (#245 seed sentinel, #246 `@Mapper` 어노테이션). 새 gap G-Jackson 등록. |
 
 ---
 

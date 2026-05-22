@@ -250,16 +250,18 @@ def crud_roundtrip_envelope(
 # ---------- helpers callers will want ----------
 
 def nexacro_dataset_id(entity: str) -> str:
-    """Convert snake_case entity name → nexacro `ds<Pascal>` dataset id.
+    """Return the server-side dataset id the scaffold controller binds for save.
 
-    Matches the convention in form_composer.py: `ds{Pascal}` where Pascal is
-    join-cap of `_`-segments. Examples:
-      account            → dsAccount
-      order_item         → dsOrderItem
-      shipping_address   → dsShippingAddress
+    Scaffold-generated controllers declare
+        @ParamDataSet(name = "dataList") List<Map<String, Object>> dataList
+    so the envelope must ship `<Dataset id="dataList">`. The form-side `ds<Pascal>`
+    convention only applies inside the XFDL Transaction's string map
+    (e.g. `dsCustomer=dataList:U`) — the wire dataset id is always `dataList`.
+
+    `entity` is accepted (and ignored) so a future per-entity binding override
+    can land without rewiring callers.
     """
-    pascal = "".join(p.capitalize() for p in entity.split("_"))
-    return f"ds{pascal}"
+    return "dataList"
 
 
 def nexacro_save_url(port: int, entity: str) -> str:

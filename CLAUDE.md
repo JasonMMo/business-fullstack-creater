@@ -6,13 +6,17 @@
 
 ## 핵심 운영 원칙 — 도메인 깊이의 복리식 축적
 
-새 도메인을 다루거나 기존 도메인을 다시 만질 때마다, 다음 3개 축에서 **살을 붙이며 깊이를 더해가야 한다**:
+새 도메인을 다루거나 기존 도메인을 다시 만질 때마다, 다음 5개 축에서 **살을 붙이며 깊이를 더해가야 한다** (Phase A 2026-05-22 — 3축에서 5축으로 확장: skill/creater 축 추가):
 
 | 축 | 누적 위치 | 깊이의 의미 |
 |---|---|---|
-| **Backend (Stage 2)** | `andrej-karpathy-rdb-ddl/catalogs/preset-catalog.yaml`, dialect 어댑터(postgres/hsqldb/mysql) | 더 많은 entity·관계·dialect별 인덱스/제약 |
-| **Middle (Stage 3)** | `andrej-karpathy-rdb-mybatis/templates/<lane>/`, lane(nexacro/vanilla/jakarta/javax) | 더 풍부한 service 분기·매퍼·lane별 어댑터 변형 |
-| **Frontend (Stage 4+5)** | `andrej-karpathy-rdb-nexacro/patterns/`, UI overlay(nexacro/react) | 더 다양한 화면 패턴(D2/F1/C1...)·overlay 어댑터 |
+| **skill (Stage 1)** | `andrej-karpathy-rdb-skill/.claude/skills/karpathy-rdb/presets/*.seed.md`, `protocols/`, `wiki-template/` | 더 풍부한 도메인 wiki 큐레이션·blueprint 계약 안정화·`/contribute` 역류 정확도 |
+| **ddl (Stage 2)** | `andrej-karpathy-rdb-ddl/catalogs/preset-catalog.yaml`, dialect 어댑터(postgres/hsqldb/mysql) | 더 많은 entity·관계·dialect별 인덱스/제약 |
+| **mybatis (Stage 3)** | `andrej-karpathy-rdb-mybatis/templates/<lane>/`, lane(nexacro/vanilla/jakarta/javax) | 더 풍부한 service 분기·매퍼·lane별 어댑터 변형 |
+| **nexacro (Stage 4+5)** | `andrej-karpathy-rdb-nexacro/patterns/`, UI overlay(nexacro/react) | 더 다양한 화면 패턴(D2/F1/C1...)·overlay 어댑터 |
+| **creater (Orchestrator)** | `business-fullstack-creater/.claude/commands/`(scaffold·full-test·growth-start·contribute-back·cleanup-runner) + `scripts/workflow/`(full_test·live_*·lane_runner_map·learn_log) | 더 단단한 4계층 풀테스트·lane×runner 매핑·cleanup·Growth ledger 자동화 |
+
+> **활동 뷰**: 위 5축의 *현재 누적 상태* (트랩 카운트, 미해결 환류, 단위 테스트 위치)는 `learn-log.md` §0 Layer Ownership Card 참조. 이 표는 변하지 않는 책임, §0 표는 매 Growth마다 갱신되는 활동 원장.
 
 ## 작업 시 체크리스트
 

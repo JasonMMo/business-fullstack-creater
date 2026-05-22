@@ -39,6 +39,12 @@ class ScaffoldArgs:
     #   "jakarta" → Spring Security 6 + jakarta.servlet (default; matches Growth-21a)
     #   "javax"   → Spring Security 5 + javax.servlet (no silent fallback)
     auth_lane: str = "jakarta"
+    # Growth-47: nexacro-uiadapter Spring flavor for Stage 3 (lane=nexacro only).
+    #   "jakarta" → com.nexacro.uiadapter.jakarta.core.* (Spring 6, boot-jdk17-jakarta)
+    #   "spring"  → com.nexacro.uiadapter.spring.core.*  (Spring 5, boot-jdk8-javax)
+    # Mismatch causes L4 ParamDataSet/NexacroResult symbol-not-found
+    # (T-NexacroUiaPkg-javax trap).
+    uia_namespace: str = "jakarta"
 
 
 @dataclass
@@ -208,6 +214,7 @@ def _run_stage3(args, stage_paths, report):
         "--lane", args.lane,
         "--package", args.package,
         "--project-root-pkg", args.target_pkg_prefix,
+        "--uia-namespace", args.uia_namespace,
     ]
     # E4: pass --seed-dir only when Stage 2 actually emitted seed files
     if seed_dir.exists() and any(seed_dir.iterdir()):

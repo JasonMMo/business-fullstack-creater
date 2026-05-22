@@ -126,26 +126,69 @@ def _pascal_to_kebab(name: str) -> str:
 
 
 def _edit_application_java(app_path: Path, slug: str) -> None:
-    """Inject "com.example.<slug>" into scanBasePackages and @MapperScan, idempotent."""
+    """Inject "com.example.<slug>" into scanBasePackages and @MapperScan, idempotent.
+
+    Handles two runner shapes:
+      A) Annotation already parameterised — `@SpringBootApplication(scanBasePackages = { ... })`
+         plus an existing `@MapperScan(basePackages = { ... })` — just append our slug.
+      B) Bare `@SpringBootApplication` with no scanBasePackages and no @MapperScan
+         (the boot-jdk17-jakarta default). We must INSERT the parameters and the
+         @MapperScan annotation, not just substitute.
+    """
     text = app_path.read_text(encoding="utf-8")
     pkg = f'"com.example.{slug}"'
     mapper_pkg = f'"com.example.{slug}.mapper"'
 
     if pkg not in text:
-        text = re.sub(
-            r'(scanBasePackages\s*=\s*\{)([^}]*)(\})',
-            lambda m: f'{m.group(1)}{m.group(2).rstrip()}, {pkg}{m.group(3)}',
-            text,
-            count=1,
-        )
+        if re.search(r'scanBasePackages\s*=\s*\{', text):
+            text = re.sub(
+                r'(scanBasePackages\s*=\s*\{)([^}]*)(\})',
+                lambda m: f'{m.group(1)}{m.group(2).rstrip()}, {pkg}{m.group(3)}',
+                text,
+                count=1,
+            )
+        else:
+            # Bare @SpringBootApplication — parameterise it, including the runner's
+            # own root package so the original controllers stay scanned.
+            base_pkg = _root_package(text)
+            text = re.sub(
+                r'@SpringBootApplication\b(?!\s*\()',
+                f'@SpringBootApplication(scanBasePackages = {{"{base_pkg}", {pkg}}})',
+                text,
+                count=1,
+            )
+
     if mapper_pkg not in text:
-        text = re.sub(
-            r'(@MapperScan\s*\(\s*basePackages\s*=\s*\{)([^}]*)(\})',
-            lambda m: f'{m.group(1)}{m.group(2).rstrip()}, {mapper_pkg}{m.group(3)}',
-            text,
-            count=1,
-        )
+        if re.search(r'@MapperScan\s*\(\s*basePackages\s*=\s*\{', text):
+            text = re.sub(
+                r'(@MapperScan\s*\(\s*basePackages\s*=\s*\{)([^}]*)(\})',
+                lambda m: f'{m.group(1)}{m.group(2).rstrip()}, {mapper_pkg}{m.group(3)}',
+                text,
+                count=1,
+            )
+        else:
+            # Add @MapperScan annotation + import line.
+            if "org.mybatis.spring.annotation.MapperScan" not in text:
+                text = re.sub(
+                    r'(import org\.springframework\.boot\.autoconfigure\.SpringBootApplication;\s*\n)',
+                    r'\1import org.mybatis.spring.annotation.MapperScan;\n',
+                    text,
+                    count=1,
+                )
+            text = re.sub(
+                r'(@SpringBootApplication[^\n]*\n)',
+                f'\\1@MapperScan(basePackages = {{{mapper_pkg}}})\n',
+                text,
+                count=1,
+            )
+
     app_path.write_text(text, encoding="utf-8")
+
+
+def _root_package(text: str) -> str:
+    """Extract the Application class's own package declaration."""
+    m = re.search(r'^\s*package\s+([\w.]+)\s*;', text, re.MULTILINE)
+    return m.group(1) if m else "com.nexacro.uiadapter"
 
 
 def _edit_application_yml(yml_path: Path, slug: str) -> None:

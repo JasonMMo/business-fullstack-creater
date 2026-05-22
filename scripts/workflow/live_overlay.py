@@ -35,6 +35,31 @@ class OverlayResult:
 _RESERVED_SUBPKGS = {"controller", "service", "mapper", "domain", "config", "dto", "vo", "util", "impl"}
 
 
+_SCAFFOLD_LANE_RE = re.compile(r"^\s*-\s*lane:\s*`([^`]+)`", re.MULTILINE)
+
+
+def discover_scaffold_lane(scaffold_dir: Path) -> str | None:
+    """Read the `lane: <name>` line from scaffold-report.md.
+
+    Growth-48 (T-Probe-LaneRunner-Mismatch): wire-protocol selection must come
+    from the *scaffold* lane (what Stage 3 emitted), not the *runner* lane the
+    user picked for deployment. scaffold-report.md is the truth source — Stage
+    1 writes `- lane: \\`<name>\\` (middle: ...)` on entry to the report.
+
+    Returns the lane string (e.g. 'nexacro', 'jakarta') or None if the report
+    is missing or has no recognizable `lane:` line.
+    """
+    report = Path(scaffold_dir) / "scaffold-report.md"
+    if not report.exists():
+        return None
+    try:
+        text = report.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return None
+    m = _SCAFFOLD_LANE_RE.search(text)
+    return m.group(1) if m else None
+
+
 def derive_domain_slug(scaffold_dir: Path) -> str | None:
     """Find unique sub-package under com.nexacro.uiadapter (Stage 3 actual) or com.example (legacy).
 

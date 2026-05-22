@@ -676,3 +676,70 @@ def test_run_l4_live_nexacro_lane_dispatches_envelope_crud(tmp_path, monkeypatch
     assert call["pk_value"] == 999001
     assert layers["L4_crud"] is True
     assert layers["L4_crud_kind"] == "envelope"
+
+
+# ---- Growth-48: T-Probe-LaneRunner-Mismatch — scaffold_lane overrides runner lane ----
+
+def test_run_l4_live_scaffold_lane_overrides_runner_lane(tmp_path, monkeypatch):
+    # nexacro scaffold deployed on javax runner: probe must follow scaffold (envelope),
+    # not the runner (REST). discover_scaffold_lane reads the lane line from
+    # scaffold-report.md and passes it as scaffold_lane= to probe/CRUD dispatchers.
+    scaffold = _make_fake_scaffold(tmp_path, "finance")
+    # scaffold-report.md declares lane=nexacro (envelope wire-protocol)
+    (scaffold / "scaffold-report.md").write_text(
+        "# Scaffold Report\n\n"
+        "- domain: `finance`\n"
+        "- lane: `nexacro` (middle: jakarta-for-nexacro)\n"
+        "- dialect: `hsqldb`\n",
+        encoding="utf-8",
+    )
+    runner = _make_fake_runner(tmp_path)
+    monkeypatch.setattr(full_test, "runner_path_for", lambda lane: runner)
+    monkeypatch.setattr(full_test, "_mvn_rebuild_runner", lambda d: True)
+    handle = live_runner.LiveRunnerHandle(process=None, log_path=runner / "was.log", port=8080)
+    monkeypatch.setattr(full_test.live_runner, "start_runner", lambda *a, **kw: handle)
+    monkeypatch.setattr(full_test.live_runner, "wait_until_ready", lambda *a, **kw: True)
+    monkeypatch.setattr(full_test.live_runner, "stop_runner", lambda *a, **kw: None)
+
+    envelope_calls = {"url": None}
+    def fake_envelope(url, **kw):
+        envelope_calls["url"] = url
+        return live_probe.ProbeResult(http_status=200, error_code=0, row_count=1, ok=True)
+    def json_should_not_be_called(url, **kw):
+        raise AssertionError(
+            f"REST JSON probe must not run when scaffold_lane=nexacro overrides runner lane=javax; url={url}"
+        )
+    monkeypatch.setattr(full_test.live_probe, "probe_endpoint", fake_envelope)
+    monkeypatch.setattr(full_test.live_probe, "probe_endpoint_json", json_should_not_be_called)
+
+    # Runner lane is javax (REST by default), but scaffold-report.md says nexacro → envelope wins
+    full, partial = full_test.run_l4_live("javax", scaffold)
+    assert full is True
+    assert envelope_calls["url"] == "http://localhost:8080/uiadapter/account/select_datalist_map.do"
+
+
+def test_run_l4_live_no_scaffold_report_falls_back_to_runner_lane(tmp_path, monkeypatch):
+    """When scaffold-report.md is missing, discover_scaffold_lane returns None and
+    probe/CRUD dispatch falls back to the runner lane (legacy behavior)."""
+    scaffold = _make_stage3_scaffold(tmp_path, "sales")
+    # NOTE: deliberately do NOT write scaffold-report.md
+    runner = _make_fake_runner(tmp_path)
+    monkeypatch.setattr(full_test, "runner_path_for", lambda lane: runner)
+    monkeypatch.setattr(full_test, "_mvn_rebuild_runner", lambda d: True)
+    handle = live_runner.LiveRunnerHandle(process=None, log_path=runner / "was.log", port=8080)
+    monkeypatch.setattr(full_test.live_runner, "start_runner", lambda *a, **kw: handle)
+    monkeypatch.setattr(full_test.live_runner, "wait_until_ready", lambda *a, **kw: True)
+    monkeypatch.setattr(full_test.live_runner, "stop_runner", lambda *a, **kw: None)
+
+    json_calls = {"url": None}
+    def fake_json(url, **kw):
+        json_calls["url"] = url
+        return live_probe.ProbeResult(http_status=200, error_code=0, row_count=2, ok=True)
+    def envelope_should_not_be_called(url, **kw):
+        raise AssertionError(f"envelope probe must not run for runner lane=jakarta w/ no scaffold report; url={url}")
+    monkeypatch.setattr(full_test.live_probe, "probe_endpoint_json", fake_json)
+    monkeypatch.setattr(full_test.live_probe, "probe_endpoint", envelope_should_not_be_called)
+
+    full, partial = full_test.run_l4_live("jakarta", scaffold)
+    assert full is True
+    assert json_calls["url"] == "http://localhost:8080/api/lead"

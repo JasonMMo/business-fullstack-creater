@@ -1,0 +1,31 @@
+{
+  "permissions": {
+    "allow": [
+      "Skill(*)",
+      "Bash(pytest:*)",
+      "Bash(python scripts/*)",
+      "Bash(python scripts/workflow/*)",
+      "PowerShell(python scripts/*)",
+      "PowerShell(python scripts/workflow/*)",
+      "PowerShell(git status:*)",
+      "PowerShell(git diff:*)",
+      "PowerShell(git log:*)",
+      "PowerShell(git add:*)",
+      "PowerShell(git commit:*)",
+      "PowerShell(git restore:*)",
+      "PowerShell(Get-Process java*)",
+      "PowerShell(Stop-Process*)",
+      "PowerShell(Get-CimInstance *)",
+      "PowerShell(git -C D:\\AI\\workspace\\andrej-karpathy-rdb-*:push origin master)",
+      "PowerShell(git -C D:\\AI\\workspace\\business-fullstack-creater:push origin master)",
+      "PowerShell(git -C D:\\AI\\workspace\\andrej-karpathy-rdb-* tag*)",
+      "PowerShell(git -C D:\\AI\\workspace\\business-fullstack-creater tag*)",
+      "mcp__plugin_context-mode_context-mode__ctx_batch_execute"
+    ],
+    "deny": [],
+    "ask": []
+  },
+  "worktree": {
+    "bgIsolation": "none"
+  }
+}

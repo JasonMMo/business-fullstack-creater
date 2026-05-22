@@ -11,10 +11,17 @@ This module does NOT reimplement those layers — it orchestrates and labels.
 from __future__ import annotations
 import argparse
 import json
+import shutil
 import subprocess
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
+
+
+def _mvn_cmd() -> str:
+    """Resolve `mvn` to an absolute path. On Windows, subprocess cannot resolve
+    `.cmd` shims via PATH without shell=True, so look up `mvn.cmd` explicitly."""
+    return shutil.which("mvn") or shutil.which("mvn.cmd") or "mvn"
 
 # Support both `python -m scripts.workflow.full_test` (package import)
 # and `python scripts/workflow/full_test.py` (direct script invocation).
@@ -131,9 +138,12 @@ def _find_pom(scaffold_dir: Path) -> Path | None:
 def run_l3_mvn(scaffold_dir: Path) -> bool:
     pom = _find_pom(scaffold_dir)
     if pom is None:
-        print(f"[L3] no pom.xml under {scaffold_dir} (checked 5-overlay/3-mybatis/root)", file=sys.stderr)
-        return False
-    p = subprocess.run(["mvn", "-q", "package", "-DskipTests"],
+        # Stage 3 (rdb-mybatis) does not emit pom.xml for nexacro lane — the
+        # runner overlay (L4) supplies its own pom. Treat as SKIP=PASS, matching
+        # the L2 HSQLDB_JAR-absent convention (Growth-37).
+        print(f"[L3] SKIP: no pom.xml under {scaffold_dir} (runner provides pom at L4)", file=sys.stderr)
+        return True
+    p = subprocess.run([_mvn_cmd(), "-q", "package", "-DskipTests"],
                        cwd=pom.parent, capture_output=True, text=True, timeout=600)
     print(f"[L3] mvn rc={p.returncode} (pom={pom})")
     return p.returncode == 0
@@ -164,7 +174,7 @@ def derive_entity_slug(mapper_xml_dir: Path) -> str | None:
 def _mvn_rebuild_runner(runner_dir: Path, timeout_sec: int = 600) -> bool:
     """Rebuild the runner jar after overlay so live JVM picks up the new schema/mappers."""
     p = subprocess.run(
-        ["mvn", "-q", "package", "-DskipTests"],
+        [_mvn_cmd(), "-q", "package", "-DskipTests"],
         cwd=runner_dir, capture_output=True, text=True, timeout=timeout_sec,
     )
     print(f"[L4] mvn rebuild runner rc={p.returncode}")

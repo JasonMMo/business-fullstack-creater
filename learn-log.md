@@ -21,6 +21,25 @@ YYYY-MM-DD | Growth-N | <kind> | <name> | <domain/lane/dialect> | <한줄요약>
 
 ---
 
+## 0. Layer Ownership Card (Phase A — 2026-05-22)
+
+5축 책임표의 활동 뷰. CLAUDE.md §핵심 운영 원칙 표가 "변하지 않는 책임", 이 표는 "현재 누적 상태"다. Growth 마다 트랩 카운트와 미해결 환류를 갱신한다.
+
+| 축 | 깊이 누적 위치 | 단위 테스트 디렉토리 | 누적 트랩 | 미해결 환류 |
+|---|---|---|---|---|
+| **skill (Stage 1)** | `andrej-karpathy-rdb-skill/.claude/skills/karpathy-rdb/presets/*.seed.md` + `protocols/` | `andrej-karpathy-rdb-skill/tests/` | 0 | — |
+| **ddl (Stage 2)** | `andrej-karpathy-rdb-ddl/catalogs/preset-catalog.yaml`, dialect 어댑터(postgres/hsqldb/mysql) | `andrej-karpathy-rdb-ddl/tests/` | 3 (HSQLDB IDENTITY 0-base, SQL:2008 `LEAD`, HSQLDB vs postgres-default schema) | — |
+| **mybatis (Stage 3)** | `andrej-karpathy-rdb-mybatis/templates/<lane>/`, lane(nexacro/vanilla/jakarta/javax) | `andrej-karpathy-rdb-mybatis/tests/` | 6 (explicit-id MERGE, `@Mapper` bean, typed seed sentinel, REST snake_case URL, Map placeholder case, nexacro `_RowType_` 안전추출) | **G-Jackson** (javax runner Jackson 2.16+ 부재, Growth-33~), **vanilla lane 검증대 부재** |
+| **nexacro (Stage 4+5)** | `andrej-karpathy-rdb-nexacro/patterns/`(D2/F1/C1/L2/MD/RO/TR/TG/MT/PS/MDS), UI overlay(nexacro/react) | `andrej-karpathy-rdb-nexacro/tests/` | 0 | — |
+| **creater (Orchestrator)** | `business-fullstack-creater/.claude/commands/`(scaffold·full-test·growth-start·contribute-back·cleanup-runner) + `scripts/workflow/`(full_test·live_*·lane_runner_map·learn_log) | `business-fullstack-creater/tests/` | 2 (javax lane URL 컨벤션, JDK8 source/target on JDK17 JAVA_HOME) | `cleanup_runner.py` PowerShell subexpression syntax error (Growth-42 메모, deferred) |
+
+**갱신 규칙:**
+- 새 트랩이 §4 에 추가되면 해당 layer 행의 "누적 트랩" 카운트를 +1 하고 한 줄 요약을 괄호 안에 append
+- 미해결 환류가 해결되면 그 텍스트만 지움 (행 자체는 유지)
+- `/contribute-back` 체크리스트 항목 5번 (Phase A4) 이 이 표의 어느 행에 기여했는지 묻는다
+
+---
+
 ## 1. 라이브 WAS 검증대 상태 (lane × runner)
 
 `nexacroN-fullstack/samples/runners/` 매트릭스. CLAUDE.md §풀테스트 4계층 표 4번을 통과한 lane.

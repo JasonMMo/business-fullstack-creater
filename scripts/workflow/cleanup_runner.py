@@ -34,7 +34,11 @@ def plan_steps(lane: str) -> list[Step]:
     runner = resolve_runner(lane)
     jdk_match = "jdk-17" if "17" in runner else "jdk-8"
     runner_dir = NEXACRO_REPO / "samples" / "runners" / runner
-    overlay_pkg = runner_dir / "src" / "main" / "java" / "com" / "nexacro" / "uiadapter"
+    # Overlay (live_overlay.py:263) writes Java sources under com.example.<slug>/.
+    # The runner's own sources live under com.nexacro.uiadapter.* and must NEVER
+    # be touched by cleanup — git restore handles tracked-file revert; this step
+    # only removes the untracked overlay tree at com.example/.
+    overlay_pkg = runner_dir / "src" / "main" / "java" / "com" / "example"
     overlay_xml = runner_dir / "src" / "main" / "resources" / "mybatis" / "mappers"
     return [
         Step(f"Stop java ({jdk_match})",
@@ -44,9 +48,7 @@ def plan_steps(lane: str) -> list[Step]:
              ["git", "-C", str(NEXACRO_REPO), "restore", f"samples/runners/{runner}/"]),
         Step(f"Remove overlay dirs ({runner})",
              ["powershell", "-NoProfile", "-Command",
-              f"Get-ChildItem -Path '{overlay_pkg}' -Directory -EA SilentlyContinue | "
-              f"Where-Object {{ $_.Name -notin @('mapper','config','common') }} | "
-              f"Remove-Item -Recurse -Force"]),
+              f"if (Test-Path '{overlay_pkg}') {{ Remove-Item -Path '{overlay_pkg}' -Recurse -Force }}"]),
         Step(f"Remove untracked mappers ({runner})",
              ["powershell", "-NoProfile", "-Command",
               f"Get-ChildItem -Path '{overlay_xml}' -Filter '*-mapper.xml' -EA SilentlyContinue | "

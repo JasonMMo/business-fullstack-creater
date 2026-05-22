@@ -89,16 +89,23 @@ def build_save_envelope(
     insert_rows: Optional[list[dict]] = None,
     delete_rows: Optional[list[dict]] = None,
 ) -> str:
-    """Build a save envelope with Row Type="insert"/"delete" entries.
+    """Build a save envelope using canonical nexacro `_RowType_` row-state encoding.
 
-    `dataset_id` is the runtime dataset name the controller binds (e.g., `dsAccount`).
+    Per `nexacroN-fullstack/api-contract/data-formats.md`, the XML wire protocol
+    carries the row state as a `_RowType_` Col (single-character `I`/`U`/`D`),
+    NOT a `Row Type="..."` attribute. PlatformXmlDataDeserializer recognises only
+    the `_RowType_` form; the attribute form is silently filtered by the
+    framework's `hasData()` guard, leaving the bound `List<Map>` empty.
+
+    `dataset_id` is the runtime dataset name the controller binds (e.g., `dataList`).
     `insert_rows` / `delete_rows` are column→value dicts. The combined column set
-    determines `<ColumnInfo>`; a missing column on a given row renders as `<Col/>`.
+    plus `_RowType_` determines `<ColumnInfo>`; a missing column on a given row
+    renders as `<Col/>`.
     """
     ins = insert_rows or []
     dels = delete_rows or []
-    all_cols: list[str] = []
-    seen = set()
+    all_cols: list[str] = ["_RowType_"]
+    seen = {"_RowType_"}
     for r in [*ins, *dels]:
         for k in r:
             if k not in seen:
@@ -106,9 +113,11 @@ def build_save_envelope(
                 all_cols.append(k)
     rows_xml_parts = []
     for r in ins:
-        rows_xml_parts.append(f'<Row Type="insert">{_row_cols(r)}</Row>')
+        row = {"_RowType_": "I", **r}
+        rows_xml_parts.append(f'<Row>{_row_cols(row)}</Row>')
     for r in dels:
-        rows_xml_parts.append(f'<Row Type="delete">{_row_cols(r)}</Row>')
+        row = {"_RowType_": "D", **r}
+        rows_xml_parts.append(f'<Row>{_row_cols(row)}</Row>')
     rows_xml = "".join(rows_xml_parts)
     return (
         '<?xml version="1.0" encoding="utf-8"?>\n'

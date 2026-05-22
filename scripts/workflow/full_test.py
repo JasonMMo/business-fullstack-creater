@@ -225,8 +225,14 @@ def run_l4_live(
             print(f"[L4] runner did not reach ready state (see {handle.log_path})", file=sys.stderr)
             return (False, False)
         entity = derive_entity_slug(plan.mapper_xml_dir) or slug
-        url = lane_probe_url(lane, handle.port, entity)
-        kind = lane_probe_kind(lane)
+        # Growth-48 (T-Probe-LaneRunner-Mismatch): wire-protocol follows the
+        # scaffold's own lane (what Stage 3 emitted), not the runner lane the
+        # user picked. Fall back to runner `lane` when the report is missing.
+        scaffold_lane = live_overlay.discover_scaffold_lane(scaffold_dir)
+        if scaffold_lane and scaffold_lane != lane:
+            print(f"[L4] scaffold_lane={scaffold_lane} differs from runner lane={lane} — probe/CRUD dispatch follows scaffold")
+        url = lane_probe_url(lane, handle.port, entity, scaffold_lane=scaffold_lane)
+        kind = lane_probe_kind(lane, scaffold_lane=scaffold_lane)
         if kind == "rest":
             verdict = live_probe.probe_endpoint_json(url, timeout_sec=L4_PROBE_TIMEOUT_SEC)
         else:
@@ -237,7 +243,7 @@ def run_l4_live(
         # Growth-40/42: CRUD enrichment — dispatched by lane_crud_kind:
         #   rest      → live_crud.crud_roundtrip_rest        (jakarta/javax/vanilla)
         #   envelope  → live_crud_nexacro.crud_roundtrip_envelope (nexacro)
-        if layers is not None and full and lane_supports_crud(lane):
+        if layers is not None and full and lane_supports_crud(lane, scaffold_lane=scaffold_lane):
             template = live_crud.build_insert_template(plan.data_sql, entity)
             if template is None:
                 layers["L4_crud"] = False
@@ -247,7 +253,7 @@ def run_l4_live(
                 print(f"[L4] CRUD skipped — {layers['L4_crud_reason']}", file=sys.stderr)
             else:
                 insert_row, pk_value = template
-                ckind = lane_crud_kind(lane)
+                ckind = lane_crud_kind(lane, scaffold_lane=scaffold_lane)
                 if ckind == "rest":
                     crud = live_crud.crud_roundtrip_rest(
                         url, insert_row=insert_row, pk_column="id", pk_value=pk_value,

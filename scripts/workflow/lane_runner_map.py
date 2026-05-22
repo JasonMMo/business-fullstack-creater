@@ -23,6 +23,14 @@ def lane_label_suffix(lane: str) -> str:
 # Growth-36: probe dispatch. Stage 3 emits two controller shapes:
 #   nexacro lane → POST `/uiadapter/<entity>/select_datalist_map.do` + XML envelope
 #   jakarta/javax/vanilla → GET `/api/<entity>` returning List<Map>
+#
+# Growth-48 (T-Probe-LaneRunner-Mismatch): the wire-protocol is decided by the
+# *scaffold* lane (what Stage 3 codegen emitted), not by the *runner* lane
+# (which Spring Boot version hosts the WAR). The two coincide in the common
+# case but diverge for e.g. nexacro scaffold deployed on a boot-jdk8-javax
+# runner via --uia-namespace=spring. All probe/CRUD dispatchers therefore
+# accept an optional `scaffold_lane` override; when supplied it wins over the
+# `lane` arg (which keeps meaning "runner lane" everywhere else in this map).
 _LANE_PROBE_KIND = {
     "nexacro": "nexacro",
     "jakarta": "rest",
@@ -30,13 +38,17 @@ _LANE_PROBE_KIND = {
     "vanilla": "rest",
 }
 
-def lane_probe_kind(lane: str) -> str:
-    if lane not in _LANE_PROBE_KIND:
-        raise ValueError(f"unknown lane: {lane}. valid: {sorted(_LANE_PROBE_KIND)}")
-    return _LANE_PROBE_KIND[lane]
+def _effective_lane(lane: str, scaffold_lane: str | None) -> str:
+    return scaffold_lane if scaffold_lane is not None else lane
 
-def lane_probe_url(lane: str, port: int, entity: str) -> str:
-    kind = lane_probe_kind(lane)
+def lane_probe_kind(lane: str, scaffold_lane: str | None = None) -> str:
+    eff = _effective_lane(lane, scaffold_lane)
+    if eff not in _LANE_PROBE_KIND:
+        raise ValueError(f"unknown lane: {eff}. valid: {sorted(_LANE_PROBE_KIND)}")
+    return _LANE_PROBE_KIND[eff]
+
+def lane_probe_url(lane: str, port: int, entity: str, scaffold_lane: str | None = None) -> str:
+    kind = lane_probe_kind(lane, scaffold_lane)
     if kind == "nexacro":
         return f"http://localhost:{port}/uiadapter/{entity}/select_datalist_map.do"
     return f"http://localhost:{port}/api/{entity}"
@@ -52,12 +64,17 @@ _LANE_CRUD_KIND = {
     "vanilla": "rest",
 }
 
-def lane_crud_kind(lane: str) -> str:
-    """Return the CRUD wire-protocol the lane speaks: 'rest', 'envelope', or 'none'."""
-    if lane not in _LANE_CRUD_KIND:
-        raise ValueError(f"unknown lane: {lane}. valid: {sorted(_LANE_CRUD_KIND)}")
-    return _LANE_CRUD_KIND[lane]
+def lane_crud_kind(lane: str, scaffold_lane: str | None = None) -> str:
+    """Return the CRUD wire-protocol the lane speaks: 'rest', 'envelope', or 'none'.
 
-def lane_supports_crud(lane: str) -> bool:
+    Growth-48: `scaffold_lane` overrides `lane` when supplied — wire-protocol
+    is a property of the scaffold (what Stage 3 emitted), not the runner.
+    """
+    eff = _effective_lane(lane, scaffold_lane)
+    if eff not in _LANE_CRUD_KIND:
+        raise ValueError(f"unknown lane: {eff}. valid: {sorted(_LANE_CRUD_KIND)}")
+    return _LANE_CRUD_KIND[eff]
+
+def lane_supports_crud(lane: str, scaffold_lane: str | None = None) -> bool:
     """Backward-compat shim — True iff the lane has any CRUD dispatch (rest OR envelope)."""
-    return lane_crud_kind(lane) in ("rest", "envelope")
+    return lane_crud_kind(lane, scaffold_lane) in ("rest", "envelope")

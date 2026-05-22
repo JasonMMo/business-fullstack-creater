@@ -77,10 +77,12 @@ public class _jdbc_smoke {
         }
     }
 
-    // Split on `^^` (live_overlay convention) and strip `-- ` line comments.
+    // Split on `^^` (live_overlay convention) when present, else on `;`
+    // (raw scaffold output). Strip `-- ` line comments either way.
     static List<String> splitStatements(String raw) {
         List<String> out = new ArrayList<>();
-        for (String chunk : raw.split("\\^\\^")) {
+        String sep = raw.contains("^^") ? "\\^\\^" : ";";
+        for (String chunk : raw.split(sep)) {
             StringBuilder sb = new StringBuilder();
             for (String line : chunk.split("\\r?\\n")) {
                 String t = line;

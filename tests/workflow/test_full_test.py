@@ -298,8 +298,10 @@ def test_find_pom_returns_none_when_missing(tmp_path):
     assert full_test._find_pom(tmp_path) is None
 
 
-def test_run_l3_mvn_fails_when_no_pom_anywhere(tmp_path):
-    assert full_test.run_l3_mvn(tmp_path) is False
+def test_run_l3_mvn_skips_as_pass_when_no_pom_anywhere(tmp_path):
+    """Growth-38: nexacro lane Stage 3 emits no pom (runner supplies it at L4);
+    treat absence as SKIP=PASS, mirroring the L2 HSQLDB_JAR-absent convention."""
+    assert full_test.run_l3_mvn(tmp_path) is True
 
 
 def test_run_l3_mvn_uses_3mybatis_pom_when_overlay_absent(tmp_path, monkeypatch):
@@ -666,7 +668,9 @@ def test_run_l4_live_nexacro_lane_dispatches_envelope_crud(tmp_path, monkeypatch
     assert rest_called["n"] == 0, "REST CRUD must not run for nexacro lane"
     assert len(envelope_calls) == 1, "Envelope CRUD must run exactly once for nexacro lane"
     call = envelope_calls[0]
-    assert call["dataset_id"] == "dsLead"
+    # Scaffold controllers bind @ParamDataSet(name="dataList") regardless of entity —
+    # the envelope's <Dataset id> must match that literal, not a per-entity ds<Pascal>.
+    assert call["dataset_id"] == "dataList"
     assert call["select_url"].endswith("/uiadapter/lead/select_datalist_map.do")
     assert call["save_url"].endswith("/uiadapter/lead/save_datalist_map.do")
     assert call["pk_value"] == 999001

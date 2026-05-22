@@ -167,7 +167,9 @@ def _edit_application_java(app_path: Path, slug: str) -> None:
                 count=1,
             )
         else:
-            # Add @MapperScan annotation + import line.
+            # Add @MapperScan annotation + import line. Include the runner's own
+            # .mapper subpackage so runner-native @Mapper interfaces stay discovered
+            # (an explicit @MapperScan overrides MyBatis' default AutoConfigurationPackages scan).
             if "org.mybatis.spring.annotation.MapperScan" not in text:
                 text = re.sub(
                     r'(import org\.springframework\.boot\.autoconfigure\.SpringBootApplication;\s*\n)',
@@ -175,9 +177,11 @@ def _edit_application_java(app_path: Path, slug: str) -> None:
                     text,
                     count=1,
                 )
+            base_pkg = _root_package(text)
+            base_mapper_pkg = f'"{base_pkg}.mapper"'
             text = re.sub(
                 r'(@SpringBootApplication[^\n]*\n)',
-                f'\\1@MapperScan(basePackages = {{{mapper_pkg}}})\n',
+                f'\\1@MapperScan(basePackages = {{{base_mapper_pkg}, {mapper_pkg}}})\n',
                 text,
                 count=1,
             )

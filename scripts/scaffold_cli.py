@@ -131,6 +131,19 @@ def _build_parser() -> argparse.ArgumentParser:
         help="Stage 2 SQL dialect (default: postgres). Use 'hsqldb' for in-DB test, 'mysql' for MySQL targets.",
     )
     p.add_argument(
+        "--uia-namespace",
+        choices=("jakarta", "spring"),
+        default="jakarta",
+        dest="uia_namespace",
+        help=(
+            "Growth-47: nexacro-uiadapter Spring flavor package segment for Stage 3 "
+            "(lane=nexacro only). 'jakarta' (default) → Spring 6 / jakarta.servlet "
+            "(boot-jdk17-jakarta runner). 'spring' → Spring 5 / javax.servlet "
+            "(boot-jdk8-javax runner). Mismatch causes ParamDataSet/NexacroResult "
+            "symbol-not-found at L4 build (T-NexacroUiaPkg-javax trap)."
+        ),
+    )
+    p.add_argument(
         "--service-name",
         metavar="<PascalCase>",
         default=None,
@@ -252,6 +265,7 @@ def main(argv=None):
         shell_app_id=a.shell_app_id,
         auth_mode=a.auth_mode,
         auth_lane=a.auth_lane,
+        uia_namespace=a.uia_namespace,
     )
 
     try:

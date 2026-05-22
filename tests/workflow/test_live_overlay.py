@@ -221,3 +221,45 @@ def test_discover_scaffold_raises_when_slug_cannot_be_derived(tmp_path):
     (scaffold / "2-ddl" / "data.sql").write_text(";", encoding="utf-8")
     with pytest.raises(ValueError, match="domain slug"):
         live_overlay.discover_scaffold(scaffold)
+
+
+# ---- Growth-48: discover_scaffold_lane reads scaffold-report.md ----
+
+def test_discover_scaffold_lane_reads_report(tmp_path):
+    """Stage 1 writes `- lane: \\`<name>\\` (middle: ...)` — extractable by regex."""
+    scaffold = tmp_path / "report-only"
+    scaffold.mkdir()
+    (scaffold / "scaffold-report.md").write_text(
+        "# Scaffold Report — 고객관리\n\n"
+        "- domain: `고객관리` (slug: `domain`)\n"
+        "- wiki_mode: `preset` (preset=`고객관리`)\n"
+        "- lane: `nexacro` (middle: jakarta-for-nexacro)\n"
+        "- dialect: `hsqldb`\n",
+        encoding="utf-8",
+    )
+    assert live_overlay.discover_scaffold_lane(scaffold) == "nexacro"
+
+
+@pytest.mark.parametrize("lane_val", ["jakarta", "javax", "vanilla"])
+def test_discover_scaffold_lane_handles_all_lanes(tmp_path, lane_val):
+    scaffold = tmp_path / f"r-{lane_val}"
+    scaffold.mkdir()
+    (scaffold / "scaffold-report.md").write_text(
+        f"- lane: `{lane_val}` (middle: x)\n", encoding="utf-8"
+    )
+    assert live_overlay.discover_scaffold_lane(scaffold) == lane_val
+
+
+def test_discover_scaffold_lane_returns_none_when_report_missing(tmp_path):
+    scaffold = tmp_path / "no-report"
+    scaffold.mkdir()
+    assert live_overlay.discover_scaffold_lane(scaffold) is None
+
+
+def test_discover_scaffold_lane_returns_none_when_lane_line_absent(tmp_path):
+    scaffold = tmp_path / "no-lane-line"
+    scaffold.mkdir()
+    (scaffold / "scaffold-report.md").write_text(
+        "# Scaffold Report\n\n- dialect: `hsqldb`\n", encoding="utf-8"
+    )
+    assert live_overlay.discover_scaffold_lane(scaffold) is None

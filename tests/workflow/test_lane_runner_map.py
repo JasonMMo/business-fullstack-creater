@@ -46,3 +46,42 @@ def test_lane_probe_url_rest_uses_api_path(lane):
 def test_lane_probe_url_unknown_lane_raises():
     with pytest.raises(ValueError, match="unknown lane"):
         lane_probe_url("kotlin", 8080, "x")
+
+
+# ---- Growth-48: T-Probe-LaneRunner-Mismatch — scaffold_lane overrides runner lane ----
+
+from scripts.workflow.lane_runner_map import lane_crud_kind, lane_supports_crud
+
+
+def test_scaffold_lane_overrides_for_probe_kind():
+    """nexacro scaffold deployed on javax runner — probe must follow scaffold."""
+    assert lane_probe_kind("javax", scaffold_lane="nexacro") == "nexacro"
+    assert lane_probe_kind("jakarta", scaffold_lane="nexacro") == "nexacro"
+
+
+def test_scaffold_lane_overrides_for_probe_url():
+    """probe URL is the envelope path when scaffold_lane=nexacro, regardless of runner."""
+    assert lane_probe_url("javax", 8080, "customer", scaffold_lane="nexacro") == \
+        "http://localhost:8080/uiadapter/customer/select_datalist_map.do"
+
+
+def test_scaffold_lane_overrides_for_crud_kind():
+    assert lane_crud_kind("javax", scaffold_lane="nexacro") == "envelope"
+    assert lane_crud_kind("nexacro", scaffold_lane="jakarta") == "rest"
+
+
+def test_scaffold_lane_none_preserves_legacy_behavior():
+    """Omitting scaffold_lane (or passing None) is exactly the pre-Growth-48 API."""
+    assert lane_probe_kind("javax", scaffold_lane=None) == "rest"
+    assert lane_probe_kind("javax") == "rest"
+    assert lane_probe_url("nexacro", 8080, "x", scaffold_lane=None) == \
+        "http://localhost:8080/uiadapter/x/select_datalist_map.do"
+    assert lane_crud_kind("javax") == "rest"
+    assert lane_supports_crud("javax") is True
+
+
+def test_scaffold_lane_unknown_value_raises():
+    with pytest.raises(ValueError, match="unknown lane: kotlin"):
+        lane_probe_kind("javax", scaffold_lane="kotlin")
+    with pytest.raises(ValueError, match="unknown lane: kotlin"):
+        lane_crud_kind("javax", scaffold_lane="kotlin")

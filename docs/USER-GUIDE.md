@@ -128,6 +128,8 @@ Test-Path D:\AI\workspace\andrej-karpathy-rdb-nexacro
 ### 2.1 작업 디렉터리 생성
 
 > **Tip (Growth-51):** 어떤 도메인 preset 이 있는지 모르겠으면 먼저 `/list-domains` 슬래시 커맨드로 14개 카탈로그를 확인하세요. 신규 도메인이면 자유 입력으로 진행해도 됩니다 — Stage 1 ingest 가 새 도메인을 학습합니다. 상세: §3.13.
+>
+> **Tip (Growth-52):** 처음 클론한 워크스페이스라면 `/orient` (한 화면 진입 요약) → `/diagnose` (환경 pre-flight, JDK/runner/카탈로그 점검) 순서로 시작하세요. `/diagnose` 가 ✓ 만 출력해야 §2.6 의 `/full-test` 가 의미를 갖습니다. 상세: §3.14.
 
 ```powershell
 New-Item -ItemType Directory -Force D:\AI\workspace\customer-mgmt | Out-Null
@@ -1167,6 +1169,62 @@ python scripts/workflow/list_domains.py --verbose --name 고객관리
 ```
 
 > **환류 게이트**: 새 preset 추가 시 `INDEX.md` 의 4 필드(aliases/keywords/entities/한 줄 요약) 누락 = `/list-domains` 에서 누락 = 외부 사용자 미발견. `/contribute-back` 의 R4 self-check 가 이 정합성을 매 Growth 끝에서 점검한다.
+
+### 3.14 Growth-52 — 진입 화면 + pre-flight 진단 (newcomer + harness)
+
+서비스 리뷰 후속 2종 — Growth-51 (R1/R3/R4) 이 *실행 표면*을 다듬었다면, Growth-52 는 *진입 표면*을 다듬는다. 두 명령 모두 별도 onboarding 문서를 신설하지 않고 **이미 누적된 자산**(USER-GUIDE 첫 줄, learn-log §0, learn-log §6, sibling repo 존재, preset INDEX.md, runner 디렉터리, JDK)을 한 화면에 노출 — `/list-domains` (R4) 와 동일한 "자산 노출형 하네스" 패턴.
+
+#### 3.14.1 `/orient` — newcomer 한 화면 진입
+
+`scripts/workflow/orient.py` + `/orient` 슬래시 커맨드가 세 소스를 합성해 출력한다:
+
+| 소스 | 발췌 |
+|---|---|
+| `docs/USER-GUIDE.md` 첫 blockquote | 프로젝트 한 줄 정의 |
+| `learn-log.md` §0 Layer Ownership Card | 5축 + 현재 누적 트랩 |
+| `learn-log.md` §6 Growth 이력 | 최근 Growth (최댓 N 기준 정렬 — 행 순서 무관) |
+
+마지막에 "다음 명령" 블록(`/diagnose`, `/list-domains`, `/scaffold`, `/full-test`) 으로 진입 게이트를 항상 명시한다.
+
+```powershell
+python scripts/workflow/orient.py
+```
+
+세 파일이 갱신될 때마다 자동 반영 — 별도 동기화 불필요.
+
+#### 3.14.2 `/diagnose` — `/full-test` 진입 전 pre-flight
+
+`scripts/workflow/diagnose.py` + `/diagnose` 슬래시 커맨드가 5축 환경 조건을 ✓/!/✗ 매트릭스로 보여준다 — 비싼 빌드 호출 없이(수초 내) 파일/PATH 존재 + `java -version` 1회.
+
+| 항목 | 확인 |
+|---|---|
+| `layer/{skill,ddl,mybatis,nexacro,runners}` | 5 sibling repo 존재 |
+| `preset-catalog` | `presets/INDEX.md` 파싱 + 도메인 수 ≥10 |
+| `learn-log` | §0 Layer Ownership Card 존재 |
+| `runner/{boot-jdk17-jakarta,boot-jdk8-javax}` | 디렉터리 존재 + stale `com/example` overlay 부재 |
+| `jdk` | `java -version` 성공 + JDK17 권고 |
+
+각 항목 PASS/WARN/FAIL + 회복 명령 1줄(R3 `recovery_hint` 와 동일 형식). exit 0(FAIL 없음 → `/full-test` 진입 가능) / exit 1(FAIL → hint 따라 fix 후 재실행). `--json` 으로 다른 도구가 소비 가능.
+
+```powershell
+python scripts/workflow/diagnose.py            # 사람용 표
+python scripts/workflow/diagnose.py --json     # 구조화
+```
+
+#### 3.14.3 자산 노출 체인 — 진입 → 사전 → 실행 → 사후
+
+네 명령이 사용자 여정의 4 지점을 각각 담당한다:
+
+```
+/orient            진입       → 프로젝트 한 화면 요약
+/diagnose          사전       → /full-test 실패 전 환경 차단
+/full-test         실행       → 4계층 풀테스트
+recovery_hint      사후       → 실패 시 다음 명령 1줄 (R3)
+```
+
+세 표면(`/orient` § learn-log + USER-GUIDE 소스, `/diagnose` § sibling repo + INDEX 소스, `/full-test recovery_hint` § L1~L4 분기) 이 모두 **이미 누적된 자산을 노출**할 뿐 새 onboarding 문서/agent 를 만들지 않는다 — 작게 자주, 자산 복리식 누적이 원칙.
+
+> **#4 (cross-layer coherence hook)** 은 별도 검토로 분리됨 — 흡수 방식 재논의 대기.
 
 ---
 

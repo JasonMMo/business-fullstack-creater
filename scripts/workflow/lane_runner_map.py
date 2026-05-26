@@ -22,7 +22,13 @@ def lane_label_suffix(lane: str) -> str:
 
 # Growth-36: probe dispatch. Stage 3 emits two controller shapes:
 #   nexacro lane → POST `/uiadapter/<entity>/select_datalist_map.do` + XML envelope
-#   jakarta/javax/vanilla → GET `/api/<entity>` returning List<Map>
+#   jakarta/javax/vanilla → GET `/uiadapter/api/<entity>` returning List<Map>
+#
+# Growth-50 (T-Probe-CtxPath-Missing): all nexacroN-fullstack runners (boot/mvc,
+# javax/jakarta, plain/egov4/egov5) set `server.servlet.context-path: /uiadapter`
+# in application.yml. The nexacro envelope path always carried the prefix; the
+# REST path didn't, so vanilla/jakarta/javax probes hit a 404 against
+# `/api/<entity>` instead of `/uiadapter/api/<entity>`. Prefix added.
 #
 # Growth-48 (T-Probe-LaneRunner-Mismatch): the wire-protocol is decided by the
 # *scaffold* lane (what Stage 3 codegen emitted), not by the *runner* lane
@@ -51,7 +57,7 @@ def lane_probe_url(lane: str, port: int, entity: str, scaffold_lane: str | None 
     kind = lane_probe_kind(lane, scaffold_lane)
     if kind == "nexacro":
         return f"http://localhost:{port}/uiadapter/{entity}/select_datalist_map.do"
-    return f"http://localhost:{port}/api/{entity}"
+    return f"http://localhost:{port}/uiadapter/api/{entity}"
 
 
 # Growth-40/42: CRUD round-trip dispatch.

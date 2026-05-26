@@ -40,7 +40,9 @@ def test_lane_probe_url_nexacro_uses_uiadapter_envelope():
 
 @pytest.mark.parametrize("lane", ["jakarta", "javax", "vanilla"])
 def test_lane_probe_url_rest_uses_api_path(lane):
-    assert lane_probe_url(lane, 8080, "lead") == "http://localhost:8080/api/lead"
+    # Growth-50 (T-Probe-CtxPath-Missing): runners set context-path=/uiadapter,
+    # so REST routes resolve under /uiadapter/api/<entity>, not /api/<entity>.
+    assert lane_probe_url(lane, 8080, "lead") == "http://localhost:8080/uiadapter/api/lead"
 
 
 def test_lane_probe_url_unknown_lane_raises():

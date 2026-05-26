@@ -236,6 +236,97 @@ def test_stage4_uses_infer_when_no_endpoints(tmp_path):
     assert "--endpoints" not in argv_txt
 
 
+def test_stage4_auto_skips_for_vanilla_lane(tmp_path, capsys):
+    """Growth-58 T-Stage4-VanillaReject: vanilla lane skips Stage 4 cleanly.
+
+    Stage 3 (rdb-mybatis) emits version=2 REST endpoints.json for vanilla;
+    Stage 4 (rdb-nexacro) loader rejects with 'N002 unsupported version'.
+    Orchestrator must short-circuit Stage 4 for vanilla so users don't need
+    to manually pass --stop-after-stage 3.
+    """
+    _make_fake_chain_stages(tmp_path)
+    # A fake stage4 that would FAIL if invoked — proves we never reach it.
+    s4_src = (
+        "import sys\n"
+        "sys.stderr.write('FAIL: stage4 should not run for vanilla\\n')\n"
+        "sys.exit(1)\n"
+    )
+    _make_fake_stage(tmp_path, "nexacro", {"form_gen.py": s4_src})
+
+    creator = tmp_path / "creater"; creator.mkdir()
+    out = tmp_path / "out"
+    args = ScaffoldArgs(
+        domain="t", domain_slug="t", wiki_mode="preset", preset="t",
+        wiki_path=None, lane="vanilla", default_pattern="D2",
+        package="com.example.t", out_dir=out, creator_root=creator,
+        stop_after_stage=4,
+    )
+    report = run_scaffold(args)
+    assert report.stages_run == ["stage1", "stage2", "stage3", "stage4-skipped-vanilla"]
+    # Stage 4 output dir must NOT have been created (proves form_gen.py was not invoked)
+    assert not (out / "4-nexacro").exists()
+    # User-facing skip rationale on stderr
+    captured = capsys.readouterr()
+    assert "stage4" in captured.err.lower()
+    assert "vanilla" in captured.err.lower()
+
+
+def test_stage4_runs_for_non_vanilla_lanes(tmp_path):
+    """Growth-58 regression guard: nexacro/jakarta/javax lanes must still run Stage 4.
+
+    Lane-gate must be vanilla-only — non-vanilla lanes use v1 endpoints.json
+    and have nexacro envelope forms to generate.
+    """
+    _make_fake_chain_stages(tmp_path)
+    s4_src = (
+        "import sys, pathlib\n"
+        "argv = sys.argv[1:]\n"
+        "out = pathlib.Path(argv[argv.index('--out')+1])\n"
+        "out.mkdir(parents=True, exist_ok=True)\n"
+        "(out / 'argv.txt').write_text(' '.join(argv))\n"
+    )
+    _make_fake_stage(tmp_path, "nexacro", {"form_gen.py": s4_src})
+
+    creator = tmp_path / "creater"; creator.mkdir()
+    for lane in ("nexacro", "jakarta", "javax"):
+        out = tmp_path / f"out-{lane}"
+        args = ScaffoldArgs(
+            domain="t", domain_slug="t", wiki_mode="preset", preset="t",
+            wiki_path=None, lane=lane, default_pattern="D2",
+            package="com.example.t", out_dir=out, creator_root=creator,
+            stop_after_stage=4,
+        )
+        report = run_scaffold(args)
+        assert "stage4" in report.stages_run, f"lane={lane} must run stage4"
+        assert "stage4-skipped-vanilla" not in report.stages_run, (
+            f"lane={lane} must NOT use vanilla-skip path"
+        )
+        assert (out / "4-nexacro" / "argv.txt").exists(), (
+            f"lane={lane} must invoke form_gen.py"
+        )
+
+
+def test_scaffold_report_records_vanilla_skip(tmp_path):
+    """Growth-58: scaffold-report.md must surface the vanilla skip marker."""
+    _make_fake_chain_stages(tmp_path)
+    # Stage 4 fake that would fail if reached
+    _make_fake_stage(tmp_path, "nexacro", {
+        "form_gen.py": "import sys\nsys.exit(1)\n"
+    })
+
+    creator = tmp_path / "creater"; creator.mkdir()
+    out = tmp_path / "out"
+    args = ScaffoldArgs(
+        domain="t", domain_slug="t", wiki_mode="preset", preset="t",
+        wiki_path=None, lane="vanilla", default_pattern="D2",
+        package="com.example.t", out_dir=out, creator_root=creator,
+        stop_after_stage=4,
+    )
+    run_scaffold(args)
+    report_md = (out / "scaffold-report.md").read_text(encoding="utf-8")
+    assert "stage4: SKIPPED (vanilla lane has no nexacro XFDL forms)" in report_md
+
+
 def test_missing_wiki_mode_raises(tmp_path):
     creator = tmp_path / "creater"; creator.mkdir()
     args = ScaffoldArgs(

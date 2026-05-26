@@ -79,6 +79,32 @@ def decide_label(layers: dict[str, bool]) -> str:
     return "JDBC + 빌드까지만 검증"
 
 
+def recovery_hint(layers: dict[str, bool], lane: str, scaffold: Path | None) -> str | None:
+    """Return one-line next-step command for the layer that failed.
+
+    R3 (서비스 리뷰 2026-05-26): 사용자가 풀테스트 실패 후 다음에 무엇을 할지
+    추측하지 않아도 되도록, 실패한 레이어에 맞춰 진단 명령 1줄 제시.
+    None = 모든 레이어 그린 (힌트 불필요).
+    """
+    if layers.get("L1") is False:
+        return "Next: `pytest -q` (4 sibling repo 중 실패한 곳에서 -v 로 재실행)"
+    if not layers.get("L2"):
+        return "Next: `set HSQLDB_JAR=<path>` 확인 후 `python scripts/workflow/jdbc_smoke.py`"
+    if not layers.get("L3"):
+        loc = scaffold or "."
+        return f"Next: `mvn -X package -DskipTests` in `{loc}` (-q 출력 부족 시 -X 로 verbose)"
+    if not (layers.get("L4_full") or layers.get("L4_partial")):
+        runner = runner_path_for(lane) if lane else None
+        return (
+            f"Next: runner 로그 확인 `Get-Content {runner}/was.log -Tail 60`"
+            if runner else
+            "Next: runner 로그(was.log) 마지막 60 줄 확인"
+        )
+    if layers.get("L4_partial") and not layers.get("L4_full"):
+        return "Next: probe URL 직접 호출 (context-path `/uiadapter` 포함) — http_status/errcode/rows 확인"
+    return None
+
+
 def run_l1_pytest() -> bool:
     """Run pytest in each sibling repo. FAIL if no repos ran (silent-pass guard)."""
     ok = True
@@ -298,6 +324,7 @@ class FullTestResult:
     layers: dict[str, bool] = field(default_factory=dict)
     lane: str = ""
     scaffold: Path | None = None
+    next_hint: str | None = None
 
     def __str__(self) -> str:
         return self.label
@@ -308,6 +335,7 @@ class FullTestResult:
             "lane": self.lane,
             "scaffold": str(self.scaffold) if self.scaffold is not None else None,
             "layers": dict(self.layers),
+            "next_hint": self.next_hint,
         }
 
 
@@ -317,6 +345,7 @@ def _finalize(layers: dict[str, bool], lane: str, scaffold: Path | None) -> Full
         layers=layers,
         lane=lane,
         scaffold=scaffold,
+        next_hint=recovery_hint(layers, lane, scaffold),
     )
 
 
@@ -379,6 +408,8 @@ def main(argv: list[str] | None = None) -> int:
     else:
         result = run(args.lane, args.domain)
         print(f"\nLABEL: {result.label}")
+        if result.next_hint:
+            print(result.next_hint)
     return 0 if result.layers.get("L4_full") else 1
 
 

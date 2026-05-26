@@ -289,7 +289,12 @@ def _default_source_resolver(entry: MatrixEntry) -> dict[str, Path | None]:
     scaffold_root = Path.home() / ".karpathy-rdb" / "catalog" / entry.domain
 
     try:
-        plan = discover_scaffold(scaffold_root, domain_slug=entry.domain)
+        # Growth-61 T-Web-CatalogSlugMismatch: entry.domain is the Korean catalog
+        # subdir name (e.g., '고객관리'), but scaffold Java packages use the ASCII
+        # slug (e.g., 'customer'). Pass domain_slug=None so discover_scaffold
+        # auto-derives the slug from com.nexacro.uiadapter.<slug>/com.example.<slug>
+        # via derive_domain_slug() — otherwise Controller/Service lookups miss.
+        plan = discover_scaffold(scaffold_root, domain_slug=None)
     except Exception:
         return {"ddl": None, "mapper_xml": None, "controller": None, "service": None}
 

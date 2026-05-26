@@ -158,6 +158,101 @@ def check_runners(workspace: Path = WORKSPACE) -> list[Check]:
     return out
 
 
+def check_cross_layer_coherence(
+    *, workspace: Path = WORKSPACE, creater_root: Path = CREATER_ROOT
+) -> Check:
+    """Static regression guards for known cross-layer break traps (Growth-53).
+
+    learn-log §4 트랩 이력에서 도출. 각 sub-check 는 grep-level 정적 검증이라
+    빠르고 fresh scaffold 없이 회귀 감지. 새 트랩 발견 시 §4 등재 후 sub-check
+    추가가 다음 Growth 단계.
+
+    Guards (4건):
+      - G-47 (T-NexacroUiaPkg-javax): mybatis controller/service-impl 템플릿이
+        `{{ uia_namespace }}` parametrize — `.jakarta.core.` 하드코딩 회귀 차단
+      - G-50a (T-Probe-CtxPath-Missing, runner-side): nexacroN samples/runners/
+        `application.yml` 들이 `context-path: /uiadapter` 일관 유지
+      - G-50b (T-Probe-CtxPath-Missing, dispatcher-side): `lane_runner_map.py`
+        REST 분기가 `/uiadapter/api/` prefix 유지
+      - G-48 (T-Probe-LaneRunner-Mismatch): `full_test.py:run_l4_live` 가
+        `discover_scaffold_lane` 호출 + `scaffold_lane=` dispatch wiring 유지
+    """
+    failures: list[str] = []
+
+    # G-47: mybatis 두 템플릿이 {{ uia_namespace }} 사용
+    mybatis_tpl = (
+        workspace
+        / "andrej-karpathy-rdb-mybatis"
+        / ".claude"
+        / "skills"
+        / "karpathy-rdb-mybatis"
+        / "templates"
+    )
+    for tpl_rel in (
+        "controller/controller.java.j2",
+        "service/service-impl.java.j2",
+    ):
+        tpl_path = mybatis_tpl / tpl_rel
+        if not tpl_path.exists():
+            failures.append(f"G-47 guard: missing {tpl_rel}")
+            continue
+        text = tpl_path.read_text(encoding="utf-8")
+        if "{{ uia_namespace }}" not in text:
+            failures.append(f"G-47 regression: {tpl_rel} lost uia_namespace parametrization")
+
+    # G-50a: 모든 runner application.yml 에 context-path: /uiadapter
+    runners_root = workspace / "nexacroN-fullstack" / "samples" / "runners"
+    if runners_root.exists():
+        ymls = sorted(runners_root.glob("*/src/main/resources/application.yml"))
+        if not ymls:
+            failures.append("G-50a guard: no runner application.yml found")
+        else:
+            missing = [
+                yml.parents[3].name
+                for yml in ymls
+                if "context-path: /uiadapter" not in yml.read_text(encoding="utf-8")
+            ]
+            if missing:
+                failures.append(
+                    f"G-50a regression: runner(s) missing /uiadapter context-path: {', '.join(missing)}"
+                )
+
+    # G-50b: lane_runner_map.py REST 분기가 /uiadapter/api/ 유지
+    lrm = creater_root / "scripts" / "workflow" / "lane_runner_map.py"
+    if not lrm.exists():
+        failures.append("G-50b guard: lane_runner_map.py missing")
+    else:
+        text = lrm.read_text(encoding="utf-8")
+        if "/uiadapter/api/" not in text:
+            failures.append(
+                "G-50b regression: lane_runner_map.py lost /uiadapter/api/ prefix"
+            )
+
+    # G-48: full_test.py 가 discover_scaffold_lane 호출 + scaffold_lane= dispatch
+    ft = creater_root / "scripts" / "workflow" / "full_test.py"
+    if not ft.exists():
+        failures.append("G-48 guard: full_test.py missing")
+    else:
+        text = ft.read_text(encoding="utf-8")
+        if "discover_scaffold_lane" not in text or "scaffold_lane=" not in text:
+            failures.append(
+                "G-48 regression: full_test.py lost discover_scaffold_lane wiring"
+            )
+
+    if failures:
+        return Check(
+            "cross-layer-coherence",
+            "FAIL",
+            "; ".join(failures),
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50) 추적 후 복원",
+        )
+    return Check(
+        "cross-layer-coherence",
+        "PASS",
+        "4 trap guards intact (G-47/48/50a/50b)",
+    )
+
+
 def check_jdk() -> Check:
     java = shutil.which("java")
     if not java:
@@ -196,6 +291,7 @@ def run_all_checks(
     checks.append(check_preset_catalog(ws))
     checks.append(check_learn_log(cr))
     checks.extend(check_runners(ws))
+    checks.append(check_cross_layer_coherence(workspace=ws, creater_root=cr))
     checks.append(check_jdk())
     return checks
 

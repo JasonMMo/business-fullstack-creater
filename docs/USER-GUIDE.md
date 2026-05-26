@@ -127,6 +127,8 @@ Test-Path D:\AI\workspace\andrej-karpathy-rdb-nexacro
 
 ### 2.1 작업 디렉터리 생성
 
+> **Tip (Growth-51):** 어떤 도메인 preset 이 있는지 모르겠으면 먼저 `/list-domains` 슬래시 커맨드로 14개 카탈로그를 확인하세요. 신규 도메인이면 자유 입력으로 진행해도 됩니다 — Stage 1 ingest 가 새 도메인을 학습합니다. 상세: §3.13.
+
 ```powershell
 New-Item -ItemType Directory -Force D:\AI\workspace\customer-mgmt | Out-Null
 cd D:\AI\workspace\customer-mgmt
@@ -1109,6 +1111,62 @@ git -C D:\AI\workspace\nexacroN-fullstack status --short samples/runners/boot-jd
 - javax lane URL 컨벤션은 `/api/<entity>` (REST) 이지 `/uiadapter/<entity>/<method>.do` (NexacroResult) 가 아님 — 검증 endpoint 호출 시 lane 별 path 형태 차이를 반드시 확인
 - javax lane 산출물도 `Map<String,Object>` payload 직렬화로 endpoint 응답이 잘 도는지 확인하는 단계가 추가로 필요 (NexacroResult 가 가려주던 Map ↔ JSON 직렬화 책임이 Jackson 으로 이관됨)
 - JDK 8 source/target 컴파일은 JDK 17 JAVA_HOME 으로도 가능 — pom.xml 의 `<source>1.8</source><target>1.8</target>` 이 진실 (사용자 환경에 JDK 8 부재 시 우회로)
+
+### 3.13 Growth-51 — 외부 사용자 첫인상 보강 (R1/R3/R4 service review)
+
+서비스 관점 리뷰에서 발견된 "신규 사용자가 첫 도메인을 등록·검증할 때 막히는 3 지점" 을 보강한다. 모두 명령·CLI 의 1차 표면에 추가되어, 별도 문서 학습 없이 즉시 도달 가능.
+
+#### 3.13.1 `--slug` 명시 옵션 + 침묵 폴백 제거 (R1)
+
+`scripts/scaffold_cli.py` 의 `resolve_slug()` 가 3-단계 우선순위로 슬러그를 결정한다:
+
+| 우선순위 | 소스 | 동작 |
+|---|---|---|
+| 1 | `--slug <name>` (명시) | sanitize 후 사용. 빈 결과 → 에러 |
+| 2 | `--domain <한글/ASCII>` 에서 유도 | 영문/숫자 추출. 비어있으면 다음 |
+| 3 | `--package` 마지막 세그먼트 | sanitize 후 사용. stderr `INFO: slug = '<X>' (source: package-fallback)` |
+
+기존 침묵 폴백(`'고객관리' → 'domain'` 같은 식별 불가 결과) 이 사라졌다. 한글 domain 만 주고 package 도 없으면 명시 에러(`cannot derive slug from domain=...`) 로 중단된다.
+
+```powershell
+# 권장: explicit slug
+python scripts/scaffold_cli.py --domain 고객관리 --slug customer --package com.example.customer
+# OK: package-fallback (stderr 에 INFO 노출됨)
+python scripts/scaffold_cli.py --domain 고객관리 --package com.example.customer
+```
+
+#### 3.13.2 `/full-test` recovery hint (R3)
+
+`scripts/workflow/full_test.py` 가 L1~L4 중 첫 실패 계층에 대해 **다음 한 줄 명령** 을 출력한다. JSON output 의 `recovery_hint` 필드 + 사람용 stdout 양쪽에 노출.
+
+| 실패 계층 | 권장 다음 명령 |
+|---|---|
+| L1 (pytest) | `pytest -q` (실패 sibling repo 에서 `-v` 로 재실행) |
+| L2 (JDBC smoke) | `set HSQLDB_JAR=<path>` 확인 후 `python scripts/workflow/jdbc_smoke.py` |
+| L3 (mvn package) | `mvn -X package -DskipTests` in `<scaffold>` |
+| L4_full=false | `Get-Content <runner>/was.log -Tail 60` |
+| L4_partial=true, _full=false | probe URL 직접 호출 (context-path `/uiadapter` 포함) |
+
+```powershell
+python scripts/workflow/full_test.py nexacro customer
+# (실패 시 마지막 줄)
+# Next: mvn -X package -DskipTests in `D:\AI\workspace\customer-mgmt\stage5-overlay`
+```
+
+#### 3.13.3 `/list-domains` — preset 카탈로그 노출 (R4)
+
+`scripts/workflow/list_domains.py` + `/list-domains` 슬래시 커맨드가 `andrej-karpathy-rdb-skill` 의 `presets/INDEX.md` 14 도메인을 표/JSON 으로 노출한다. 사용자가 Stage 1 `init --preset <X>` 를 입력하기 전 어떤 도메인이 준비되어 있는지 즉시 확인할 수 있다.
+
+```powershell
+# 표 형식
+python scripts/workflow/list_domains.py
+# JSON (스크립트 입력용)
+python scripts/workflow/list_domains.py --json | jq '.[].name'
+# 도메인 1건 상세
+python scripts/workflow/list_domains.py --verbose --name 고객관리
+```
+
+> **환류 게이트**: 새 preset 추가 시 `INDEX.md` 의 4 필드(aliases/keywords/entities/한 줄 요약) 누락 = `/list-domains` 에서 누락 = 외부 사용자 미발견. `/contribute-back` 의 R4 self-check 가 이 정합성을 매 Growth 끝에서 점검한다.
 
 ---
 

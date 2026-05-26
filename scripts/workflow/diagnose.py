@@ -167,7 +167,7 @@ def check_cross_layer_coherence(
     빠르고 fresh scaffold 없이 회귀 감지. 새 트랩 발견 시 §4 등재 후 sub-check
     추가가 다음 Growth 단계.
 
-    Guards (4건):
+    Guards (5건):
       - G-47 (T-NexacroUiaPkg-javax): mybatis controller/service-impl 템플릿이
         `{{ uia_namespace }}` parametrize — `.jakarta.core.` 하드코딩 회귀 차단
       - G-50a (T-Probe-CtxPath-Missing, runner-side): nexacroN samples/runners/
@@ -176,6 +176,10 @@ def check_cross_layer_coherence(
         REST 분기가 `/uiadapter/api/` prefix 유지
       - G-48 (T-Probe-LaneRunner-Mismatch): `full_test.py:run_l4_live` 가
         `discover_scaffold_lane` 호출 + `scaffold_lane=` dispatch wiring 유지
+      - G-58 (T-Stage4-VanillaReject): `scaffold_orchestrator._run_stage4` 가
+        vanilla lane 자동 skip 유지 — `args.lane == "vanilla"` 분기 +
+        `stage4-skipped-vanilla` 마커가 사라지면 vanilla `/scaffold` 가
+        Stage 4 의 N002 unsupported version 거부로 다시 깨짐
     """
     failures: list[str] = []
 
@@ -239,17 +243,31 @@ def check_cross_layer_coherence(
                 "G-48 regression: full_test.py lost discover_scaffold_lane wiring"
             )
 
+    # G-58: scaffold_orchestrator._run_stage4 vanilla lane auto-skip 유지
+    orch = creater_root / "scripts" / "scaffold_orchestrator.py"
+    if not orch.exists():
+        failures.append("G-58 guard: scaffold_orchestrator.py missing")
+    else:
+        text = orch.read_text(encoding="utf-8")
+        if (
+            'args.lane == "vanilla"' not in text
+            or "stage4-skipped-vanilla" not in text
+        ):
+            failures.append(
+                "G-58 regression: scaffold_orchestrator.py lost vanilla Stage 4 skip gate"
+            )
+
     if failures:
         return Check(
             "cross-layer-coherence",
             "FAIL",
             "; ".join(failures),
-            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50) 추적 후 복원",
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58) 추적 후 복원",
         )
     return Check(
         "cross-layer-coherence",
         "PASS",
-        "4 trap guards intact (G-47/48/50a/50b)",
+        "5 trap guards intact (G-47/48/50a/50b/58)",
     )
 
 

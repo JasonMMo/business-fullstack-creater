@@ -53,6 +53,7 @@ Pre-flight diagnose:
 | `preset-catalog` | `rdb-skill/.../presets/INDEX.md` 파싱 + 도메인 수 ≥10 |
 | `learn-log` | §0 Layer Ownership Card 존재 |
 | `runner/boot-jdk17-jakarta`, `boot-jdk8-javax` | 디렉터리 존재 + stale `com/example` overlay 없음 |
+| `cross-layer-coherence` | learn-log §4 트랩 4건 정적 회귀 가드: G-47(mybatis `{{ uia_namespace }}`), G-48(`full_test` ↔ `discover_scaffold_lane`), G-50a(runner `application.yml` `context-path: /uiadapter`), G-50b(`lane_runner_map` REST `/uiadapter/api/`) |
 | `jdk` | `java -version` 성공 + (선호 JDK17 권고) |
 
 ## 후속 동작

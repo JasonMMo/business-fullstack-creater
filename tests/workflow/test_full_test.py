@@ -194,7 +194,8 @@ def test_run_l4_live_rest_lane_uses_json_probe(lane, tmp_path, monkeypatch):
     full, partial = full_test.run_l4_live(lane, scaffold)
     assert full is True and partial is True
     assert json_calls["count"] == 1
-    assert json_calls["url"] == "http://localhost:8080/api/lead"
+    # Growth-50 (T-Probe-CtxPath-Missing): REST probe must include /uiadapter context-path.
+    assert json_calls["url"] == "http://localhost:8080/uiadapter/api/lead"
 
 
 def test_run_l4_live_nexacro_lane_uses_envelope_probe(tmp_path, monkeypatch):
@@ -742,4 +743,5 @@ def test_run_l4_live_no_scaffold_report_falls_back_to_runner_lane(tmp_path, monk
 
     full, partial = full_test.run_l4_live("jakarta", scaffold)
     assert full is True
-    assert json_calls["url"] == "http://localhost:8080/api/lead"
+    # Growth-50 (T-Probe-CtxPath-Missing): REST probe URL includes /uiadapter context-path.
+    assert json_calls["url"] == "http://localhost:8080/uiadapter/api/lead"

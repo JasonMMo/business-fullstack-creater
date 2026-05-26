@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>business-fullstack-creater — Domain Portal</title>
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header>
+    <h1>business-fullstack-creater</h1>
+    <p class="tagline">복리식 축적 — 사용할수록 쌓이는 도메인 지식 기반의 풀스택 스캐폴드 생성기</p>
+    <nav>
+      <a href="https://github.com/masonmore/business-fullstack-creater">GitHub</a>
+      <a href="USER-GUIDE.md">User Guide</a>
+    </nav>
+  </header>
+
+  <main>
+    <section aria-label="Domain tiles">
+      <h2>14 Preset Domains</h2>
+      <div class="tile-grid">
+        <div class="tile" data-domain="%EA%B2%B0%EC%9E%AC">
+  <h3><a href="domain/%EA%B2%B0%EC%9E%AC.html">결재</a></h3>
+  <p class="summary">한국 SI 표준 — 순차/병렬/혼합 결재 라인 + RO 이력 + 위임/회수</p>
+  <div class="chip-row"><span class="chip default-unverified">jakarta</span></div>
+</div>
+        <div class="tile" data-domain="%EA%B2%8C%EC%8B%9C%ED%8C%90">
+  <h3><a href="domain/%EA%B2%8C%EC%8B%9C%ED%8C%90.html">게시판</a></h3>
+  <p class="summary">다중 카테고리 + 익명/회원 글 + 트리형 댓글 + 첨부 N개</p>
+  <div class="chip-row"><span class="chip default-unverified">jakarta</span></div>
+</div>
+        <div class="tile" data-domain="%EA%B3%A0%EA%B0%9D%EA%B4%80%EB%A6%AC">
+  <h3><a href="domain/%EA%B3%A0%EA%B0%9D%EA%B4%80%EB%A6%AC.html">고객관리</a></h3>
+  <p class="summary">B2C/B2B 고객 + 다중 주소 + 응대 이력 + 분류 트리</p>
+  <div class="chip-row"><span class="chip default-unverified">jakarta</span></div>
+</div>
+        <div class="tile" data-domain="%EA%B3%B5%EA%B8%89%EB%A7%9D">
+  <h3><a href="domain/%EA%B3%B5%EA%B8%89%EB%A7%9D.html">공급망</a></h3>
+  <p class="summary">공급업체·발주(MD+workflow)·입고(RO ledger) + 재고관리/권한관리 cross-domain FK (sku/warehouse/requester)</p>
+  <div class="chip-row"><span class="chip default-unverified">jakarta</span></div>
+</div>
+        <div class="tile" data-domain="%EA%B3%B5%ED%86%B5%EC%BD%94%EB%93%9C">
+  <h3><a href="domain/%EA%B3%B5%ED%86%B5%EC%BD%94%EB%93%9C.html">공통코드</a></h3>
+  <p class="summary">모든 도메인이 참조하는 lookup 테이블 + 그룹/값 2단 + 다국어</p>
+  <div class="chip-row"><span class="chip default-unverified">jakarta</span></div>
+</div>
+        <div class="tile" data-domain="%EA%B6%8C%ED%95%9C%EA%B4%80%EB%A6%AC">
+  <h3><a href="domain/%EA%B6%8C%ED%95%9C%EA%B4%80%EB%A6%AC.html">권한관리</a></h3>
+  <p class="summary">RBAC 기본 — 사용자·역할·권한 N:M + 메뉴/데이터 권한 분리</p>
+  <div class="chip-row"><span class="chip default-unverified">jakarta</span></div>
+</div>
+        <div class="tile" data-domain="%EB%B0%B0%EC%86%A1%EA%B4%80%EB%A6%AC">
+  <h3><a href="domain/%EB%B0%B0%EC%86%A1%EA%B4%80%EB%A6%AC.html">배송관리</a></h3>
+  <p class="summary">주문 출고 이후 물류 — 택배사·추적이력(RO) + 상태머신(pending→picked→in_transit→delivered)</p>
+  <div class="chip-row"><span class="chip default-unverified">jakarta</span></div>
+</div>
+        <div class="tile" data-domain="%EC%95%8C%EB%A6%BC">
+  <h3><a href="domain/%EC%95%8C%EB%A6%BC.html">알림</a></h3>
+  <p class="summary">다채널 발송(SMS/이메일/인앱/push) + 템플릿 + 수신선호 + 로그</p>
+  <div class="chip-row"><span class="chip default-unverified">jakarta</span></div>
+</div>
+        <div class="tile" data-domain="%EC%98%81%EC%97%85%EA%B4%80%EB%A6%AC">
+  <h3><a href="domain/%EC%98%81%EC%97%85%EA%B4%80%EB%A6%AC.html">영업관리</a></h3>
+  <p class="summary">lead→opportunity→activity 파이프라인 + 거래처 담당자 + 권한관리/고객관리와 cross-domain FK (RBAC ownership)</p>
+  <div class="chip-row"><span class="chip default-unverified">jakarta</span></div>
+</div>
+        <div class="tile" data-domain="%EC%9D%B8%EC%82%AC%EA%B4%80%EB%A6%AC">
+  <h3><a href="domain/%EC%9D%B8%EC%82%AC%EA%B4%80%EB%A6%AC.html">인사관리</a></h3>
+  <p class="summary">직원·부서·직급 + 일별 근태 + 휴가 신청·승인</p>
+  <div class="chip-row"><span class="chip default-unverified">jakarta</span></div>
+</div>
+        <div class="tile" data-domain="%EC%9E%AC%EA%B3%A0%EA%B4%80%EB%A6%AC">
+  <h3><a href="domain/%EC%9E%AC%EA%B3%A0%EA%B4%80%EB%A6%AC.html">재고관리</a></h3>
+  <p class="summary">다창고 재고 + 입출고/이동 이력(RO) + 안전재고</p>
+  <div class="chip-row"><span class="chip default-unverified">jakarta</span></div>
+</div>
+        <div class="tile" data-domain="%EC%9E%AC%EB%AC%B4%EA%B4%80%EB%A6%AC">
+  <h3><a href="domain/%EC%9E%AC%EB%AC%B4%EA%B4%80%EB%A6%AC.html">재무관리</a></h3>
+  <p class="summary">복식부기 — 분개전표(MD 헤더) + 분개라인(RO) + 계정과목 트리 + 회계기간/마감 (Growth-26)</p>
+  <div class="chip-row"><span class="chip default-unverified">jakarta</span></div>
+</div>
+        <div class="tile" data-domain="%EC%A3%BC%EB%AC%B8%EA%B4%80%EB%A6%AC">
+  <h3><a href="domain/%EC%A3%BC%EB%AC%B8%EA%B4%80%EB%A6%AC.html">주문관리</a></h3>
+  <p class="summary">주문·라인·결제 + 상태머신(pending→confirmed→shipped→delivered) + 이력(RO)</p>
+  <div class="chip-row"><span class="chip default-unverified">jakarta</span></div>
+</div>
+        <div class="tile" data-domain="%ED%8C%8C%EC%9D%BC%EA%B4%80%EB%A6%AC">
+  <h3><a href="domain/%ED%8C%8C%EC%9D%BC%EA%B4%80%EB%A6%AC.html">파일관리</a></h3>
+  <p class="summary">폴더 트리 + 파일/버전 + 공유 권한 + 만료 정책</p>
+  <div class="chip-row"><span class="chip default-unverified">jakarta</span></div>
+</div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Generated 2026-05-26 · <a href="https://github.com/masonmore/business-fullstack-creater">source</a></p>
+  </footer>
+</body>
+</html>

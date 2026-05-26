@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>알림 — business-fullstack-creater</title>
+  <link rel="stylesheet" href="../assets/style.css">
+  <script src="../assets/preview.js" defer></script>
+</head>
+<body>
+  <header>
+    <nav aria-label="Breadcrumb">
+      <a href="../index.html">Home</a> / <span>알림</span>
+    </nav>
+    <h1>알림</h1>
+    <p class="summary">다채널 발송(SMS/이메일/인앱/push) + 템플릿 + 수신선호 + 로그</p>
+  </header>
+
+  <main>
+    <section aria-label="Layer selector" class="layer-selector">
+      <fieldset class="lane-radios">
+  <legend>Lane</legend>
+  <label><input type="radio" name="lane" value="jakarta" checked> jakarta</label>
+</fieldset>
+  <div class="layer-cards">
+    <div class="layer-card" data-layer="skill">Stage 1 — Blueprint seed</div>
+    <div class="layer-card" data-layer="ddl">Stage 2 — DDL (MySQL)</div>
+    <div class="layer-card" data-layer="mybatis">Stage 3 — MyBatis / Spring</div>
+    <div class="layer-card" data-layer="nexacro">Stage 4+5 — Nexacro overlay</div>
+  </div>
+    </section>
+
+    <section aria-label="File preview" class="preview-pane" id="preview-pane">
+      <nav class="tab-bar" role="tablist">
+        <button role="tab" aria-selected="true"  data-tab="ddl">DDL</button>
+        <button role="tab" aria-selected="false" data-tab="mapper">Mapper</button>
+        <button role="tab" aria-selected="false" data-tab="controller">Controller</button>
+        <button role="tab" aria-selected="false" data-tab="service">Service</button>
+      </nav>
+      <pre class="preview-block"
+     data-tab="ddl"
+     data-lane="jakarta">// not available — generator could not find source
+</pre>
+      <pre class="preview-block"
+     data-tab="mapper"
+     data-lane="jakarta" hidden>// not available — generator could not find source
+</pre>
+      <pre class="preview-block"
+     data-tab="controller"
+     data-lane="jakarta" hidden>// not available — generator could not find source
+</pre>
+      <pre class="preview-block"
+     data-tab="service"
+     data-lane="jakarta" hidden>// not available — generator could not find source
+</pre>
+    </section>
+
+    <section aria-label="Try it" class="try-it-panel" id="try-it-panel">
+      <div class="try-it">
+  <a class="btn-download" href="../scaffolds/%EC%95%8C%EB%A6%BC/jakarta/project.zip"
+     download>Download project.zip</a>
+  <div class="snippet-block">
+    <button class="copy-btn" data-target="run-snippet">Copy</button>
+    <pre id="run-snippet">cd %EC%95%8C%EB%A6%BC-scaffold &amp;&amp; mvn spring-boot:run</pre>
+  </div>
+</div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Generated 2026-05-26</p>
+  </footer>
+</body>
+</html>

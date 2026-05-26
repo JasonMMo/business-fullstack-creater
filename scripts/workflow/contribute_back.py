@@ -140,7 +140,29 @@ def run() -> int:
             pass
         print("\n[warn] 환류 미완 후보 있음 — Growth 종료 전 §2~§5 확인.", file=sys.stderr)
 
+    # --- web_index rebuild (Phase A5 hook) ---
+    _run_web_hook()
+
     return 0
+
+
+def _run_web_hook() -> None:
+    """Trigger a non-blocking web_index rebuild after the contribute-back checklist.
+
+    Any exception from web_index.build() is caught and printed as a warning so
+    that contribute_back.run() always returns 0 on its own success.
+    """
+    try:
+        from scripts.workflow import web_index as _wi
+        result = _wi.build(json_output=False)
+        if result.domains_failed:
+            print(f"[contribute-back] web_index partial failure: {result.domains_failed}",
+                  file=sys.stderr)
+        else:
+            print(f"[contribute-back] web_index rebuilt OK "
+                  f"({len(result.domains_ok)} domains)")
+    except Exception as exc:  # never block the checklist on web errors
+        print(f"[contribute-back] web_index skip (error: {exc})", file=sys.stderr)
 
 
 if __name__ == "__main__":

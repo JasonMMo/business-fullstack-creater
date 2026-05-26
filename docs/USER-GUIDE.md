@@ -1227,6 +1227,31 @@ recovery_hint      사후       → 실패 시 다음 명령 1줄 (R3)
 
 > **#4 (cross-layer coherence hook)** 은 Growth-53 에서 `/diagnose` 6번째 카테고리(`cross-layer-coherence`) + pure-convention fallback(δ — 새 트랩은 §4 등재 후 다음 Growth 의 sub-check 으로 승격) 으로 흡수됨. 별도 명령/agent 신설 없음.
 
+### 3.15 Growth-55 — 정적 포털 재생성 (`/web-build`)
+
+Web v0 출시 — CLI (`/scaffold`, `/full-test`) + Markdown (USER-GUIDE, learn-log) 에 이은 **세 번째 asset-exposure 채널**. `scripts/workflow/web_index.py` 가 `list_domains` + learn-log §1 검증 매트릭스를 읽어 `docs/index.html` (14 도메인 tile) + 14개 per-domain 페이지를 정적 HTML 로 렌더하고, `/contribute-back` 종료 시 non-blocking tail hook 으로 자동 호출된다.
+
+#### 3.15.1 `/web-build` — 정적 포털 재생성
+
+| 호출 | 동작 |
+|---|---|
+| `/web-build` | 전체 재빌드 — index + 모든 per-domain 페이지 |
+| `/web-build --domain <slug>` | 지정 도메인 1개 페이지만 재빌드 |
+| `/web-build --check` | 생성 없이 누락 파일/오래된 파일 목록만 출력 |
+| `/web-build --json` | 빌드 결과를 JSON 으로 출력(다른 도구 소비용) |
+
+**출력 경로** (spec §2 기준):
+
+- `docs/index.html` — 전체 도메인 타일 포털
+- `docs/domain/<slug>.html` — per-domain 페이지 (한글 slug 는 percent-encoding)
+- `docs/scaffolds/<domain>/<lane>/` — 코드 미리보기용 사전생성 scaffold
+- `docs/assets/style.css` — 공통 스타일시트
+- `docs/assets/preview.js` — L1 코드 미리보기 + L2 zip 다운로드 + L3 복사실행 스니펫 인터랙션
+
+**`/contribute-back` 연동**: Growth 종료 시 `/contribute-back` 이 5축 환류 후 마지막 단계로 `_run_web_hook()` 을 non-blocking 으로 호출한다. 오류가 발생해도 `/contribute-back` 전체 실패로 이어지지 않는다.
+
+> **L4 (live sandbox)** — GitHub Codespaces deep-link 경유 실행 환경은 v1 으로 deferred. 현재 L3(복사실행 스니펫) 까지 구현됨.
+
 ---
 
 ## 4. 통합 — Stage 3+4 → nexacro-fullstack-starter overlay

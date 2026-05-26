@@ -121,3 +121,32 @@ class TestResolveSlug:
         # explicit slug also passes through ASCII sanitization
         slug, src = resolve_slug("anything", explicit_slug="Order Mgmt!", package_fallback=None)
         assert (slug, src) == ("order-mgmt", "explicit")
+
+
+# Growth-59 (2026-05-26): lane-aware --ui default
+class TestResolveUiDefault:
+    def test_vanilla_lane_defaults_to_react(self):
+        from scaffold_cli import resolve_ui_default
+        assert resolve_ui_default(None, "vanilla") == "react"
+
+    def test_nexacro_lane_defaults_to_nexacro(self):
+        from scaffold_cli import resolve_ui_default
+        assert resolve_ui_default(None, "nexacro") == "nexacro"
+
+    def test_jakarta_lane_defaults_to_nexacro(self):
+        from scaffold_cli import resolve_ui_default
+        assert resolve_ui_default(None, "jakarta") == "nexacro"
+
+    def test_javax_lane_defaults_to_nexacro(self):
+        from scaffold_cli import resolve_ui_default
+        assert resolve_ui_default(None, "javax") == "nexacro"
+
+    def test_explicit_nexacro_overrides_vanilla_default(self):
+        from scaffold_cli import resolve_ui_default
+        # User may force nexacro overlay even on vanilla lane
+        assert resolve_ui_default("nexacro", "vanilla") == "nexacro"
+
+    def test_explicit_react_overrides_nexacro_default(self):
+        from scaffold_cli import resolve_ui_default
+        # User may force react overlay on a nexacro lane
+        assert resolve_ui_default("react", "nexacro") == "react"

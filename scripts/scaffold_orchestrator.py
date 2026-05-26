@@ -225,6 +225,18 @@ def _run_stage3(args, stage_paths, report):
 
 
 def _run_stage4(args, stage_paths, report):
+    # Growth-58 T-Stage4-VanillaReject: Stage 4 is nexacro XFDL form gen.
+    # For --lane vanilla, Stage 3 emits version=2 REST-flavored endpoints.json
+    # that Stage 4's endpoints_loader rejects with "N002 unsupported version: 2".
+    # Vanilla has no XFDL forms — skip cleanly so users don't need --stop-after-stage 3.
+    if args.lane == "vanilla":
+        print(
+            "[stage4] skipped: vanilla lane is pure REST — no nexacro XFDL forms to generate",
+            file=sys.stderr,
+        )
+        report.stages_run.append("stage4-skipped-vanilla")
+        return
+
     nexacro_out = args.out_dir / "4-nexacro"
     nexacro_out.mkdir(parents=True, exist_ok=True)
     s4 = stage_paths.stage4
@@ -389,10 +401,18 @@ def _write_report(args, report, failure=None):
         "",
         "## Stages",
     ]
-    for name in ("stage1", "stage2", "stage3", "stage4", "stage5", "stage5-skipped"):
+    for name in (
+        "stage1", "stage2", "stage3",
+        "stage4", "stage4-skipped-vanilla",
+        "stage5", "stage5-skipped",
+    ):
         if name in report.stages_run:
             if name == "stage5-skipped":
                 lines.append(f"- stage5: SKIPPED (no --target-project)")
+            elif name == "stage4-skipped-vanilla":
+                lines.append(
+                    "- stage4: SKIPPED (vanilla lane has no nexacro XFDL forms)"
+                )
             else:
                 lines.append(f"- {name}: OK ({report.stage_durations_ms.get(name, 0)} ms)")
     if failure:

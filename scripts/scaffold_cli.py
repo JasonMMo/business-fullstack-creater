@@ -16,13 +16,52 @@ def derive_slug(domain: str) -> str:
     """Convert a domain name to a URL-safe slug.
 
     Rules: lowercase, spaces → hyphens, drop characters that are not
-    alphanumeric or hyphens.
+    alphanumeric or hyphens. Returns "domain" when input collapses to empty
+    (e.g., Korean-only input). Use `resolve_slug()` for CLI flow with explicit
+    `--slug` + `--package` fallback (R1).
     """
     slug = domain.lower()
     slug = slug.replace(" ", "-")
     slug = re.sub(r"[^a-z0-9\-]", "", slug)
     slug = re.sub(r"-{2,}", "-", slug).strip("-")
     return slug or "domain"
+
+
+def _sanitize_slug(s: str) -> str:
+    """ASCII-clean slug sanitization without the 'domain' fallback."""
+    s = s.lower().replace(" ", "-")
+    s = re.sub(r"[^a-z0-9\-]", "", s)
+    s = re.sub(r"-{2,}", "-", s).strip("-")
+    return s
+
+
+def resolve_slug(
+    domain: str,
+    *,
+    explicit_slug: str | None = None,
+    package_fallback: str | None = None,
+) -> tuple[str, str]:
+    """R1 (서비스 리뷰 2026-05-26): explicit slug 우선 → ASCII 도메인 자동 derive →
+    package 마지막 segment fallback. 무음 'domain' 폴백 제거.
+
+    Returns (slug, source) where source ∈ {'explicit', 'derived', 'package-fallback'}.
+    Raises ValueError when no usable slug can be produced.
+    """
+    if explicit_slug:
+        s = _sanitize_slug(explicit_slug)
+        if not s:
+            raise ValueError(f"--slug {explicit_slug!r} sanitizes to empty after ASCII cleanup")
+        return s, "explicit"
+    derived = _sanitize_slug(domain)
+    if derived:
+        return derived, "derived"
+    if package_fallback:
+        s = _sanitize_slug(package_fallback)
+        if s:
+            return s, "package-fallback"
+    raise ValueError(
+        f"cannot derive slug from domain={domain!r} (non-ASCII); pass --slug=<ascii-name>"
+    )
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -35,6 +74,16 @@ def _build_parser() -> argparse.ArgumentParser:
         required=True,
         metavar="<name>",
         help="Domain name (e.g. '주문관리'). Used as human-readable label.",
+    )
+    p.add_argument(
+        "--slug",
+        metavar="<ascii-name>",
+        default=None,
+        help=(
+            "Explicit URL-safe slug (ASCII only). Recommended when --domain is "
+            "non-ASCII (e.g., Korean). When omitted and --domain has no ASCII chars, "
+            "falls back to --package's last segment (R1 service review 2026-05-26)."
+        ),
     )
     p.add_argument(
         "--wiki-mode",
@@ -217,16 +266,23 @@ def main(argv=None):
     if a.wiki_mode == "wiki" and not a.wiki:
         p.error("--wiki-mode=wiki requires --wiki <path>")
 
-    # Derive slug. If non-ASCII domain collapses to the "domain" fallback, warn
-    # that Stage 5 will pick up its slug from --package's last segment instead.
-    domain_slug = derive_slug(a.domain)
-    if domain_slug == "domain" and a.domain != "domain":
+    # R1 (서비스 리뷰 2026-05-26): explicit --slug > ASCII derive > --package last segment.
+    # 'domain' 무음 폴백 제거.
+    pkg_last = a.package.split(".")[-1] if a.package else None
+    try:
+        domain_slug, slug_source = resolve_slug(
+            a.domain, explicit_slug=a.slug, package_fallback=pkg_last,
+        )
+    except ValueError as exc:
+        p.error(str(exc))
+    if slug_source == "package-fallback":
         print(
-            f"WARN: derive_slug({a.domain!r}) → 'domain' (non-ASCII fallback). "
-            f"Stage 5 overlay will use --package last segment "
-            f"({a.package.split('.')[-1]!r}) as the actual domain slug.",
+            f"INFO: domain={a.domain!r} is non-ASCII; using slug={domain_slug!r} "
+            f"from --package last segment. Pass --slug=<name> to override.",
             file=sys.stderr,
         )
+    elif slug_source == "explicit":
+        print(f"INFO: using explicit --slug={domain_slug!r}", file=sys.stderr)
 
     # Resolve creator_root: parent of this script's parent directory
     creator_root = pathlib.Path(__file__).resolve().parent.parent

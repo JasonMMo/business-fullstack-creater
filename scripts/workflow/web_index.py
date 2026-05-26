@@ -63,6 +63,10 @@ class BuildResult:
     domains_failed: list[str] = field(default_factory=list)   # slugs that encountered errors
     missing_files: list[str] = field(default_factory=list)    # relative paths missing (--check mode only)
     warnings: list[str] = field(default_factory=list)         # non-fatal notes
+    # T-Web-EmptyPortal (Growth-57) — empty-portal detection surface
+    placeholder_slots: int = 0          # preview files written as placeholder (across all entries)
+    total_slots: int = 0                # preview files written in total (placeholder + real)
+    catalog_root_missing: bool = False  # ~/.karpathy-rdb/catalog/ absent at build time
 
 
 # ---------------------------------------------------------------------------
@@ -138,7 +142,7 @@ def _parse_learn_log_section1(text: str) -> list[tuple[str, str, str]]:
 
 def build_matrix(
     domains: list[Domain],
-    learn_log_path: Path = LEARN_LOG,
+    learn_log_path: Optional[Path] = None,
 ) -> list[MatrixEntry]:
     """Return MatrixEntry list for all (domain, lane) pairs.
 
@@ -149,6 +153,9 @@ def build_matrix(
        present from step 1, add status="default-unverified", source="jakarta-default".
     3. Return sorted by (domain, lane).
     """
+    if learn_log_path is None:
+        learn_log_path = LEARN_LOG
+
     # Collect verified entries from learn-log §1
     entries: dict[tuple[str, str], MatrixEntry] = {}
 
@@ -225,7 +232,33 @@ def _expected_output_paths(
 # Scaffold pre-generation (M2)
 # ---------------------------------------------------------------------------
 
-_PLACEHOLDER = "// not available — generator could not find source\n"
+# Layer label per preview filename — used by _format_placeholder to give
+# the user a hint about which generator stage produces this file.
+_PREVIEW_LAYER_LABELS: dict[str, str] = {
+    "DDL.sql":         "DDL (Stage 2 — andrej-karpathy-rdb-ddl)",
+    "Mapper.xml":      "MyBatis Mapper (Stage 3 — andrej-karpathy-rdb-mybatis)",
+    "Controller.java": "Spring Controller (Stage 3 — andrej-karpathy-rdb-mybatis)",
+    "Service.java":    "Spring Service (Stage 3 — andrej-karpathy-rdb-mybatis)",
+}
+
+
+def _format_placeholder(slug: str, fname: str) -> str:
+    """Domain/layer-aware placeholder shown when the generator cannot find source.
+
+    Keeps the literal substring ``"not available"`` for downstream tests, but
+    extends the body with a one-line ``/scaffold`` hint and the catalog path
+    this portal reads from — turning the empty preview into a tutorial pointer
+    (T-Web-EmptyPortal mitigation, Growth-57).
+    """
+    layer = _PREVIEW_LAYER_LABELS.get(fname, "source")
+    return (
+        f"// {layer} not available — generator could not find source\n"
+        f"//\n"
+        f"// run `/scaffold {slug}` first to populate this preview.\n"
+        f"// Stage 2 (DDL) will produce files under\n"
+        f"// ~/.karpathy-rdb/catalog/{slug}/ that this portal reads from.\n"
+    )
+
 
 # Maps each preview filename to a callable that extracts the source path
 # from a SourceMap dict.  SourceMap keys: "ddl", "mapper_xml", "controller", "service"
@@ -329,7 +362,7 @@ def materialize_scaffold(
                 shutil.copy2(src, dst)
             except OSError as exc:
                 warnings.append(f"{slug}/{lane}/{fname}: copy failed ({exc}); using placeholder")
-                dst.write_text(_PLACEHOLDER, encoding="utf-8")
+                dst.write_text(_format_placeholder(slug, fname), encoding="utf-8")
         else:
             if src is not None:
                 warnings.append(
@@ -337,7 +370,7 @@ def materialize_scaffold(
                 )
             else:
                 warnings.append(f"{slug}/{lane}/{fname}: source not found; using placeholder")
-            dst.write_text(_PLACEHOLDER, encoding="utf-8")
+            dst.write_text(_format_placeholder(slug, fname), encoding="utf-8")
 
     # Build project.zip from all files in out_dir (excluding the zip itself)
     zip_path = out_dir / "project.zip"
@@ -924,8 +957,8 @@ def build(
     domains: Optional[list[str]] = None,        # None = all domains from list_domains.py
     check_only: bool = False,                   # True = verify outputs exist; no writes
     json_output: bool = False,                  # True = emit JSON report to stdout
-    docs_root: Path = DOCS_ROOT,                # override for tests
-    learn_log_path: Path = LEARN_LOG,           # override for tests
+    docs_root: Optional[Path] = None,           # override for tests; None → DOCS_ROOT
+    learn_log_path: Optional[Path] = None,      # override for tests; None → LEARN_LOG
     source_resolver: Optional[Callable[["MatrixEntry"], dict]] = None,  # injected for tests
 ) -> BuildResult:
     """Build (or check) the static portal.
@@ -933,6 +966,13 @@ def build(
     M2: scaffold pre-generation via materialize_scaffold() for all matrix entries.
     Full HTML generation is handled in M3.
     """
+    # Resolve defaults at call time so monkeypatch on module-level DOCS_ROOT/LEARN_LOG
+    # in tests takes effect (Growth-52 lesson: keyword defaults bind at def time).
+    if docs_root is None:
+        docs_root = DOCS_ROOT
+    if learn_log_path is None:
+        learn_log_path = LEARN_LOG
+
     result = BuildResult()
 
     # Load domain list — gracefully handle missing INDEX.md (e.g. in CI)
@@ -961,11 +1001,21 @@ def build(
                 result.missing_files.append(rel_path)
         # domains_ok / domains_failed not relevant in check-only mode
     else:
+        # T-Web-EmptyPortal (Growth-57): record catalog-root presence up front
+        # so empty-portal detection survives even if later steps short-circuit.
+        result.catalog_root_missing = not (
+            Path.home() / ".karpathy-rdb" / "catalog"
+        ).exists()
+
         # M2: materialize scaffolds for each matrix entry
         seen_domains: set[str] = set()
         for entry in matrix:
             ok, warns = materialize_scaffold(entry, docs_root, source_resolver=source_resolver)
             result.warnings.extend(warns)
+            # Per-file placeholder write produces exactly one warning ending in
+            # "using placeholder" — count those to tally placeholder vs real slots.
+            result.placeholder_slots += sum(1 for w in warns if w.endswith("using placeholder"))
+            result.total_slots += len(_PREVIEW_FILE_KEYS)  # 4 preview files per entry
             if ok:
                 seen_domains.add(entry.domain)
             else:
@@ -1080,6 +1130,23 @@ def main(argv: list[str] | None = None) -> int:
             built = len(result.domains_ok)
             failed = len(result.domains_failed)
             print(f"Build complete: {built} domains OK, {failed} failed.")
+
+        # T-Web-EmptyPortal (Growth-57): summary banner if any preview slot
+        # fell back to placeholder. Printed once, before the per-warning dump,
+        # so users notice the actionable hint before scrolling through detail.
+        if result.placeholder_slots > 0:
+            tag = "EMPTY-PORTAL" if result.placeholder_slots == result.total_slots else "PARTIAL-PORTAL"
+            reason = (
+                " (no catalog found at ~/.karpathy-rdb/catalog/)"
+                if result.catalog_root_missing
+                else ""
+            )
+            print(
+                f"⚠ {tag}: {result.placeholder_slots}/{result.total_slots} preview slots "
+                f"filled with placeholder{reason}. Run `/scaffold <domain>` first to expose "
+                f"real DDL/Mapper/Controller/Service content.",
+                file=sys.stderr,
+            )
 
         for w in result.warnings:
             print(f"WARNING: {w}", file=sys.stderr)

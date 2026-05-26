@@ -289,3 +289,111 @@ def test_materialize_scaffold_partial_sources(tmp_path):
 
     # 3 warnings expected (mapper_xml, controller, service)
     assert len(warnings) >= 3
+
+
+# ---------------------------------------------------------------------------
+# Growth-57 / T-Web-EmptyPortal — domain-aware placeholder + CLI warning
+# ---------------------------------------------------------------------------
+
+def test_format_placeholder_embeds_slug_and_scaffold_hint():
+    """_format_placeholder turns the empty preview into a tutorial pointer."""
+    from scripts.workflow.web_index import _format_placeholder
+
+    body = _format_placeholder("고객관리", "DDL.sql")
+
+    assert "not available" in body              # back-compat substring
+    assert "/scaffold 고객관리" in body         # actionable next-command
+    assert "~/.karpathy-rdb/catalog/고객관리/" in body  # source-of-truth path
+    assert "Stage 2" in body                    # layer hint for DDL.sql
+
+
+def test_format_placeholder_layer_label_varies_per_file():
+    """Each preview filename gets its own Stage label (G57 inline hint)."""
+    from scripts.workflow.web_index import _format_placeholder
+
+    assert "Stage 2" in _format_placeholder("foo", "DDL.sql")
+    assert "MyBatis Mapper" in _format_placeholder("foo", "Mapper.xml")
+    assert "Spring Controller" in _format_placeholder("foo", "Controller.java")
+    assert "Spring Service" in _format_placeholder("foo", "Service.java")
+
+
+def test_build_tallies_placeholder_and_total_slots(tmp_path):
+    """build() with null resolver tallies placeholder_slots == total_slots."""
+    from scripts.workflow.web_index import build
+
+    docs_root = tmp_path / "docs"
+    docs_root.mkdir()
+    ll = _fake_learn_log(tmp_path, [
+        ("jakarta", "Growth-10", "foo"),
+        ("jakarta", "Growth-12", "bar"),
+    ])
+
+    import unittest.mock as mock
+    from scripts.workflow.list_domains import Domain
+
+    fake_domains = [Domain(name="foo"), Domain(name="bar")]
+    with mock.patch("scripts.workflow.web_index.load_domains", return_value=fake_domains):
+        result = build(
+            docs_root=docs_root,
+            learn_log_path=ll,
+            source_resolver=_null_resolver,
+        )
+
+    # 2 entries × 4 preview files = 8 total slots, all placeholder
+    assert result.total_slots == 8
+    assert result.placeholder_slots == 8
+
+
+def test_build_records_catalog_root_missing(tmp_path, monkeypatch):
+    """build() flips catalog_root_missing when ~/.karpathy-rdb/catalog/ absent."""
+    from scripts.workflow.web_index import build
+
+    docs_root = tmp_path / "docs"
+    docs_root.mkdir()
+    ll = _fake_learn_log(tmp_path, [("jakarta", "Growth-10", "foo")])
+
+    # Point Path.home() at an empty dir so ~/.karpathy-rdb/catalog/ definitely does NOT exist
+    fake_home = tmp_path / "fakehome"
+    fake_home.mkdir()
+    monkeypatch.setattr("scripts.workflow.web_index.Path.home", lambda: fake_home)
+
+    import unittest.mock as mock
+    from scripts.workflow.list_domains import Domain
+
+    with mock.patch("scripts.workflow.web_index.load_domains", return_value=[Domain(name="foo")]):
+        result = build(
+            docs_root=docs_root,
+            learn_log_path=ll,
+            source_resolver=_null_resolver,
+        )
+
+    assert result.catalog_root_missing is True
+
+
+def test_cli_main_emits_empty_portal_warning(tmp_path, monkeypatch, capsys):
+    """main() prints EMPTY-PORTAL banner with /scaffold hint when all slots are placeholder."""
+    from scripts.workflow import web_index
+
+    docs_root = tmp_path / "docs"
+    docs_root.mkdir()
+    ll = _fake_learn_log(tmp_path, [("jakarta", "Growth-10", "foo")])
+
+    fake_home = tmp_path / "fakehome"
+    fake_home.mkdir()
+    monkeypatch.setattr("scripts.workflow.web_index.Path.home", lambda: fake_home)
+    monkeypatch.setattr(web_index, "DOCS_ROOT", docs_root)
+    monkeypatch.setattr(web_index, "LEARN_LOG", ll)
+
+    import unittest.mock as mock
+    from scripts.workflow.list_domains import Domain
+
+    with mock.patch("scripts.workflow.web_index.load_domains", return_value=[Domain(name="foo")]):
+        rc = web_index.main([])
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    # Banner went to stderr with all the actionable bits
+    assert "EMPTY-PORTAL" in captured.err
+    assert "/scaffold <domain>" in captured.err
+    assert "~/.karpathy-rdb/catalog/" in captured.err
+    assert "4/4 preview slots" in captured.err  # 1 entry × 4 files

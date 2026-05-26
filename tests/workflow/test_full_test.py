@@ -56,6 +56,43 @@ def test_decide_label_l1_fail_aborts():
     layers = {"L1": False}
     assert full_test.decide_label(layers) == "단위 테스트 실패 — 검증 중단"
 
+
+# R3 (서비스 리뷰 2026-05-26): 실패 레이어별 1줄 recovery hint
+def test_recovery_hint_l1_fail():
+    h = full_test.recovery_hint({"L1": False}, "jakarta", None)
+    assert h and "pytest" in h
+
+def test_recovery_hint_l2_fail():
+    h = full_test.recovery_hint({"L1": True, "L2": False}, "jakarta", None)
+    assert h and ("HSQLDB_JAR" in h or "jdbc_smoke" in h)
+
+def test_recovery_hint_l3_fail(tmp_path):
+    h = full_test.recovery_hint({"L1": True, "L2": True, "L3": False}, "jakarta", tmp_path)
+    assert h and "mvn" in h and str(tmp_path) in h
+
+def test_recovery_hint_l4_fail():
+    layers = {"L1": True, "L2": True, "L3": True, "L4_full": False, "L4_partial": False}
+    h = full_test.recovery_hint(layers, "jakarta", None)
+    assert h and "was.log" in h
+
+def test_recovery_hint_l4_partial():
+    layers = {"L1": True, "L2": True, "L3": True, "L4_full": False, "L4_partial": True}
+    h = full_test.recovery_hint(layers, "jakarta", None)
+    assert h and "/uiadapter" in h
+
+def test_recovery_hint_all_green_is_none():
+    layers = {"L1": True, "L2": True, "L3": True, "L4_full": True}
+    assert full_test.recovery_hint(layers, "jakarta", None) is None
+
+
+def test_full_test_result_includes_next_hint_in_json():
+    r = full_test.FullTestResult(
+        label="JDBC 까지만 검증", layers={"L1": True, "L2": True}, lane="jakarta",
+        next_hint="Next: mvn -X package",
+    )
+    d = r.to_dict()
+    assert d["next_hint"] == "Next: mvn -X package"
+
 def test_lane_default_runner_resolution():
     assert full_test.runner_for("jakarta") == "boot-jdk17-jakarta"
     assert full_test.runner_for("vanilla") == "boot-jdk8-javax"

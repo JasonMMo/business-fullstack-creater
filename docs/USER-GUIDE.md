@@ -1202,6 +1202,7 @@ python scripts/workflow/orient.py
 | `preset-catalog` | `presets/INDEX.md` 파싱 + 도메인 수 ≥10 |
 | `learn-log` | §0 Layer Ownership Card 존재 |
 | `runner/{boot-jdk17-jakarta,boot-jdk8-javax}` | 디렉터리 존재 + stale `com/example` overlay 부재 |
+| `cross-layer-coherence` (Growth-53) | learn-log §4 트랩 4건 정적 회귀 가드 — G-47(mybatis 템플릿 `{{ uia_namespace }}`), G-48(`full_test` ↔ `discover_scaffold_lane` wiring), G-50a(runner `application.yml` `/uiadapter` context-path), G-50b(`lane_runner_map` REST `/uiadapter/api/` prefix) |
 | `jdk` | `java -version` 성공 + JDK17 권고 |
 
 각 항목 PASS/WARN/FAIL + 회복 명령 1줄(R3 `recovery_hint` 와 동일 형식). exit 0(FAIL 없음 → `/full-test` 진입 가능) / exit 1(FAIL → hint 따라 fix 후 재실행). `--json` 으로 다른 도구가 소비 가능.
@@ -1224,7 +1225,7 @@ recovery_hint      사후       → 실패 시 다음 명령 1줄 (R3)
 
 세 표면(`/orient` § learn-log + USER-GUIDE 소스, `/diagnose` § sibling repo + INDEX 소스, `/full-test recovery_hint` § L1~L4 분기) 이 모두 **이미 누적된 자산을 노출**할 뿐 새 onboarding 문서/agent 를 만들지 않는다 — 작게 자주, 자산 복리식 누적이 원칙.
 
-> **#4 (cross-layer coherence hook)** 은 별도 검토로 분리됨 — 흡수 방식 재논의 대기.
+> **#4 (cross-layer coherence hook)** 은 Growth-53 에서 `/diagnose` 6번째 카테고리(`cross-layer-coherence`) + pure-convention fallback(δ — 새 트랩은 §4 등재 후 다음 Growth 의 sub-check 으로 승격) 으로 흡수됨. 별도 명령/agent 신설 없음.
 
 ---
 

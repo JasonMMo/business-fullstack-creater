@@ -91,6 +91,14 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
         "url = lane_probe_url(lane, port, entity, scaffold_lane=scaffold_lane)\n",
         encoding="utf-8",
     )
+    # G-58 guard: scaffold_orchestrator.py with vanilla Stage 4 skip gate
+    (creater_root / "scripts" / "scaffold_orchestrator.py").write_text(
+        'def _run_stage4(args, stage_paths, report):\n'
+        '    if args.lane == "vanilla":\n'
+        '        report.stages_run.append("stage4-skipped-vanilla")\n'
+        '        return\n',
+        encoding="utf-8",
+    )
     return workspace, creater_root
 
 
@@ -205,7 +213,7 @@ def test_check_cross_layer_coherence_pass(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "G-47/48/50a/50b" in c.detail
+    assert "G-47/48/50a/50b/58" in c.detail
 
 
 def test_check_cross_layer_coherence_fail_g47_uia_namespace_lost(tmp_path):
@@ -276,6 +284,33 @@ def test_check_cross_layer_coherence_fail_g48_full_test_lost_wiring(tmp_path):
     )
     assert c.status == "FAIL"
     assert "G-48" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g58_vanilla_skip_lost(tmp_path):
+    # Growth-59: G-58 regression guard — scaffold_orchestrator.py must keep
+    # vanilla Stage 4 auto-skip gate, else /scaffold --lane vanilla breaks again
+    # on Stage 4 N002 unsupported version: 2.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "scaffold_orchestrator.py").write_text(
+        "def _run_stage4(args, stage_paths, report):\n"
+        "    subprocess.run(['python', 'form_gen.py'])\n",
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-58" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g58_missing_orchestrator(tmp_path):
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "scaffold_orchestrator.py").unlink()
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-58 guard" in c.detail
 
 
 def test_format_table_summary_lines():

@@ -397,3 +397,71 @@ def test_cli_main_emits_empty_portal_warning(tmp_path, monkeypatch, capsys):
     assert "/scaffold <domain>" in captured.err
     assert "~/.karpathy-rdb/catalog/" in captured.err
     assert "4/4 preview slots" in captured.err  # 1 entry × 4 files
+
+
+# ---------------------------------------------------------------------------
+# Growth-61 T-Web-CatalogSlugMismatch — Korean domain dir + ASCII Java slug
+# ---------------------------------------------------------------------------
+
+def _make_scaffold_tree(catalog_root: Path, korean_domain: str, ascii_slug: str):
+    """Mirror /scaffold output: catalog/<korean>/3-mybatis/src/.../com/example/<slug>."""
+    base = catalog_root / korean_domain / "3-mybatis" / "src" / "main"
+    res = base / "resources"
+    res.mkdir(parents=True)
+    (res / "schema.sql").write_text("CREATE TABLE foo (id INT);\n", encoding="utf-8")
+    (res / "data.sql").write_text("INSERT INTO foo VALUES (1);\n", encoding="utf-8")
+    mapper_dir = res / "mybatis" / "mapper"
+    mapper_dir.mkdir(parents=True)
+    (mapper_dir / "FooMapper.xml").write_text(
+        "<mapper namespace='FooMapper'/>\n", encoding="utf-8"
+    )
+    pkg = base / "java" / "com" / "example" / ascii_slug
+    (pkg / "controller").mkdir(parents=True)
+    (pkg / "controller" / "FooController.java").write_text(
+        f"package com.example.{ascii_slug}.controller;\n", encoding="utf-8"
+    )
+    (pkg / "service").mkdir(parents=True)
+    (pkg / "service" / "FooService.java").write_text(
+        f"package com.example.{ascii_slug}.service;\n", encoding="utf-8"
+    )
+
+
+def test_default_source_resolver_handles_korean_catalog_with_ascii_slug(tmp_path, monkeypatch):
+    """Growth-61: catalog subdir is Korean (entry.domain) but Java pkg uses ASCII slug.
+
+    Resolver must not pass Korean as domain_slug — must auto-derive via
+    derive_domain_slug() walking com.example.<slug>/com.nexacro.uiadapter.<slug>.
+    """
+    from scripts.workflow import web_index
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    catalog = fake_home / ".karpathy-rdb" / "catalog"
+    catalog.mkdir(parents=True)
+    _make_scaffold_tree(catalog, korean_domain="고객관리", ascii_slug="customer")
+
+    monkeypatch.setattr("scripts.workflow.web_index.Path.home", lambda: fake_home)
+
+    entry = _make_entry(domain="고객관리", lane="jakarta")
+    sources = web_index._default_source_resolver(entry)
+
+    assert sources["ddl"] is not None and sources["ddl"].exists()
+    assert sources["mapper_xml"] is not None and sources["mapper_xml"].exists()
+    assert sources["controller"] is not None and sources["controller"].exists()
+    assert sources["service"] is not None and sources["service"].exists()
+    # Real content, not placeholder
+    assert "com.example.customer.controller" in sources["controller"].read_text(encoding="utf-8")
+    assert "com.example.customer.service" in sources["service"].read_text(encoding="utf-8")
+
+
+def test_default_source_resolver_returns_none_when_catalog_missing(tmp_path, monkeypatch):
+    """No catalog dir → resolver returns all-None dict (graceful, no crash)."""
+    from scripts.workflow import web_index
+
+    fake_home = tmp_path / "home"
+    fake_home.mkdir()
+    monkeypatch.setattr("scripts.workflow.web_index.Path.home", lambda: fake_home)
+
+    entry = _make_entry(domain="고객관리", lane="jakarta")
+    sources = web_index._default_source_resolver(entry)
+    assert sources == {"ddl": None, "mapper_xml": None, "controller": None, "service": None}

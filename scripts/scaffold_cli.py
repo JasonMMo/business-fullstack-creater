@@ -64,6 +64,17 @@ def resolve_slug(
     )
 
 
+def resolve_ui_default(ui: str | None, lane: str) -> str:
+    """Growth-59: lane-aware --ui default.
+
+    Explicit --ui always wins. When omitted, vanilla lane defaults to 'react'
+    (pure REST, no nexacro XFDL forms); all other lanes default to 'nexacro'.
+    """
+    if ui is not None:
+        return ui
+    return "react" if lane == "vanilla" else "nexacro"
+
+
 def _build_parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
         prog="scaffold_cli",
@@ -118,8 +129,12 @@ def _build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--ui",
         choices=("nexacro", "react"),
-        default="nexacro",
-        help="Stage 5 UI overlay adapter (default: nexacro). 'react' emits frontend/src/api/*.ts fetch modules.",
+        default=None,
+        help=(
+            "Stage 5 UI overlay adapter. Lane-aware default when omitted: "
+            "--lane vanilla → 'react', other lanes → 'nexacro'. "
+            "'react' emits frontend/src/api/*.ts fetch modules."
+        ),
     )
     p.add_argument(
         "--default-pattern",
@@ -296,6 +311,14 @@ def main(argv=None):
     out_dir = pathlib.Path(a.out)
     report_path = out_dir / "scaffold-report.md"
 
+    # Growth-59: lane-aware --ui default (vanilla → react, others → nexacro).
+    ui_resolved = resolve_ui_default(a.ui, a.lane)
+    if a.ui is None:
+        print(
+            f"INFO: --ui not specified; defaulting to {ui_resolved!r} for --lane {a.lane}",
+            file=sys.stderr,
+        )
+
     args = ScaffoldArgs(
         domain=a.domain,
         domain_slug=domain_slug,
@@ -313,7 +336,7 @@ def main(argv=None):
         target_project=pathlib.Path(a.target_project).resolve() if a.target_project else None,
         overlay_force=a.overlay_force,
         target_pkg_prefix=a.target_pkg_prefix,
-        ui=a.ui,
+        ui=ui_resolved,
         shell_mode=a.shell_mode,
         nexacrolib_from=(
             pathlib.Path(a.nexacrolib_from).resolve() if a.nexacrolib_from else None

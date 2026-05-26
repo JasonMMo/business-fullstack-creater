@@ -85,3 +85,39 @@ class TestDeriveSlug:
 
     def test_empty_string_fallback(self):
         assert derive_slug("") == "domain"
+
+
+# R1 (서비스 리뷰 2026-05-26): resolve_slug — explicit > derived > package-fallback
+class TestResolveSlug:
+    def test_explicit_slug_wins_over_domain(self):
+        from scaffold_cli import resolve_slug
+        slug, src = resolve_slug("주문관리", explicit_slug="order", package_fallback="other")
+        assert (slug, src) == ("order", "explicit")
+
+    def test_ascii_domain_derives(self):
+        from scaffold_cli import resolve_slug
+        slug, src = resolve_slug("OrderMgmt", explicit_slug=None, package_fallback="anything")
+        assert (slug, src) == ("ordermgmt", "derived")
+
+    def test_korean_falls_back_to_package_last_segment(self):
+        from scaffold_cli import resolve_slug
+        slug, src = resolve_slug("주문관리", explicit_slug=None, package_fallback="order")
+        assert (slug, src) == ("order", "package-fallback")
+
+    def test_korean_without_fallback_raises(self):
+        from scaffold_cli import resolve_slug
+        import pytest as _pytest
+        with _pytest.raises(ValueError, match="cannot derive slug"):
+            resolve_slug("주문관리", explicit_slug=None, package_fallback=None)
+
+    def test_explicit_slug_empty_after_sanitize_raises(self):
+        from scaffold_cli import resolve_slug
+        import pytest as _pytest
+        with _pytest.raises(ValueError, match="sanitizes to empty"):
+            resolve_slug("ignored", explicit_slug="!@#$", package_fallback="ok")
+
+    def test_explicit_slug_sanitized(self):
+        from scaffold_cli import resolve_slug
+        # explicit slug also passes through ASCII sanitization
+        slug, src = resolve_slug("anything", explicit_slug="Order Mgmt!", package_fallback=None)
+        assert (slug, src) == ("order-mgmt", "explicit")

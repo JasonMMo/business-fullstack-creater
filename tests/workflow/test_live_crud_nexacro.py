@@ -89,18 +89,17 @@ def test_crud_result_defaults():
 
 
 # ---------- nexacro_dataset_id ----------
-
-def test_dataset_id_snake_case():
-    assert live_crud_nexacro.nexacro_dataset_id("account") == "dsAccount"
-
-
-def test_dataset_id_multi_segment():
-    assert live_crud_nexacro.nexacro_dataset_id("order_item") == "dsOrderItem"
-    assert live_crud_nexacro.nexacro_dataset_id("shipping_address") == "dsShippingAddress"
+# Growth-42+ canonical: server-side dataset id is ALWAYS "dataList" because
+# scaffold-generated controllers declare @ParamDataSet(name = "dataList").
+# The ds<Pascal> convention only applies form-side inside the XFDL Transaction
+# string map. entity is accepted but ignored (placeholder for future override).
 
 
-def test_dataset_id_single_segment_already_lowercase():
-    assert live_crud_nexacro.nexacro_dataset_id("lead") == "dsLead"
+def test_dataset_id_is_literal_datalist_regardless_of_entity():
+    assert live_crud_nexacro.nexacro_dataset_id("account") == "dataList"
+    assert live_crud_nexacro.nexacro_dataset_id("order_item") == "dataList"
+    assert live_crud_nexacro.nexacro_dataset_id("shipping_address") == "dataList"
+    assert live_crud_nexacro.nexacro_dataset_id("lead") == "dataList"
 
 
 # ---------- nexacro_save_url ----------
@@ -127,34 +126,44 @@ def test_build_select_envelope_has_dssearch_and_namespace():
 
 # ---------- build_save_envelope ----------
 
-def test_save_envelope_insert_row_has_type_attr():
+# Growth-42+ canonical: row state is encoded as a `_RowType_` Col
+# (`I` for insert, `D` for delete), NOT a `Row Type="..."` attribute.
+# Per nexacroN-fullstack/api-contract/data-formats.md, PlatformXmlDataDeserializer
+# recognises only the `_RowType_` form; the attribute form is silently filtered
+# by the framework's `hasData()` guard, leaving the bound `List<Map>` empty.
+
+
+def test_save_envelope_insert_row_has_rowtype_col():
     env = live_crud_nexacro.build_save_envelope(
-        "dsAccount", insert_rows=[{"id": 999001, "code": "X"}]
+        "dataList", insert_rows=[{"id": 999001, "code": "X"}]
     )
-    assert '<Dataset id="dsAccount">' in env
-    assert '<Row Type="insert">' in env
+    assert '<Dataset id="dataList">' in env
+    assert '<Col id="_RowType_">I</Col>' in env
     assert '<Col id="id">999001</Col>' in env
     assert '<Col id="code">X</Col>' in env
+    assert '<Column id="_RowType_"' in env
     assert '<Column id="id"' in env
     assert '<Column id="code"' in env
 
 
-def test_save_envelope_delete_row_has_type_attr():
+def test_save_envelope_delete_row_has_rowtype_col():
     env = live_crud_nexacro.build_save_envelope(
-        "dsAccount", delete_rows=[{"id": 999001}]
+        "dataList", delete_rows=[{"id": 999001}]
     )
-    assert '<Row Type="delete">' in env
+    assert '<Col id="_RowType_">D</Col>' in env
     assert '<Col id="id">999001</Col>' in env
 
 
-def test_save_envelope_combined_insert_and_delete():
+def test_save_envelope_combined_insert_and_delete_preserves_order():
     env = live_crud_nexacro.build_save_envelope(
-        "dsAccount",
+        "dataList",
         insert_rows=[{"id": 1, "name": "A"}],
         delete_rows=[{"id": 2}],
     )
-    assert env.index('<Row Type="insert">') < env.index('<Row Type="delete">')
-    # ColumnInfo must include the union (id + name)
+    # insert row (_RowType_=I) must precede delete row (_RowType_=D)
+    assert env.index('<Col id="_RowType_">I</Col>') < env.index('<Col id="_RowType_">D</Col>')
+    # ColumnInfo must include the union (_RowType_ + id + name)
+    assert '<Column id="_RowType_"' in env
     assert '<Column id="id"' in env
     assert '<Column id="name"' in env
 
@@ -364,10 +373,10 @@ def test_crud_roundtrip_envelope_insert_body_contains_payload(monkeypatch):
     )
     insert_body = captured[1]["data"].decode("utf-8")
     delete_body = captured[3]["data"].decode("utf-8")
-    assert '<Row Type="insert">' in insert_body
+    assert '<Col id="_RowType_">I</Col>' in insert_body
     assert '<Col id="id">999001</Col>' in insert_body
     assert '<Col id="code">X</Col>' in insert_body
-    assert '<Row Type="delete">' in delete_body
+    assert '<Col id="_RowType_">D</Col>' in delete_body
     assert '<Col id="id">999001</Col>' in delete_body
 
 

@@ -46,11 +46,51 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
         "# learn-log\n\n## 0. Layer Ownership Card\n\n| 축 |\n|---|\n",
         encoding="utf-8",
     )
-    # runners
+    # runners + application.yml with /uiadapter context-path (G-50a guard)
     runners = workspace / "nexacroN-fullstack" / "samples" / "runners"
     runners.mkdir(parents=True)
     for name in diagnose.EXPECTED_RUNNERS:
-        (runners / name).mkdir()
+        runner = runners / name
+        runner.mkdir()
+        res = runner / "src" / "main" / "resources"
+        res.mkdir(parents=True)
+        (res / "application.yml").write_text(
+            "server:\n  servlet:\n    context-path: /uiadapter\n",
+            encoding="utf-8",
+        )
+    # mybatis templates with {{ uia_namespace }} (G-47 guard)
+    mybatis_tpl = (
+        workspace
+        / "andrej-karpathy-rdb-mybatis"
+        / ".claude"
+        / "skills"
+        / "karpathy-rdb-mybatis"
+        / "templates"
+    )
+    ctrl = mybatis_tpl / "controller"
+    ctrl.mkdir(parents=True)
+    (ctrl / "controller.java.j2").write_text(
+        "import {{ lib_prefix }}.{{ uia_namespace }}.core.NexacroException;\n",
+        encoding="utf-8",
+    )
+    svc = mybatis_tpl / "service"
+    svc.mkdir(parents=True)
+    (svc / "service-impl.java.j2").write_text(
+        "import {{ lib_prefix }}.{{ uia_namespace }}.core.data.DataSetRowTypeAccessor;\n",
+        encoding="utf-8",
+    )
+    # creater scripts with G-50b + G-48 guard strings
+    scripts = creater_root / "scripts" / "workflow"
+    scripts.mkdir(parents=True)
+    (scripts / "lane_runner_map.py").write_text(
+        'def lane_probe_url(...): return f"http://localhost:{port}/uiadapter/api/{entity}"\n',
+        encoding="utf-8",
+    )
+    (scripts / "full_test.py").write_text(
+        "scaffold_lane = live_overlay.discover_scaffold_lane(scaffold_dir)\n"
+        "url = lane_probe_url(lane, port, entity, scaffold_lane=scaffold_lane)\n",
+        encoding="utf-8",
+    )
     return workspace, creater_root
 
 
@@ -157,6 +197,85 @@ def test_check_runners_fail_when_root_missing(tmp_path):
     results = diagnose.check_runners(workspace)
     assert len(results) == 1
     assert results[0].status == "FAIL"
+
+
+def test_check_cross_layer_coherence_pass(tmp_path):
+    workspace, creater_root = _make_workspace(tmp_path)
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "PASS"
+    assert "G-47/48/50a/50b" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g47_uia_namespace_lost(tmp_path):
+    workspace, creater_root = _make_workspace(tmp_path)
+    ctrl = (
+        workspace
+        / "andrej-karpathy-rdb-mybatis"
+        / ".claude"
+        / "skills"
+        / "karpathy-rdb-mybatis"
+        / "templates"
+        / "controller"
+        / "controller.java.j2"
+    )
+    ctrl.write_text(
+        "import com.nexacro.uiadapter.jakarta.core.NexacroException;\n",
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-47" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g50a_runner_yml_missing_ctxpath(tmp_path):
+    workspace, creater_root = _make_workspace(tmp_path)
+    yml = (
+        workspace
+        / "nexacroN-fullstack"
+        / "samples"
+        / "runners"
+        / "boot-jdk17-jakarta"
+        / "src"
+        / "main"
+        / "resources"
+        / "application.yml"
+    )
+    yml.write_text("server:\n  port: 8080\n", encoding="utf-8")
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-50a" in c.detail and "boot-jdk17-jakarta" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g50b_lane_runner_map_lost_prefix(tmp_path):
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "workflow" / "lane_runner_map.py").write_text(
+        'def lane_probe_url(...): return f"http://localhost:{port}/api/{entity}"\n',
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-50b" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g48_full_test_lost_wiring(tmp_path):
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "workflow" / "full_test.py").write_text(
+        "url = lane_probe_url(lane, port, entity)\n",
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-48" in c.detail
 
 
 def test_format_table_summary_lines():

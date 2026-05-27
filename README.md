@@ -2,6 +2,8 @@
 
 > 업무 한 줄(`고객관리 업무 개발환경 만들어줘`)을 입력하면 nexacroN + Spring Boot + RDB 3-tier 프로젝트를 산출하는 **5-stage 코드 생성 오케스트레이터**.
 
+한국어 · [English](README.en.md)
+
 | | |
 |---|---|
 | **상태** | 4 lane (vanilla / javax / jakarta / nexacro) × 14 도메인 풀테스트 그린 |

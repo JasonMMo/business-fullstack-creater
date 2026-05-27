@@ -99,6 +99,12 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
         '        return\n',
         encoding="utf-8",
     )
+    # G-61 guard: web_index._default_source_resolver with domain_slug=None
+    (scripts / "web_index.py").write_text(
+        "def _default_source_resolver(entry):\n"
+        "    plan = discover_scaffold(scaffold_root, domain_slug=None)\n",
+        encoding="utf-8",
+    )
     return workspace, creater_root
 
 
@@ -213,7 +219,7 @@ def test_check_cross_layer_coherence_pass(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "G-47/48/50a/50b/58" in c.detail
+    assert "G-47/48/50a/50b/58/61" in c.detail
 
 
 def test_check_cross_layer_coherence_fail_g47_uia_namespace_lost(tmp_path):
@@ -311,6 +317,33 @@ def test_check_cross_layer_coherence_fail_g58_missing_orchestrator(tmp_path):
     )
     assert c.status == "FAIL"
     assert "G-58 guard" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g61_web_index_slug_regression(tmp_path):
+    # Growth-62: G-61 regression guard — web_index._default_source_resolver must
+    # pass domain_slug=None (not entry.domain) else Controller/Service preview
+    # silently falls back to placeholder on Korean catalog dirs (T-Web-CatalogSlugMismatch).
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "workflow" / "web_index.py").write_text(
+        "def _default_source_resolver(entry):\n"
+        "    plan = discover_scaffold(scaffold_root, domain_slug=entry.domain)\n",
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-61" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g61_missing_web_index(tmp_path):
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "workflow" / "web_index.py").unlink()
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-61 guard" in c.detail
 
 
 def test_format_table_summary_lines():

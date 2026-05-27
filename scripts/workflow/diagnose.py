@@ -167,7 +167,7 @@ def check_cross_layer_coherence(
     빠르고 fresh scaffold 없이 회귀 감지. 새 트랩 발견 시 §4 등재 후 sub-check
     추가가 다음 Growth 단계.
 
-    Guards (5건):
+    Guards (6건):
       - G-47 (T-NexacroUiaPkg-javax): mybatis controller/service-impl 템플릿이
         `{{ uia_namespace }}` parametrize — `.jakarta.core.` 하드코딩 회귀 차단
       - G-50a (T-Probe-CtxPath-Missing, runner-side): nexacroN samples/runners/
@@ -180,6 +180,10 @@ def check_cross_layer_coherence(
         vanilla lane 자동 skip 유지 — `args.lane == "vanilla"` 분기 +
         `stage4-skipped-vanilla` 마커가 사라지면 vanilla `/scaffold` 가
         Stage 4 의 N002 unsupported version 거부로 다시 깨짐
+      - G-61 (T-Web-CatalogSlugMismatch): `web_index._default_source_resolver` 가
+        `discover_scaffold(..., domain_slug=None)` 호출 유지 — 한글 catalog
+        서브디렉터리명을 ASCII Java slug 로 오용하면 Controller/Service preview
+        가 silent placeholder 폴백
     """
     failures: list[str] = []
 
@@ -257,17 +261,28 @@ def check_cross_layer_coherence(
                 "G-58 regression: scaffold_orchestrator.py lost vanilla Stage 4 skip gate"
             )
 
+    # G-61: web_index._default_source_resolver 가 domain_slug=None 전달 유지
+    wi = creater_root / "scripts" / "workflow" / "web_index.py"
+    if not wi.exists():
+        failures.append("G-61 guard: web_index.py missing")
+    else:
+        text = wi.read_text(encoding="utf-8")
+        if "domain_slug=None" not in text or "domain_slug=entry.domain" in text:
+            failures.append(
+                "G-61 regression: web_index._default_source_resolver lost domain_slug=None"
+            )
+
     if failures:
         return Check(
             "cross-layer-coherence",
             "FAIL",
             "; ".join(failures),
-            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58) 추적 후 복원",
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61) 추적 후 복원",
         )
     return Check(
         "cross-layer-coherence",
         "PASS",
-        "5 trap guards intact (G-47/48/50a/50b/58)",
+        "6 trap guards intact (G-47/48/50a/50b/58/61)",
     )
 
 

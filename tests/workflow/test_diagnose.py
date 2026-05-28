@@ -147,10 +147,21 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
     # G-70 guard: scripts/extract_target_profile.py emits v1 customer profile
     # (Growth-70 M5 Slice C). build_profile must stamp version: 1 + slug,
     # dump_profile header must reference Growth-70.
+    # G-78 guard: same file also supports Gradle input (Growth-78 M5 Slice C-b)
+    # — parse_gradle helper + Groovy/Kotlin regexes + settings.gradle fallback.
     scripts_dir = creater_root / "scripts"
     scripts_dir.mkdir(parents=True, exist_ok=True)
     (scripts_dir / "extract_target_profile.py").write_text(
-        '"""Growth-70 extractor stub for diagnose test fixture."""\n'
+        '"""Growth-70 + Growth-78 extractor stub for diagnose test fixture."""\n'
+        "import re\n"
+        "_GRADLE_GROUP_RE = re.compile(r'group')\n"
+        "_GRADLE_ROOT_NAME_RE = re.compile(r'rootProject.name')\n"
+        "def _gradle_lane(raw): return 'jakarta'\n"
+        "def _find_gradle_build(d):\n"
+        "    # supports build.gradle.kts and build.gradle\n"
+        "    return None\n"
+        "def parse_gradle(p):\n"
+        "    return {'group_id': None}\n"
         "def build_profile(project_dir, slug='x'):\n"
         '    return {"version": 1, "customer": {"slug": slug}}\n'
         "def dump_profile(profile):\n"
@@ -333,7 +344,7 @@ def test_check_cross_layer_coherence_pass(tmp_path):
     )
     assert c.status == "PASS"
     assert (
-        "16 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77)"
+        "17 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78)"
         in c.detail
     )
 
@@ -974,6 +985,55 @@ def test_check_cross_layer_coherence_fail_g77_emit_artifact_name_missing(tmp_pat
     assert c.status == "FAIL"
     assert "G-77 regression" in c.detail
     assert "docker-compose.sso.yml" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g78_missing_parse_gradle(tmp_path):
+    # If parse_gradle helper is stripped from extract_target_profile.py,
+    # G-78 must fire — Gradle input front-end is gone.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "extract_target_profile.py").write_text(
+        '"""Growth-70 only — Growth-78 Gradle support removed."""\n'
+        "def build_profile(project_dir, slug='x'):\n"
+        '    return {"version": 1, "customer": {"slug": slug}}\n'
+        "def dump_profile(profile):\n"
+        '    return "# Auto-extracted Growth-70\\n"\n',
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-78 regression" in c.detail
+    assert "parse_gradle" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g78_missing_kts_marker(tmp_path):
+    # If the Kotlin DSL filename marker disappears (e.g., someone drops
+    # .kts support and only handles Groovy), G-78 must fire.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "extract_target_profile.py").write_text(
+        '"""Growth-70 + Growth-78 partial — KTS marker stripped."""\n'
+        "import re\n"
+        "_GRADLE_GROUP_RE = re.compile(r'group')\n"
+        "_GRADLE_ROOT_NAME_RE = re.compile(r'rootProject.name')\n"
+        "def _gradle_lane(raw): return 'jakarta'\n"
+        "def _find_gradle_build(d):\n"
+        "    # only supports Groovy DSL; KTS dropped\n"
+        "    return None\n"
+        "def parse_gradle(p):\n"
+        "    return {'group_id': None}\n"
+        "def build_profile(project_dir, slug='x'):\n"
+        '    return {"version": 1, "customer": {"slug": slug}}\n'
+        "def dump_profile(profile):\n"
+        '    return "# Auto-extracted Growth-70\\n"\n',
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-78 regression" in c.detail
+    assert "build.gradle.kts" in c.detail
 
 
 def test_format_table_summary_lines():

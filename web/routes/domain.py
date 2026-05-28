@@ -13,7 +13,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
-from web.adapters import scaffold_runner
+from web.adapters import scaffold_runner, zip_emitter
 from web.adapters.scaffold_runner import ScaffoldRequest
 from web import run_registry
 
@@ -151,4 +151,27 @@ async def domain_preview(request: Request, run_id: str) -> HTMLResponse:
             "fail_count": fail_count,
             "stage_count": stage_count,
         },
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /domain/{run_id}/download
+# ---------------------------------------------------------------------------
+
+@router.get("/{run_id}/download")
+async def domain_download(run_id: str) -> Response:
+    """Stream the scaffold artifacts for *run_id* as a ZIP file."""
+    result = run_registry.get(run_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="해당 실행 결과를 찾을 수 없습니다.")
+
+    try:
+        zip_bytes = zip_emitter.emit(result.out_dir)
+    except (FileNotFoundError, NotADirectoryError):
+        raise HTTPException(status_code=409, detail="산출물이 존재하지 않습니다.")
+
+    return Response(
+        content=zip_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{result.slug}.zip"'},
     )

@@ -206,6 +206,12 @@ def check_cross_layer_coherence(
         을 모두 emit + multi-stage 빌더(`maven:3.9-eclipse-temurin-17 AS builder`)
         패턴 유지. 회귀하면 IT-담당자 페르소나가 dev 환경 없이 1시간 배포 시나리오
         (M-Ops acceptance) 가 깨진다.
+      - G-72 (Growth-72 Status Board emitter contract): `scripts/workflow/status_board.py`
+        가 6축 누적 자산 가시화 계약을 유지 — `compute()` 가 StatusBoard 를 만들고
+        `render_status_section()` 가 portal HTML 조각을 emit + `STATUS_BOARD_CSS`
+        를 노출하고 `extract_trap_guards_count()` 가 diagnose 텍스트의 가드 수를
+        읽는다. 회귀하면 CEO 페르소나의 "축적된 자산 한눈에 보기" (M2 Exec
+        Status Board 수락 기준) 가 깨지고 portal 의 status 섹션이 비어버린다.
     """
     failures: list[str] = []
 
@@ -412,17 +418,42 @@ def check_cross_layer_coherence(
                 f"({', '.join(emitter_markers)})"
             )
 
+    # G-72: status_board.py emits portal status section + CSS + trap-guard reader.
+    # Regression breaks the M2 Exec Status Board acceptance — CEO 페르소나의 누적
+    # 자산 가시화가 portal 에서 사라진다.
+    sb_path = creater_root / "scripts" / "workflow" / "status_board.py"
+    if not sb_path.exists():
+        failures.append("G-72 guard: scripts/workflow/status_board.py missing")
+    else:
+        text = sb_path.read_text(encoding="utf-8")
+        sb_markers = [
+            m
+            for m in (
+                "def compute(",
+                "def render_status_section(",
+                "def extract_trap_guards_count(",
+                "STATUS_BOARD_CSS",
+                "Growth-72",
+            )
+            if m not in text
+        ]
+        if sb_markers:
+            failures.append(
+                "G-72 regression: status_board.py lost status emission contract "
+                f"({', '.join(sb_markers)})"
+            )
+
     if failures:
         return Check(
             "cross-layer-coherence",
             "FAIL",
             "; ".join(failures),
-            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71) 추적 후 복원",
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72) 추적 후 복원",
         )
     return Check(
         "cross-layer-coherence",
         "PASS",
-        "11 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71)",
+        "12 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72)",
     )
 
 

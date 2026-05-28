@@ -191,6 +191,11 @@ def check_cross_layer_coherence(
       - G-63 (Growth-65 Customer Profile version-pin): `scaffold_cli.py:load_customer_profile`
         의 `version != 1` 조건 분기가 유지 — 제거 시 `version: 2` 이상 프로파일이
         조용히 수락되어 미래 스키마 변경과 혼용되는 silent-corruption 트랩.
+      - G-69 (Growth-69 Web-axis subprocess invariant): web layer 가 6-axis 누적을
+        우회하지 않는다 — `web/adapters/scaffold_runner.py` 가 반드시 `subprocess.run`
+        으로 `scripts/scaffold_cli.py` 를 호출하고 `web/routes/domain.py` 가
+        `scaffold_runner.run` 을 호출. 직접 import/재구현하면 customer-profile, lane,
+        preset 등 모든 축의 누적 효과가 web 경로에서 깨진다.
     """
     failures: list[str] = []
 
@@ -312,17 +317,51 @@ def check_cross_layer_coherence(
                 "G-63 regression: scaffold_cli.py load_customer_profile lost version != 1 pin"
             )
 
+    # G-69: web/adapters/scaffold_runner.py 가 subprocess.run 으로 scaffold_cli.py
+    # 호출 + web/routes/domain.py 가 scaffold_runner.run 사용. web 경로에서
+    # 6-axis 누적 우회를 차단.
+    runner = creater_root / "web" / "adapters" / "scaffold_runner.py"
+    if not runner.exists():
+        failures.append("G-69 guard: web/adapters/scaffold_runner.py missing")
+    else:
+        text = runner.read_text(encoding="utf-8")
+        runner_markers = [
+            m
+            for m in (
+                "subprocess.run",
+                "scaffold_cli",
+                "scaffold_cli_path",
+                "def run(",
+            )
+            if m not in text
+        ]
+        if runner_markers:
+            failures.append(
+                "G-69 regression: scaffold_runner.py lost subprocess pipeline "
+                f"({', '.join(runner_markers)})"
+            )
+
+    domain_route = creater_root / "web" / "routes" / "domain.py"
+    if not domain_route.exists():
+        failures.append("G-69 guard: web/routes/domain.py missing")
+    else:
+        text = domain_route.read_text(encoding="utf-8")
+        if "scaffold_runner.run" not in text:
+            failures.append(
+                "G-69 regression: web/routes/domain.py lost scaffold_runner.run call"
+            )
+
     if failures:
         return Check(
             "cross-layer-coherence",
             "FAIL",
             "; ".join(failures),
-            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63) 추적 후 복원",
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69) 추적 후 복원",
         )
     return Check(
         "cross-layer-coherence",
         "PASS",
-        "8 trap guards intact (G-47/48/50a/50b/58/61/62/63)",
+        "9 trap guards intact (G-47/48/50a/50b/58/61/62/63/69)",
     )
 
 

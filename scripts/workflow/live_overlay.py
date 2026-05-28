@@ -1,12 +1,15 @@
 """Live WAS overlay — apply scaffold output onto jakarta runner (5 points).
 
 Points:
-  1. Application.java — inject com.example.<slug> into scanBasePackages + @MapperScan
+  1. Application.java — inject {base_pkg}.<slug> into scanBasePackages + @MapperScan
   2. application.yml — append <slug>-schema.sql / <slug>-data.sql to schema/data-locations
   3. <slug>-schema.sql — copy from scaffold with `;` → `^^`
   4. <slug>-data.sql  — copy from scaffold with `;` → `^^`
   5. mapper XML — PascalCase → kebab-case rename + copy
-  + Java source tree copy under src/main/java/com/example/<slug>/
+  + Java source tree copy under src/main/java/{base_pkg-as-path}/<slug>/
+
+base_pkg is discovered from the scaffold's actual `{base_pkg}.<slug>.controller`
+layout (Growth-64). Defaults to `com.example` for legacy fixtures.
 
 All edits are idempotent — running twice produces the same file content.
 """
@@ -24,6 +27,7 @@ class OverlayPlan:
     data_sql: Path
     mapper_xml_dir: Path
     java_src: Path
+    base_package: str = "com.example"  # Growth-64: profile-aware (e.g. "com.acme")
 
 
 @dataclass
@@ -60,25 +64,64 @@ def discover_scaffold_lane(scaffold_dir: Path) -> str | None:
     return m.group(1) if m else None
 
 
-def derive_domain_slug(scaffold_dir: Path) -> str | None:
-    """Find unique sub-package under com.nexacro.uiadapter (Stage 3 actual) or com.example (legacy).
+def derive_scaffold_base_and_slug(scaffold_dir: Path) -> tuple[str, str] | None:
+    """Walk 3-mybatis Java tree for the unique directory whose direct child is `controller/`.
 
-    Stage 3 emits `com.nexacro.uiadapter.<slug>.{controller,service,mapper,domain}`.
-    Legacy fixtures emit `com.example.<slug>.*`. Checks both, in that order.
-    Returns the unique <slug> directory name, or None if not derivable.
+    Stage 3 emits `{base_pkg}.{slug}.{controller,service,mapper,domain}` — the slug
+    directory is the one whose direct child is named `controller`. base_pkg is the
+    dotted path from src/main/java/ down to (but excluding) the slug directory.
+
+    Growth-64 (T-LiveOverlay-PackageHardcoded): previously the prefix was hard-coded
+    to `com.nexacro.uiadapter` / `com.example`. Now the prefix is discovered from the
+    actual layout so customer-profile-driven base packages (e.g. `com.acme.customer`)
+    are recognised by the live-WAS overlay.
+
+    Returns (base_pkg, slug) or None if no unique match.
     """
-    base_root = Path(scaffold_dir) / "3-mybatis" / "src" / "main" / "java" / "com"
-    for sub in (("nexacro", "uiadapter"), ("example",)):
-        base = base_root.joinpath(*sub)
+    root = Path(scaffold_dir) / "3-mybatis" / "src" / "main" / "java"
+    if not root.exists():
+        return None
+    candidates: list[tuple[str, str]] = []
+    for controller_dir in root.rglob("controller"):
+        if not controller_dir.is_dir():
+            continue
+        slug_dir = controller_dir.parent
+        if slug_dir.name in _RESERVED_SUBPKGS or slug_dir.name.startswith("."):
+            continue
+        rel_parts = slug_dir.relative_to(root).parts
+        if len(rel_parts) < 2:
+            # Must have at least one prefix component (a top-level slug dir with no
+            # package is not a valid Java layout).
+            continue
+        base_pkg = ".".join(rel_parts[:-1])
+        slug = rel_parts[-1]
+        candidates.append((base_pkg, slug))
+    if len(candidates) == 1:
+        return candidates[0]
+    # Fallback: legacy hard-coded prefixes for fixtures that don't emit a
+    # `controller/` subdir. Customer-profile scaffolds always hit the primary
+    # path; this branch only catches minimal/legacy test fixtures.
+    for prefix in (("com", "nexacro", "uiadapter"), ("com", "example")):
+        base = root.joinpath(*prefix)
         if not base.exists():
             continue
-        candidates = [
+        legacy = [
             d.name for d in base.iterdir()
             if d.is_dir() and d.name not in _RESERVED_SUBPKGS and not d.name.startswith(".")
         ]
-        if len(candidates) == 1:
-            return candidates[0]
+        if len(legacy) == 1:
+            return (".".join(prefix), legacy[0])
     return None
+
+
+def derive_domain_slug(scaffold_dir: Path) -> str | None:
+    """Back-compat shim — returns only the slug component of derive_scaffold_base_and_slug.
+
+    Kept for callers that don't yet need the base package. New code should call
+    derive_scaffold_base_and_slug directly.
+    """
+    result = derive_scaffold_base_and_slug(scaffold_dir)
+    return result[1] if result else None
 
 
 def _find_sql(scaffold_dir: Path, name: str) -> Path | None:
@@ -92,14 +135,23 @@ def _find_sql(scaffold_dir: Path, name: str) -> Path | None:
     return None
 
 
-def _find_java_src(scaffold_dir: Path, slug: str) -> Path:
-    """Stage 3 actual = com.nexacro.uiadapter.<slug>; legacy fixture = com.example.<slug>."""
-    stage3 = (scaffold_dir / "3-mybatis" / "src" / "main" / "java"
-              / "com" / "nexacro" / "uiadapter" / slug)
-    if stage3.exists():
-        return stage3
-    return (scaffold_dir / "3-mybatis" / "src" / "main" / "java"
-            / "com" / "example" / slug)
+def _find_java_src(scaffold_dir: Path, slug: str, base_pkg: str | None = None) -> Path:
+    """Resolve Java source dir for `{base_pkg}.{slug}`.
+
+    If base_pkg is given, use it directly. Else attempt auto-derivation via
+    derive_scaffold_base_and_slug; final fallback is the legacy `com.example.<slug>`
+    path so tests that pass an explicit slug against a fixture layout still work.
+    """
+    java_root = scaffold_dir / "3-mybatis" / "src" / "main" / "java"
+    if base_pkg is None:
+        derived = derive_scaffold_base_and_slug(scaffold_dir)
+        if derived is not None and derived[1] == slug:
+            base_pkg = derived[0]
+    if base_pkg:
+        candidate = java_root.joinpath(*base_pkg.split("."), slug)
+        if candidate.exists():
+            return candidate
+    return java_root / "com" / "example" / slug
 
 
 def _find_mapper_xml_dir(scaffold_dir: Path) -> Path:
@@ -115,17 +167,27 @@ def _find_mapper_xml_dir(scaffold_dir: Path) -> Path:
 def discover_scaffold(scaffold_dir: Path, domain_slug: str | None = None) -> OverlayPlan:
     """Walk scaffold output (Stage 2 DDL + Stage 3 mybatis) for the given (or derived) domain.
 
-    Slug resolution: explicit arg wins; else parse `com.nexacro.uiadapter.<slug>` from Stage 3.
+    Slug + base_package resolution: explicit slug arg wins; both are auto-derived from
+    the `{base_pkg}.{slug}.controller` Java layout when not given. base_package defaults
+    to `com.example` for legacy fixtures with an explicit slug but no derivable layout.
     SQL resolution: prefer `3-mybatis/src/main/resources/{schema,data}.sql`, fall back to `2-ddl/`.
     """
     scaffold_dir = Path(scaffold_dir)
+    derived = derive_scaffold_base_and_slug(scaffold_dir)
+    base_pkg: str | None = None
     if domain_slug is None:
-        domain_slug = derive_domain_slug(scaffold_dir)
-        if domain_slug is None:
+        if derived is None:
             raise ValueError(
                 f"could not derive domain slug from {scaffold_dir} — no unique sub-package "
-                "under 3-mybatis/.../com/nexacro/uiadapter/. Pass slug explicitly."
+                "containing a 'controller/' child under 3-mybatis/src/main/java/. "
+                "Pass slug explicitly."
             )
+        base_pkg, domain_slug = derived
+    else:
+        if derived is not None and derived[1] == domain_slug:
+            base_pkg = derived[0]
+    if base_pkg is None:
+        base_pkg = "com.example"
     schema_sql = _find_sql(scaffold_dir, "schema.sql")
     if schema_sql is None:
         raise FileNotFoundError(f"schema.sql not found under {scaffold_dir} (checked 3-mybatis/resources and 2-ddl)")
@@ -137,7 +199,8 @@ def discover_scaffold(scaffold_dir: Path, domain_slug: str | None = None) -> Ove
         schema_sql=schema_sql,
         data_sql=data_sql,
         mapper_xml_dir=_find_mapper_xml_dir(scaffold_dir),
-        java_src=_find_java_src(scaffold_dir, domain_slug),
+        java_src=_find_java_src(scaffold_dir, domain_slug, base_pkg),
+        base_package=base_pkg,
     )
 
 
@@ -150,8 +213,8 @@ def _pascal_to_kebab(name: str) -> str:
     return f"{stem.lower()}.{ext}"
 
 
-def _edit_application_java(app_path: Path, slug: str) -> None:
-    """Inject "com.example.<slug>" into scanBasePackages and @MapperScan, idempotent.
+def _edit_application_java(app_path: Path, slug: str, base_pkg: str = "com.example") -> None:
+    """Inject "{base_pkg}.<slug>" into scanBasePackages and @MapperScan, idempotent.
 
     Handles two runner shapes:
       A) Annotation already parameterised — `@SpringBootApplication(scanBasePackages = { ... })`
@@ -159,10 +222,13 @@ def _edit_application_java(app_path: Path, slug: str) -> None:
       B) Bare `@SpringBootApplication` with no scanBasePackages and no @MapperScan
          (the boot-jdk17-jakarta default). We must INSERT the parameters and the
          @MapperScan annotation, not just substitute.
+
+    Growth-64: base_pkg defaults to `com.example` for legacy callers; profile-driven
+    scaffolds pass e.g. `com.acme` so the runner scans the actual emitted packages.
     """
     text = app_path.read_text(encoding="utf-8")
-    pkg = f'"com.example.{slug}"'
-    mapper_pkg = f'"com.example.{slug}.mapper"'
+    pkg = f'"{base_pkg}.{slug}"'
+    mapper_pkg = f'"{base_pkg}.{slug}.mapper"'
 
     if pkg not in text:
         if re.search(r'scanBasePackages\s*=\s*\{', text):
@@ -254,10 +320,11 @@ def apply_overlay(runner_dir: Path, plan: OverlayPlan) -> OverlayResult:
     runner_dir = Path(runner_dir)
     result = OverlayResult()
     slug = plan.domain_slug
+    base_pkg = plan.base_package
 
     # 1. Application.java
     app = runner_dir / "src/main/java/com/nexacro/uiadapter/Application.java"
-    _edit_application_java(app, slug)
+    _edit_application_java(app, slug, base_pkg)
     result.files_edited.append(app)
 
     # 2. application.yml
@@ -285,7 +352,7 @@ def apply_overlay(runner_dir: Path, plan: OverlayPlan) -> OverlayResult:
             result.files_written.append(dst)
 
     # Java source tree copy
-    java_dst_root = runner_dir / "src/main/java/com/example" / slug
+    java_dst_root = runner_dir.joinpath("src/main/java", *base_pkg.split("."), slug)
     if plan.java_src.exists():
         for src_file in sorted(plan.java_src.rglob("*.java")):
             rel = src_file.relative_to(plan.java_src)

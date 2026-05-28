@@ -289,3 +289,103 @@ def test_cli_rejects_missing_out_dir(tmp_path, capsys):
     rc = eop.main([str(tmp_path / "nope")])
     assert rc == 2
     assert "not a directory" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# Growth-76 — Vault Agent sidecar overlay
+# ---------------------------------------------------------------------------
+
+def test_vault_off_by_default_emits_only_four_artifacts(tmp_path):
+    _write_scaffold(tmp_path)
+    ops = eop.emit(tmp_path)
+    assert not (ops / "docker-compose.vault.yml").exists()
+    assert not (ops / "vault-agent.hcl").exists()
+    assert not (ops / "env.tmpl").exists()
+    # Original 4 still present
+    assert (ops / "Dockerfile").exists()
+    assert (ops / "docker-compose.yml").exists()
+
+
+def test_vault_flag_emits_three_additional_artifacts(tmp_path):
+    _write_scaffold(tmp_path, dialect="postgres")
+    ops = eop.emit(tmp_path, vault=True)
+    assert (ops / "docker-compose.vault.yml").exists()
+    assert (ops / "vault-agent.hcl").exists()
+    assert (ops / "env.tmpl").exists()
+
+
+def test_vault_compose_overlay_contains_sidecar_service(tmp_path):
+    _write_scaffold(tmp_path)
+    ops = eop.emit(tmp_path, vault=True)
+    compose = (ops / "docker-compose.vault.yml").read_text(encoding="utf-8")
+    assert "vault-agent:" in compose
+    assert "hashicorp/vault" in compose
+    assert "env_file:" in compose
+    assert "vault-secrets/.env" in compose
+
+
+def test_vault_hcl_uses_approle_and_template(tmp_path):
+    _write_scaffold(tmp_path)
+    ops = eop.emit(tmp_path, vault=True)
+    hcl = (ops / "vault-agent.hcl").read_text(encoding="utf-8")
+    assert 'method "approle"' in hcl
+    assert "template {" in hcl
+    assert "/vault/secrets/.env" in hcl
+    assert 'env "VAULT_ADDR"' in hcl
+
+
+def test_vault_env_tmpl_renders_db_block_for_postgres(tmp_path):
+    _write_scaffold(tmp_path, dialect="postgres")
+    profile = {"version": 1, "customer": {"slug": "acme"}}
+    ops = eop.emit(tmp_path, profile=profile, vault=True)
+    tmpl = (ops / "env.tmpl").read_text(encoding="utf-8")
+    assert 'secret "secret/data/acme/db"' in tmpl
+    assert "ACME_DB_HOST=" in tmpl
+    assert ".Data.data.host" in tmpl
+
+
+def test_vault_env_tmpl_skips_db_for_embedded_dialect(tmp_path):
+    _write_scaffold(tmp_path, dialect="hsqldb")
+    ops = eop.emit(tmp_path, vault=True)
+    tmpl = (ops / "env.tmpl").read_text(encoding="utf-8")
+    assert "DB_HOST" not in tmpl
+    assert "embedded" in tmpl
+
+
+def test_vault_sop_appends_section_9(tmp_path):
+    _write_scaffold(tmp_path, dialect="postgres")
+    profile = {"version": 1, "customer": {"slug": "acme"}}
+    ops = eop.emit(tmp_path, profile=profile, vault=True)
+    sop = (ops / "DEPLOY-SOP.md").read_text(encoding="utf-8")
+    assert "## 9. Vault Agent sidecar" in sop
+    assert "vault kv put secret/acme/db" in sop
+    assert "docker-compose.vault.yml" in sop
+
+
+def test_vault_sop_omitted_when_vault_off(tmp_path):
+    _write_scaffold(tmp_path)
+    ops = eop.emit(tmp_path)
+    sop = (ops / "DEPLOY-SOP.md").read_text(encoding="utf-8")
+    assert "## 9. Vault Agent sidecar" not in sop
+
+
+def test_vault_opt_in_via_profile(tmp_path):
+    _write_scaffold(tmp_path)
+    profile = {
+        "version": 1,
+        "customer": {"slug": "acme"},
+        "overlay": {"vault_agent": True},
+    }
+    ops = eop.emit(tmp_path, profile=profile)  # vault=False by default
+    assert (ops / "vault-agent.hcl").exists()
+    assert (ops / "docker-compose.vault.yml").exists()
+
+
+def test_cli_vault_flag_wires_through(tmp_path):
+    _write_scaffold(tmp_path)
+    rc = eop.main([str(tmp_path), "--vault"])
+    assert rc == 0
+    ops = tmp_path / "shell" / "ops"
+    assert (ops / "vault-agent.hcl").exists()
+    assert (ops / "docker-compose.vault.yml").exists()
+    assert (ops / "env.tmpl").exists()

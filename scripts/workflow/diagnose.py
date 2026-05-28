@@ -239,6 +239,15 @@ def check_cross_layer_coherence(
         + OIDC client (realm import 1 + standard flow) 패턴을 유지해야 한다.
         회귀하면 M3 Slice e 의 "IT-담당자가 Keycloak 사이드카로 인증을 위임,
         사내 SSO 전환 시 `OIDC_ISSUER_URI` 만 교체" 약속이 깨진다.
+      - G-78 (Growth-78 extract_target_profile Gradle input contract):
+        `scripts/extract_target_profile.py` 가 `pom.xml` 부재 시
+        `build.gradle` (Groovy DSL) 또는 `build.gradle.kts` (Kotlin DSL) 을
+        파싱한다 — `parse_gradle()` + `_GRADLE_GROUP_RE` / `_GRADLE_ROOT_NAME_RE`
+        + `_find_gradle_build()` + `_gradle_lane()` 헬퍼 유지. settings.gradle
+        `rootProject.name` 으로 artifact id 결정. 회귀하면 M5 Slice C-b 의
+        "Gradle SpringBoot 프로젝트도 동일 v1 profile (G-70) 출력 계약으로
+        흐른다" 약속이 깨지고 사용자가 Gradle 프로젝트마다 profile 을 손으로
+        써야 한다.
     """
     failures: list[str] = []
 
@@ -417,6 +426,32 @@ def check_cross_layer_coherence(
             failures.append(
                 "G-70 regression: extract_target_profile.py lost v1 emission contract "
                 f"({', '.join(extractor_markers)})"
+            )
+
+        # G-78: extract_target_profile.py supports Gradle input (M5 Slice C-b).
+        # parse_gradle() + Groovy/Kotlin build script regexes + settings.gradle
+        # rootProject.name fallback. Regression breaks the M5 Slice C-b promise
+        # that Gradle SpringBoot projects flow through the same v1 profile
+        # output contract (G-70) without manual rewrite.
+        gradle_markers = [
+            m
+            for m in (
+                "def parse_gradle(",
+                "_GRADLE_GROUP_RE",
+                "_GRADLE_ROOT_NAME_RE",
+                "_find_gradle_build",
+                "_gradle_lane",
+                "build.gradle.kts",
+                "build.gradle",
+                "rootProject.name",
+                "Growth-78",
+            )
+            if m not in text
+        ]
+        if gradle_markers:
+            failures.append(
+                "G-78 regression: extract_target_profile.py lost Gradle input "
+                f"contract ({', '.join(gradle_markers)})"
             )
 
     # G-71: emit_ops_pack.py emits 4 ops artifacts + multi-stage Docker builder.
@@ -598,12 +633,12 @@ def check_cross_layer_coherence(
             "cross-layer-coherence",
             "FAIL",
             "; ".join(failures),
-            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75/76/77) 추적 후 복원",
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75/76/77/78) 추적 후 복원",
         )
     return Check(
         "cross-layer-coherence",
         "PASS",
-        "16 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77)",
+        "17 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78)",
     )
 
 

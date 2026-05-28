@@ -5,6 +5,13 @@ Reads `pom.xml` + `src/main/resources/application.yml` (or `.properties`)
 and emits a `profiles/<slug>.yaml` matching the v1 schema documented in
 `profiles/_README.md`.
 
+**Growth-78 (M5 Slice C-b)** extends input support to Gradle:
+when `pom.xml` is absent, `build.gradle` or `build.gradle.kts` is parsed
+instead (Groovy DSL + Kotlin DSL). Output contract (v1 profile + Growth-70
+header) is unchanged — Gradle is just another input front-end. ASCII
+artifact-id detection falls back to `settings.gradle(.kts)`
+`rootProject.name` then to the project directory name.
+
 Status of extracted profile is `draft` — the user is expected to review,
 fill in `contact`, set status to `active`, and adjust placeholders before
 running `/scaffold --customer-profile <slug>`.
@@ -86,6 +93,87 @@ def parse_pom(pom_path: pathlib.Path) -> Dict[str, Any]:
         "name": name,
         "description": description,
         "lane": lane,
+        "raw": raw,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Growth-78 — build.gradle / build.gradle.kts parsing
+# ---------------------------------------------------------------------------
+
+# `group = 'com.acme'` or `group = "com.acme"` (Groovy + Kotlin DSL share this)
+_GRADLE_GROUP_RE = re.compile(
+    r"""^\s*group\s*=\s*['"]([^'"]+)['"]""",
+    re.MULTILINE,
+)
+# `version = '1.0.0'` or `version = "1.0.0"`. Skips `version '3.1.0'` plugin form.
+_GRADLE_VERSION_RE = re.compile(
+    r"""^\s*version\s*=\s*['"]([^'"]+)['"]""",
+    re.MULTILINE,
+)
+# `rootProject.name = 'foo'` from settings.gradle(.kts)
+_GRADLE_ROOT_NAME_RE = re.compile(
+    r"""rootProject\.name\s*=\s*['"]([^'"]+)['"]""",
+)
+
+
+def _gradle_lane(raw: str) -> str:
+    """jakarta vs javax from raw build script text."""
+    if (
+        "jakarta.servlet" in raw
+        or "mybatis-spring-boot-starter-jakarta" in raw
+        or "mybatis.spring.boot.jakarta" in raw
+        or "spring-boot-starter-web:3" in raw
+        or "spring-boot:3" in raw
+    ):
+        return "jakarta"
+    return "javax"
+
+
+def _find_gradle_build(project_dir: pathlib.Path) -> Optional[pathlib.Path]:
+    """Return build.gradle.kts then build.gradle if present."""
+    for name in ("build.gradle.kts", "build.gradle"):
+        p = project_dir / name
+        if p.exists():
+            return p
+    return None
+
+
+def _find_settings_root_name(project_dir: pathlib.Path) -> Optional[str]:
+    for name in ("settings.gradle.kts", "settings.gradle"):
+        p = project_dir / name
+        if p.exists():
+            m = _GRADLE_ROOT_NAME_RE.search(p.read_text(encoding="utf-8", errors="replace"))
+            if m:
+                return m.group(1).strip()
+    return None
+
+
+def parse_gradle(build_path: pathlib.Path) -> Dict[str, Any]:
+    """Return {groupId, artifactId, version, name, description, lane, raw}.
+
+    `artifactId` is taken from settings.gradle `rootProject.name` if present,
+    otherwise from the project directory name. Description is left empty —
+    Gradle has no standardized description field across DSLs.
+    """
+    project_dir = build_path.parent
+    raw = build_path.read_text(encoding="utf-8", errors="replace")
+
+    group_m = _GRADLE_GROUP_RE.search(raw)
+    group_id = group_m.group(1).strip() if group_m else None
+
+    version_m = _GRADLE_VERSION_RE.search(raw)
+    version = version_m.group(1).strip() if version_m else None
+
+    artifact_id = _find_settings_root_name(project_dir) or project_dir.name
+
+    return {
+        "group_id": group_id,
+        "artifact_id": artifact_id,
+        "version": version,
+        "name": artifact_id,
+        "description": None,
+        "lane": _gradle_lane(raw),
         "raw": raw,
     }
 
@@ -223,14 +311,23 @@ def build_profile(
     slug_override: Optional[str] = None,
 ) -> Dict[str, Any]:
     pom = project_dir / "pom.xml"
-    if not pom.exists():
-        raise FileNotFoundError(
-            f"pom.xml not found under {project_dir} — only Maven SpringBoot projects "
-            f"are supported in M5 Slice C (Gradle is deferred)."
-        )
-    pom_data = parse_pom(pom)
-    if not pom_data["artifact_id"]:
-        raise ValueError(f"pom.xml at {pom} is missing <artifactId>")
+    if pom.exists():
+        pom_data = parse_pom(pom)
+        if not pom_data["artifact_id"]:
+            raise ValueError(f"pom.xml at {pom} is missing <artifactId>")
+    else:
+        gradle_build = _find_gradle_build(project_dir)
+        if gradle_build is None:
+            raise FileNotFoundError(
+                f"No pom.xml or build.gradle(.kts) found under {project_dir} — "
+                f"M5 Slice C/C-b supports Maven and Gradle SpringBoot projects."
+            )
+        pom_data = parse_gradle(gradle_build)
+        if not pom_data["artifact_id"]:
+            raise ValueError(
+                f"{gradle_build} has no group/rootProject.name and the project "
+                f"directory name is empty — pass --slug=<ascii> explicitly."
+            )
 
     resources = project_dir / "src" / "main" / "resources"
     app = parse_application_config(resources) if resources.exists() else {}

@@ -57,7 +57,7 @@
 
 ## Cross-layer Coherence Guards
 
-`scripts/workflow/diagnose.py` 가 17개 회귀 가드 점검: G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78. 새 cross-layer 결합이 생기면 G-79+ 로 추가.
+`scripts/workflow/diagnose.py` 가 18개 회귀 가드 점검: G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79. 새 cross-layer 결합이 생기면 G-80+ 로 추가.
 
 **G-69 (Growth-69 Web-axis subprocess invariant)**: `web/` 가 `scripts/scaffold_cli.py` 를 subprocess 로 호출하는 형태를 유지해야 한다. web 경로에서 scaffold 로직을 재구현하면 6-axis 누적(skill/ddl/mybatis/nexacro/creater/customer) 이 web 사용자에게만 우회되어 깨진다.
 
@@ -76,6 +76,8 @@
 **G-77 (Growth-77 Keycloak/OIDC SSO sidecar emitter contract)**: `scripts/emit_ops_pack.py` 가 `--sso` (또는 profile `overlay.sso_keycloak: true`) 옵트인 시 추가 3 산출물 (`docker-compose.sso.yml`, `keycloak-realm.json`, `.env.sso.example`) 을 emit 하고 `render_sso_compose` / `render_sso_realm` / `render_sso_env_example` 3 헬퍼 + `_SSO_SOP_SECTION` (DEPLOY-SOP §10) + `quay.io/keycloak/keycloak` 이미지 + OIDC client (realm import 1 + standard flow) 패턴을 유지해야 한다. 회귀하면 M3 Slice e 의 "IT-담당자가 Keycloak 사이드카로 인증을 위임, 사내 SSO 전환 시 `OIDC_ISSUER_URI` 만 교체" 약속이 깨진다.
 
 **G-78 (Growth-78 extract_target_profile Gradle input contract)**: `scripts/extract_target_profile.py` 가 `pom.xml` 부재 시 `build.gradle` (Groovy DSL) 또는 `build.gradle.kts` (Kotlin DSL) 을 파싱해 동일한 v1 customer profile (G-70 출력 계약) 로 변환해야 한다. `parse_gradle` + `_GRADLE_GROUP_RE` / `_GRADLE_ROOT_NAME_RE` + `_find_gradle_build` + `_gradle_lane` 헬퍼 + `settings.gradle(.kts)` `rootProject.name` 폴백 패턴을 유지. 회귀하면 M5 Slice C-b 의 "Gradle SpringBoot 프로젝트도 동일 profile 추출 경로로 흐른다" 약속이 깨지고 Gradle 사용자가 profile 을 수작업으로 작성해야 한다.
+
+**G-79 (Growth-79 Web target-upload single-source contract)**: `web/routes/target.py` 가 `/target/upload` GET/POST 라우트를 노출하고 `web/adapters/target_extractor.py` 가 `extract_target_profile` 을 import 해 `build_profile` + `dump_profile` 을 호출해야 한다. adapter 는 `parse_pom` / `parse_gradle` 을 재구현하면 안 된다 (G-69 와 동일한 single-source 원칙 — 6-axis 누적이 web 경로에서 우회되는 것을 차단). `web/app.py` 가 `target_router` 를 include 해야 활성화. 회귀하면 M5 Slice C-c 의 "비 CLI 사용자가 zip 업로드만으로 v1 customer profile 을 얻는다" 약속이 깨지고 IT-담당자 페르소나가 다시 CLI 환경에 의존해야 한다.
 
 ## Git Commit Rules
 

@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+
+{% block title %}{{ project_name }} — 홈{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h1 class="hero-title">{{ project_name }}</h1>
+  <p class="hero-desc">
+    도메인을 한 줄로 입력하면 <strong>SpringBoot + Nexacro + DDL</strong> 산출물을 자동 생성합니다.<br>
+    개발 환경 없이, 업무 담당자가 직접 사용할 수 있습니다.
+  </p>
+  <a class="btn-cta" href="/domain/new">도메인 정의 시작</a>
+</section>
+
+<section class="features">
+  <div class="feature-card">
+    <h2>6축 복리 누적</h2>
+    <p>도메인마다 skill·DDL·MyBatis·Nexacro·creater·customer 6축에 지식이 쌓여 갈수록 완성도가 높아집니다.</p>
+  </div>
+  <div class="feature-card">
+    <h2>단일 입력 → 전체 산출물</h2>
+    <p>도메인 이름 하나로 DB 스키마·백엔드·프론트엔드·배포 패키지를 한 번에 생성합니다.</p>
+  </div>
+  <div class="feature-card">
+    <h2>자체 서버 운영</h2>
+    <p>사내 서버에 직접 설치해 데이터 주권을 유지합니다. 클라우드 의존 없음.</p>
+  </div>
+</section>
+{% endblock %}

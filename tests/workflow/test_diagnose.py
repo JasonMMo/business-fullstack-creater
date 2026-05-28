@@ -159,8 +159,11 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
     )
     # G-71 guard: scripts/emit_ops_pack.py emits all 4 ops artifacts +
     # multi-stage Docker builder (Growth-71 M3 Ops Pack).
+    # G-76 guard: same file also carries Vault Agent sidecar contract markers
+    # (Growth-76 M3 Slice d) — 3 render_vault_* helpers + AppRole + SOP §9 +
+    # 3 emitted artifact names.
     (scripts_dir / "emit_ops_pack.py").write_text(
-        '"""Growth-71 ops pack emitter stub."""\n'
+        '"""Growth-71 + Growth-76 ops pack emitter stub."""\n'
         "def render_dockerfile(info):\n"
         '    return "FROM maven:3.9-eclipse-temurin-17 AS builder\\n"\n'
         "def render_compose(info, slug):\n"
@@ -168,7 +171,13 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
         "def render_env_example(info, slug):\n"
         '    return "APP_PORT=8080\\n"\n'
         "def render_sop(info, slug):\n"
-        '    return "# 배포 SOP\\n"\n',
+        '    return "# 배포 SOP\\n"\n'
+        "def render_vault_hcl(info, slug):\n"
+        '    return \'method "approle" {}\'\n'
+        "def render_vault_env_tmpl(info, slug):\n    return ''\n"
+        "def render_vault_compose(info, slug):\n"
+        '    return "# docker-compose.vault.yml\\n# vault-agent.hcl\\n# env.tmpl\\n"\n'
+        "_VAULT_SOP_SECTION = '## 9. Vault Agent sidecar'\n",
         encoding="utf-8",
     )
     # G-72 guard: scripts/workflow/status_board.py exposes compute() +
@@ -314,7 +323,7 @@ def test_check_cross_layer_coherence_pass(tmp_path):
     )
     assert c.status == "PASS"
     assert (
-        "14 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75)"
+        "15 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76)"
         in c.detail
     )
 
@@ -800,6 +809,65 @@ def test_check_cross_layer_coherence_fail_g75_app_does_not_include_router(tmp_pa
     assert c.status == "FAIL"
     assert "G-75" in c.detail
     assert "ops_router" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g76_missing_vault_helpers(tmp_path):
+    # Growth-76: G-76 guard — emit_ops_pack.py without Vault Agent sidecar
+    # contract markers breaks the M3 Slice d promise (IT-담당자 Vault 위임).
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "emit_ops_pack.py").write_text(
+        '"""ops pack emitter without Growth-76 Vault contract."""\n'
+        "def render_dockerfile(info):\n"
+        '    return "FROM maven:3.9-eclipse-temurin-17 AS builder\\n"\n'
+        "def render_compose(info, slug):\n    return ''\n"
+        "def render_env_example(info, slug):\n    return ''\n"
+        "def render_sop(info, slug):\n    return ''\n",
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-76 regression" in c.detail
+    assert "render_vault_hcl" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g76_missing_approle(tmp_path):
+    # If render_vault_hcl drops the AppRole auth method, enterprise on-prem
+    # deployments lose their Vault auth contract.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "emit_ops_pack.py").write_text(
+        '"""Growth-71 + Growth-76 stub — but missing AppRole."""\n'
+        "def render_dockerfile(info):\n"
+        '    return "FROM maven:3.9-eclipse-temurin-17 AS builder\\n"\n'
+        "def render_compose(info, slug):\n    return ''\n"
+        "def render_env_example(info, slug):\n    return ''\n"
+        "def render_sop(info, slug):\n    return ''\n"
+        "def render_vault_hcl(info, slug):\n    return ''  # no approle\n"
+        "def render_vault_env_tmpl(info, slug):\n    return ''\n"
+        "def render_vault_compose(info, slug):\n"
+        '    return "# docker-compose.vault.yml\\n# vault-agent.hcl\\n# env.tmpl\\n"\n'
+        "_VAULT_SOP_SECTION = '## 9. Vault Agent sidecar'\n",
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-76 regression" in c.detail
+    assert "approle" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g76_emit_file_missing(tmp_path):
+    # scripts/emit_ops_pack.py file removed entirely — both G-71 and G-76
+    # surface; we assert G-76 message presence.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "emit_ops_pack.py").unlink()
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-76 guard" in c.detail
 
 
 def test_format_table_summary_lines():

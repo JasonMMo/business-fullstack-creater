@@ -48,14 +48,67 @@ SaaS 는 v2.0 단계에서 **누적 자산(profile · catalog · meta) 의 multi
 
 ## 5. SaaS 진입 재평가 조건 (entry conditions for v2.0)
 
-다음 4 조건이 **모두** 충족될 때 M4 의 SaaS 분기를 재개한다:
+다음 4 조건이 **모두**(ALL-AND) 충족될 때 M4 의 SaaS 분기를 재개한다. 각 조건은 측정 가능한 정의 · 데이터 소스 · 현재 baseline 을 동반한다 — 주관 판단으로 게이트가 무너지는 것을 차단.
 
-1. **누적 자산 격리 모델** — `profiles/` 가 단일 디렉터리에서 namespaced(`profiles/<tenant>/<customer>.yaml`) 로 자연 진화 + `customer.tenant_id` 필드 등재 + multi-tenant 가드(G-7x) 1건 이상.
-2. **외부 수요 증거** — self-host 사용자 ≥ 3 조직 + "SaaS 였으면 좋겠다" 요청 ≥ 1건. 추측이 아닌 실제 사용자 발언.
-3. **운영 캐파시티** — 24/7 on-call 가능한 2인+ 운영팀 또는 managed cloud(Render/Fly.io/AWS App Runner) 자동화로 단독 운영 가능 증명.
-4. **SaaS 차별화 가치** — self-host 대비 SaaS 만 가능한 기능(예: cross-org 도메인 catalog 공유, federated meta-extract) 1건 이상 식별.
+### 5.1 조건 C1 — 누적 자산 multi-tenant 격리 모델
 
-위 4 조건 미충족 시 M4 결정은 self-host 단일 유지. **시간 기반 재평가 금지** — "1년 뒤 재논의" 같은 막연한 트리거는 의도 드리프트 위험.
+| 항목 | 내용 |
+|---|---|
+| **측정 정의** | (a) `profiles/` 디렉터리가 단일 평면 → namespaced(`profiles/<tenant>/<customer>.yaml`) 로 진화 + (b) profile YAML v2 schema 에 `customer.tenant_id` 필드 등재 + (c) multi-tenant 가드(G-7x 신설) 1건 이상 정적 회귀 검출 가능 |
+| **데이터 소스** | `ls profiles/` 디렉터리 구조, `profiles/_README.md` schema 버전, `scripts/workflow/diagnose.py:check_cross_layer_coherence` 가드 목록 |
+| **충족 신호** | `find profiles -mindepth 2 -name '*.yaml'` rc=0 (tenant 서브디렉터리 존재) + `grep -r 'tenant_id' profiles/_README.md` 매치 + diagnose PASS detail 에 G-7x 등재 |
+| **현재 baseline (2026-05-28)** | profiles/ 평면 (`_README.md` + `acme.yaml`), `tenant_id` 필드 부재, multi-tenant 가드 0건 → **미충족 (0/3)** |
+
+### 5.2 조건 C2 — 외부 수요 증거
+
+| 항목 | 내용 |
+|---|---|
+| **측정 정의** | (a) self-host 사용자 ≥ 3 독립 조직 (개인 메인테이너 1인 = 0 조직, 같은 회사 부서 ≠ 독립 조직) + (b) "SaaS 였으면 좋겠다" 또는 동등 발언 ≥ 1건 (GitHub issue / 메일 / 회의 녹취 / 채팅 로그) |
+| **데이터 소스** | GitHub repo stars/forks/issues, 외부 사용자 발화 로그, 사용자 인터뷰 노트 |
+| **충족 신호** | GitHub issue 또는 사용자 인터뷰 메모에 SaaS 요청 명시 발언 인용 가능 + 3 조직 명단 식별 가능 |
+| **현재 baseline (2026-05-28)** | 외부 self-host 사용자 0 조직, SaaS 요청 0건 → **미충족 (0/2)** |
+| **추측 금지** | "SaaS 면 더 많은 사용자가 올 것이다" 같은 가정으로 충족 라벨 부여 금지 — 실측 발언만 |
+
+### 5.3 조건 C3 — 운영 캐파시티
+
+| 항목 | 내용 |
+|---|---|
+| **측정 정의** | (a) 24/7 on-call rotation 가능한 운영팀 ≥ 2인 (incident response SLA 정의) **또는** (b) managed cloud (Render / Fly.io / AWS App Runner / Cloudflare Workers) 자동 배포 + auto-scale + 99.5% uptime SLA 가 코드/IaC 로 증명 |
+| **데이터 소스** | 운영 인프라 IaC 저장소, on-call rotation 문서, SLA 정의 문서 |
+| **충족 신호** | `infra/` 또는 별도 ops repo 에 IaC (Terraform/Pulumi/render.yaml) 존재 + on-call rotation 명단 ≥ 2인 + 외부 사용자에게 공개 가능한 SLA 페이지 |
+| **현재 baseline (2026-05-28)** | 단독 메인테이너 1인, IaC 0, SLA 0 → **미충족 (0/3)** |
+
+### 5.4 조건 C4 — SaaS-only 차별화 가치
+
+| 항목 | 내용 |
+|---|---|
+| **측정 정의** | self-host 단일 인스턴스로는 **구조적으로 불가능한** 기능 ≥ 1건이 사용자 요청 또는 roadmap 에 식별 가능. 예: cross-org 도메인 catalog 공유 / federated meta-extract / 공용 customer profile marketplace |
+| **데이터 소스** | 후속 Growth roadmap, 사용자 인터뷰 노트, GitHub discussion |
+| **충족 신호** | "이 기능은 self-host 로는 못 만든다 — multi-org 데이터 풀이 필요하다" 형식의 명시적 정당화 1건 + 그 기능을 SaaS 로 만들 사용자 ≥ 1조직 |
+| **현재 baseline (2026-05-28)** | 식별된 차별화 가치 0건 → **미충족 (0/1)** |
+| **편향 차단** | "convenient" 와 "structurally only-SaaS" 를 구별 — 단순 편의는 self-host + 좋은 UX 로 해소되므로 C4 부적격 |
+
+### 5.5 게이트 종합
+
+| 조건 | 충족 | 현재 |
+|---|---|---|
+| C1 multi-tenant 격리 모델 | 3/3 | **0/3** |
+| C2 외부 수요 증거 | 2/2 | **0/2** |
+| C3 운영 캐파시티 | 3/3 | **0/3** |
+| C4 SaaS-only 차별화 가치 | 1/1 | **0/1** |
+| **종합** | **9/9 ALL-AND** | **0/9 — SaaS 진입 차단** |
+
+**시간 기반 재평가 금지** — "1년 뒤 재논의" / "v0.X 출시 후 검토" 같은 막연한 트리거는 의도 드리프트 위험. 위 9 measurement 중 하나라도 변경되는 시점에만 재평가 트리거를 발화. 변경 추적 책임은 self-host 사용자 onboarding 시점 + multi-tenant 진화 PR review 시점에 분산.
+
+### 5.6 재평가 절차
+
+C1–C4 가 모두 충족(9/9) 되었다고 판단되는 시점에 다음 절차로 진행:
+
+1. 본 문서 §5.1–5.4 의 "현재 baseline" 라인을 갱신하고 충족 증거 인용 (commit message + learn-log 신규 Growth row)
+2. 신규 Growth 로 "M4 SaaS Re-Entry Evaluation" 등록 — 본 문서 § 결정 라인 갱신 PR 1건
+3. 운영 캐파시티(C3) 가 실증되었으므로 managed cloud 또는 자체 인프라로 staging 1주 운영 후 v2.0 SaaS 분기 진입 PR
+
+위 절차 없이 본 문서 §1 의 "self-host 단일 모드 v1.0" 결정 라인을 직접 편집 금지.
 
 ## 6. v1.0 self-host 출시 게이트 (남은 작업)
 

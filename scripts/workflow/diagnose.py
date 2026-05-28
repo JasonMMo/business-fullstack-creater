@@ -167,7 +167,7 @@ def check_cross_layer_coherence(
     빠르고 fresh scaffold 없이 회귀 감지. 새 트랩 발견 시 §4 등재 후 sub-check
     추가가 다음 Growth 단계.
 
-    Guards (6건):
+    Guards (7건):
       - G-47 (T-NexacroUiaPkg-javax): mybatis controller/service-impl 템플릿이
         `{{ uia_namespace }}` parametrize — `.jakarta.core.` 하드코딩 회귀 차단
       - G-50a (T-Probe-CtxPath-Missing, runner-side): nexacroN samples/runners/
@@ -184,6 +184,10 @@ def check_cross_layer_coherence(
         `discover_scaffold(..., domain_slug=None)` 호출 유지 — 한글 catalog
         서브디렉터리명을 ASCII Java slug 로 오용하면 Controller/Service preview
         가 silent placeholder 폴백
+      - G-62 (Growth-63 Customer Profile axis): `scaffold_cli.py` 가 6번째 축
+        loader (`load_customer_profile`) + `--customer-profile` 플래그 + `version: 1`
+        강제 + `customer_profile=` 전달을 유지. 한 줄이라도 회귀하면 profile 이
+        조용히 무시되어 2번째 도메인 자동 적용이 깨진다.
     """
     failures: list[str] = []
 
@@ -272,17 +276,40 @@ def check_cross_layer_coherence(
                 "G-61 regression: web_index._default_source_resolver lost domain_slug=None"
             )
 
+    # G-62: scaffold_cli.py customer-profile (6th axis) loader + flag + version
+    # enforcement + ScaffoldArgs forwarding all intact.
+    cli = creater_root / "scripts" / "scaffold_cli.py"
+    if not cli.exists():
+        failures.append("G-62 guard: scaffold_cli.py missing")
+    else:
+        text = cli.read_text(encoding="utf-8")
+        missing_markers = [
+            m
+            for m in (
+                "def load_customer_profile(",
+                '"--customer-profile"',
+                'expected 1',
+                "customer_profile=",
+            )
+            if m not in text
+        ]
+        if missing_markers:
+            failures.append(
+                "G-62 regression: scaffold_cli.py customer-profile wiring lost "
+                f"({', '.join(missing_markers)})"
+            )
+
     if failures:
         return Check(
             "cross-layer-coherence",
             "FAIL",
             "; ".join(failures),
-            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61) 추적 후 복원",
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62) 추적 후 복원",
         )
     return Check(
         "cross-layer-coherence",
         "PASS",
-        "6 trap guards intact (G-47/48/50a/50b/58/61)",
+        "7 trap guards intact (G-47/48/50a/50b/58/61/62)",
     )
 
 

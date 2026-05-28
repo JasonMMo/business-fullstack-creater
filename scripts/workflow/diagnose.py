@@ -167,7 +167,7 @@ def check_cross_layer_coherence(
     빠르고 fresh scaffold 없이 회귀 감지. 새 트랩 발견 시 §4 등재 후 sub-check
     추가가 다음 Growth 단계.
 
-    Guards (7건):
+    Guards (8건):
       - G-47 (T-NexacroUiaPkg-javax): mybatis controller/service-impl 템플릿이
         `{{ uia_namespace }}` parametrize — `.jakarta.core.` 하드코딩 회귀 차단
       - G-50a (T-Probe-CtxPath-Missing, runner-side): nexacroN samples/runners/
@@ -188,6 +188,9 @@ def check_cross_layer_coherence(
         loader (`load_customer_profile`) + `--customer-profile` 플래그 + `version: 1`
         강제 + `customer_profile=` 전달을 유지. 한 줄이라도 회귀하면 profile 이
         조용히 무시되어 2번째 도메인 자동 적용이 깨진다.
+      - G-63 (Growth-65 Customer Profile version-pin): `scaffold_cli.py:load_customer_profile`
+        의 `version != 1` 조건 분기가 유지 — 제거 시 `version: 2` 이상 프로파일이
+        조용히 수락되어 미래 스키마 변경과 혼용되는 silent-corruption 트랩.
     """
     failures: list[str] = []
 
@@ -299,17 +302,27 @@ def check_cross_layer_coherence(
                 f"({', '.join(missing_markers)})"
             )
 
+    # G-63: scaffold_cli.py load_customer_profile 의 version != 1 조건 분기 유지
+    if not cli.exists():
+        failures.append("G-63 guard: scaffold_cli.py missing")
+    else:
+        text = cli.read_text(encoding="utf-8")
+        if "version != 1" not in text:
+            failures.append(
+                "G-63 regression: scaffold_cli.py load_customer_profile lost version != 1 pin"
+            )
+
     if failures:
         return Check(
             "cross-layer-coherence",
             "FAIL",
             "; ".join(failures),
-            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62) 추적 후 복원",
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63) 추적 후 복원",
         )
     return Check(
         "cross-layer-coherence",
         "PASS",
-        "7 trap guards intact (G-47/48/50a/50b/58/61/62)",
+        "8 trap guards intact (G-47/48/50a/50b/58/61/62/63)",
     )
 
 

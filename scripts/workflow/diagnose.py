@@ -196,6 +196,11 @@ def check_cross_layer_coherence(
         으로 `scripts/scaffold_cli.py` 를 호출하고 `web/routes/domain.py` 가
         `scaffold_runner.run` 을 호출. 직접 import/재구현하면 customer-profile, lane,
         preset 등 모든 축의 누적 효과가 web 경로에서 깨진다.
+      - G-70 (Growth-70 target_project extractor contract): `scripts/extract_target_profile.py`
+        가 v1 customer profile 만 emit 한다 — `build_profile()` 결과에 `version: 1` +
+        `customer.slug` 가 박혀있고 `dump_profile()` 헤더가 Growth-70 을 명시.
+        회귀하면 추출된 profile 이 `load_customer_profile` 의 G-62/G-63 가드를 통과
+        못해 M5 입력단이 깨지면서 6번째 축이 우회된다.
     """
     failures: list[str] = []
 
@@ -351,17 +356,42 @@ def check_cross_layer_coherence(
                 "G-69 regression: web/routes/domain.py lost scaffold_runner.run call"
             )
 
+    # G-70: extract_target_profile.py emits v1 customer profile (M5 Slice C).
+    # build_profile() must stamp `"version": 1` + `"slug"` and dump_profile()
+    # header must reference Growth-70. Regression breaks the M5 input path
+    # because emitted YAML would fail load_customer_profile's G-62/G-63 pin.
+    extractor = creater_root / "scripts" / "extract_target_profile.py"
+    if not extractor.exists():
+        failures.append("G-70 guard: scripts/extract_target_profile.py missing")
+    else:
+        text = extractor.read_text(encoding="utf-8")
+        extractor_markers = [
+            m
+            for m in (
+                "def build_profile(",
+                '"version": 1',
+                '"slug": slug',
+                "Growth-70",
+            )
+            if m not in text
+        ]
+        if extractor_markers:
+            failures.append(
+                "G-70 regression: extract_target_profile.py lost v1 emission contract "
+                f"({', '.join(extractor_markers)})"
+            )
+
     if failures:
         return Check(
             "cross-layer-coherence",
             "FAIL",
             "; ".join(failures),
-            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69) 추적 후 복원",
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70) 추적 후 복원",
         )
     return Check(
         "cross-layer-coherence",
         "PASS",
-        "9 trap guards intact (G-47/48/50a/50b/58/61/62/63/69)",
+        "10 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70)",
     )
 
 

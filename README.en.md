@@ -32,9 +32,9 @@ Outputs:
 - `scaffold-report.md` — per-stage PASS/SKIP/FAIL label
 - `~/.karpathy-rdb/catalog/<domain>/` — global catalog accumulation (compounding)
 
-## 2. Core principle — 5-axis compounding accumulation
+## 2. Core principle — 6-axis compounding accumulation
 
-This is a **growth project**: assets accumulate in proportion to usage. Every time a new domain is added or a known one is revisited, we deepen the same five axes:
+This is a **growth project**: assets accumulate in proportion to usage. Every time a new domain is added or a known one is revisited, we deepen the same six axes:
 
 | Axis | Accumulation site |
 |---|---|
@@ -43,6 +43,7 @@ This is a **growth project**: assets accumulate in proportion to usage. Every ti
 | **mybatis** (Stage 3) | `andrej-karpathy-rdb-mybatis/templates/<lane>/` |
 | **nexacro** (Stage 4+5) | `andrej-karpathy-rdb-nexacro/patterns/` |
 | **creater** (orchestrator) | `business-fullstack-creater/.claude/commands/` + `scripts/workflow/` |
+| **customer** (6th, Growth-63) | `business-fullstack-creater/profiles/<slug>.yaml` — one YAML per customer bundles package / URL / JDBC / lane / UI conventions; `/scaffold --customer-profile <name>` applies them consistently across Stages 1–5 |
 
 `learn-log.md` §0 (Layer Ownership Card) holds the current accumulated state — trap count, open feedback items, and verification milestones in a single table.
 
@@ -93,7 +94,7 @@ A new user landing in the repo should see "where do I touch first" in a single s
 | Point | Command | Asset surfaced |
 |---|---|---|
 | **Entry** | `/orient` | USER-GUIDE one-line pitch + Layer Ownership Card + latest Growth |
-| **Pre-flight** | `/diagnose` | 5-axis sibling repos + INDEX.md + runners + JDK + 6 regression guards |
+| **Pre-flight** | `/diagnose` | 6-axis sibling repos + INDEX.md + runners + JDK + 7 regression guards |
 | **Execution** | `/full-test` | 4-tier PASS/FAIL + lane × runner matrix |
 | **Post-failure** | `recovery_hint` | One-line next command per failing layer |
 
@@ -127,7 +128,7 @@ tests/                   workflow 281 + others 159 = 440 green
 
 ## 8. References
 
-- **Operating principles**: [`CLAUDE.md`](CLAUDE.md) — invariant 5-axis compounding rules
+- **Operating principles**: [`CLAUDE.md`](CLAUDE.md) — invariant 6-axis compounding rules
 - **Activity ledger**: [`learn-log.md`](learn-log.md) — Growth accumulation / traps / regression guards
 - **Unified guide**: [`docs/USER-GUIDE.md`](docs/USER-GUIDE.md) — Quick Start + Stage reference + troubleshooting
 - **Static portal**: `docs/index.html` (open in a browser)

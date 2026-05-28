@@ -57,7 +57,9 @@
 
 ## Cross-layer Coherence Guards
 
-`scripts/workflow/diagnose.py` 가 8개 회귀 가드 점검: G-47/48/50a/50b/58/61/62/63. 새 cross-layer 결합이 생기면 G-69+ 로 추가.
+`scripts/workflow/diagnose.py` 가 9개 회귀 가드 점검: G-47/48/50a/50b/58/61/62/63/69. 새 cross-layer 결합이 생기면 G-70+ 로 추가.
+
+**G-69 (Growth-69 Web-axis subprocess invariant)**: `web/` 가 `scripts/scaffold_cli.py` 를 subprocess 로 호출하는 형태를 유지해야 한다. web 경로에서 scaffold 로직을 재구현하면 6-axis 누적(skill/ddl/mybatis/nexacro/creater/customer) 이 web 사용자에게만 우회되어 깨진다.
 
 ## Git Commit Rules
 

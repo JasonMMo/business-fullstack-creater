@@ -146,6 +146,20 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
         '    return "# Auto-extracted Growth-70\\n"\n',
         encoding="utf-8",
     )
+    # G-71 guard: scripts/emit_ops_pack.py emits all 4 ops artifacts +
+    # multi-stage Docker builder (Growth-71 M3 Ops Pack).
+    (scripts_dir / "emit_ops_pack.py").write_text(
+        '"""Growth-71 ops pack emitter stub."""\n'
+        "def render_dockerfile(info):\n"
+        '    return "FROM maven:3.9-eclipse-temurin-17 AS builder\\n"\n'
+        "def render_compose(info, slug):\n"
+        '    return "services:\\n  app:\\n"\n'
+        "def render_env_example(info, slug):\n"
+        '    return "APP_PORT=8080\\n"\n'
+        "def render_sop(info, slug):\n"
+        '    return "# 배포 SOP\\n"\n',
+        encoding="utf-8",
+    )
     return workspace, creater_root
 
 
@@ -260,7 +274,7 @@ def test_check_cross_layer_coherence_pass(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "10 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70)" in c.detail
+    assert "11 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71)" in c.detail
 
 
 def test_check_cross_layer_coherence_fail_g47_uia_namespace_lost(tmp_path):
@@ -529,6 +543,63 @@ def test_check_cross_layer_coherence_fail_g70_lost_header(tmp_path):
     )
     assert c.status == "FAIL"
     assert "G-70" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g71_missing_emitter(tmp_path):
+    # Growth-71: G-71 guard — scripts/emit_ops_pack.py absent breaks the
+    # M3 Ops Pack 1-hour deploy scenario for the IT-담당자 persona.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "emit_ops_pack.py").unlink()
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-71 guard" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g71_lost_multistage_builder(tmp_path):
+    # Multi-stage Docker builder pattern dropped — single-stage Dockerfile
+    # would require the IT persona to install Maven/JDK locally, breaking
+    # the "no dev environment" M-Ops acceptance criterion.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "emit_ops_pack.py").write_text(
+        '"""Growth-71 ops pack emitter stub — broken."""\n'
+        "def render_dockerfile(info):\n"
+        '    return "FROM tomcat:10.1\\n"  # no builder stage\n'
+        "def render_compose(info, slug):\n"
+        '    return "services:\\n  app:\\n"\n'
+        "def render_env_example(info, slug):\n"
+        '    return "APP_PORT=8080\\n"\n'
+        "def render_sop(info, slug):\n"
+        '    return "# 배포 SOP\\n"\n',
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-71" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g71_lost_render_function(tmp_path):
+    # Dropping any of the 4 render_* functions means one ops artifact is
+    # never emitted — the pack becomes incomplete.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "emit_ops_pack.py").write_text(
+        '"""Growth-71 ops pack emitter — render_sop dropped."""\n'
+        "def render_dockerfile(info):\n"
+        '    return "FROM maven:3.9-eclipse-temurin-17 AS builder\\n"\n'
+        "def render_compose(info, slug):\n"
+        '    return "services:\\n  app:\\n"\n'
+        "def render_env_example(info, slug):\n"
+        '    return "APP_PORT=8080\\n"\n',
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-71" in c.detail
 
 
 def test_format_table_summary_lines():

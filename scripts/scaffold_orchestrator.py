@@ -45,6 +45,9 @@ class ScaffoldArgs:
     # Mismatch causes L4 ParamDataSet/NexacroResult symbol-not-found
     # (T-NexacroUiaPkg-javax trap).
     uia_namespace: str = "jakarta"
+    # Growth-63: parsed customer profile (6th axis). None when --customer-profile not used.
+    # Schema in profiles/_README.md; loader: scaffold_cli.load_customer_profile.
+    customer_profile: Optional[dict] = None
 
 
 @dataclass

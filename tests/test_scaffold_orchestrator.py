@@ -1,7 +1,11 @@
 # tests/test_scaffold_orchestrator.py
 import pathlib
 import pytest
-from scaffold_orchestrator import ScaffoldArgs, run_scaffold, StageFailure
+from unittest.mock import patch
+from scaffold_orchestrator import (
+    ScaffoldArgs, ScaffoldReport, run_scaffold, StageFailure,
+    _append_domain_to_profile,
+)
 
 # Minimal .seed.md that _init_wiki_from_preset can parse to produce entities
 _MINIMAL_SEED = """\
@@ -406,3 +410,328 @@ def test_scaffold_report_written_on_failure(tmp_path):
     assert "stage1" in content
     assert "stage3" not in content
     assert "stage4" not in content
+
+
+# ---------------------------------------------------------------------------
+# Growth-66: domains_seen write-back helpers
+# ---------------------------------------------------------------------------
+
+def _make_profile_yaml(path: pathlib.Path, domains_seen_block: str, extra: str = "") -> None:
+    """Write a minimal valid profile yaml for testing."""
+    content = (
+        "version: 1\n"
+        "customer:\n"
+        "  slug: acme\n"
+        "  name: Acme Corp\n"
+        f"{extra}"
+        f"{domains_seen_block}\n"
+    )
+    path.write_text(content, encoding="utf-8")
+
+
+def _make_stage5_args(tmp_path, domain_slug="order", customer_profile=None, lane="nexacro"):
+    """Helper: build ScaffoldArgs wired for a stage5 run with fake stages 1-4."""
+    _make_fake_s1(tmp_path, "t")
+    s2_src = (
+        "import sys, pathlib\n"
+        "out = pathlib.Path(sys.argv[sys.argv.index('--out')+1])\n"
+        "out.mkdir(parents=True, exist_ok=True)\n"
+        "(out / 'ddl_create.sql').write_text('-- ddl')\n"
+    )
+    s3_src = (
+        "import sys, pathlib\n"
+        "argv = sys.argv[1:]\n"
+        "out = pathlib.Path(argv[argv.index('--out')+1])\n"
+        "out.mkdir(parents=True, exist_ok=True)\n"
+        "(out / 'mapper.xml').write_text('<mapper/>')\n"
+    )
+    s4_src = (
+        "import sys, pathlib\n"
+        "argv = sys.argv[1:]\n"
+        "out = pathlib.Path(argv[argv.index('--out')+1])\n"
+        "out.mkdir(parents=True, exist_ok=True)\n"
+        "(out / 'dummy.xfdl').write_text('<form/>')\n"
+    )
+    _make_fake_stage(tmp_path, "ddl",     {"ddl_compile.py": s2_src})
+    _make_fake_stage(tmp_path, "mybatis", {"compile.py": s3_src})
+    _make_fake_stage(tmp_path, "nexacro", {"form_gen.py": s4_src})
+
+    creator = tmp_path / "creater"
+    creator.mkdir(exist_ok=True)
+    target_proj = tmp_path / "target_proj"
+    target_proj.mkdir(exist_ok=True)
+    out = tmp_path / "out"
+
+    return ScaffoldArgs(
+        domain="t", domain_slug=domain_slug,
+        wiki_mode="preset", preset="t", wiki_path=None,
+        lane=lane, default_pattern="D2",
+        package=f"com.example.{domain_slug}", out_dir=out,
+        creator_root=creator, stop_after_stage=5,
+        target_project=target_proj,
+        customer_profile=customer_profile,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Growth-66 Unit tests: _append_domain_to_profile (helper in isolation)
+# ---------------------------------------------------------------------------
+
+def test_append_domain_inline_empty(tmp_path):
+    """빈 인라인 목록 `domains_seen: []` → 단일 항목 블록 리스트로 변환."""
+    p = tmp_path / "acme.yaml"
+    _make_profile_yaml(p, "domains_seen: []")
+    _append_domain_to_profile(p, "order")
+    result = p.read_text(encoding="utf-8")
+    assert "domains_seen:\n  - order\n" in result
+    # 인라인 형식이 남지 않아야 한다
+    assert "domains_seen: []" not in result
+
+
+def test_append_domain_block_list_sorted(tmp_path):
+    """기존 블록 리스트에 새 항목 추가 → 알파벳 정렬."""
+    p = tmp_path / "acme.yaml"
+    _make_profile_yaml(p, "domains_seen:\n  - zebra\n  - alpha\n")
+    _append_domain_to_profile(p, "mango")
+    result = p.read_text(encoding="utf-8")
+    assert "domains_seen:\n  - alpha\n  - mango\n  - zebra\n" in result
+
+
+def test_append_domain_dedup(tmp_path):
+    """이미 있는 슬러그는 중복 추가되지 않는다."""
+    p = tmp_path / "acme.yaml"
+    _make_profile_yaml(p, "domains_seen:\n  - order\n  - payment\n")
+    _append_domain_to_profile(p, "order")
+    result = p.read_text(encoding="utf-8")
+    # order 는 딱 한 번만 나타나야 한다
+    assert result.count("  - order") == 1
+    assert "  - payment" in result
+
+
+def test_append_domain_missing_field_raises(tmp_path):
+    """domains_seen: 필드가 없으면 ValueError 발생."""
+    p = tmp_path / "acme.yaml"
+    p.write_text("version: 1\ncustomer:\n  slug: acme\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="domains_seen"):
+        _append_domain_to_profile(p, "order")
+
+
+def test_append_domain_preserves_env_var_placeholders(tmp_path):
+    """${ENV_VAR} 플레이스홀더가 있는 다른 필드는 쓰기 후에도 byte-identical 로 보존."""
+    p = tmp_path / "acme.yaml"
+    _make_profile_yaml(
+        p,
+        "domains_seen: []",
+        extra="database:\n  password: ${ACME_DB_PASS}\n  url: ${ACME_JDBC_URL}\n",
+    )
+    original = p.read_text(encoding="utf-8")
+    _append_domain_to_profile(p, "order")
+    result = p.read_text(encoding="utf-8")
+    assert "${ACME_DB_PASS}" in result
+    assert "${ACME_JDBC_URL}" in result
+    # domains_seen 줄만 변경됐는지 확인 (환경변수 행은 원본과 동일)
+    for line in original.splitlines():
+        if "ACME_DB_PASS" in line or "ACME_JDBC_URL" in line:
+            assert line in result
+
+
+def test_append_domain_preserves_trailing_newline(tmp_path):
+    """파일 끝 개행 문자가 보존된다."""
+    p = tmp_path / "acme.yaml"
+    content = "version: 1\ncustomer:\n  slug: acme\ndomains_seen: []\n"
+    p.write_text(content, encoding="utf-8")
+    _append_domain_to_profile(p, "order")
+    result = p.read_text(encoding="utf-8")
+    assert result.endswith("\n")
+
+
+def test_append_domain_file_not_found(tmp_path):
+    """존재하지 않는 파일에 대해 FileNotFoundError 발생."""
+    p = tmp_path / "nonexistent.yaml"
+    with pytest.raises(FileNotFoundError):
+        _append_domain_to_profile(p, "order")
+
+
+# ---------------------------------------------------------------------------
+# Growth-66 Integration tests: domains_seen write-back via run_scaffold
+# ---------------------------------------------------------------------------
+
+def test_stage5_pass_appends_slug_to_domains_seen(tmp_path):
+    """Stage 5 성공 + customer_profile 있으면 도메인 슬러그가 domains_seen 에 추가."""
+    profiles_dir = tmp_path / "creater" / "profiles"
+    profiles_dir.mkdir(parents=True, exist_ok=True)
+    profile_yaml = profiles_dir / "acme.yaml"
+    _make_profile_yaml(profile_yaml, "domains_seen: []")
+
+    customer_profile = {"customer": {"slug": "acme"}}
+    args = _make_stage5_args(tmp_path, domain_slug="order", customer_profile=customer_profile)
+
+    # stage5_overlay.run_overlay 를 스텁으로 대체 (실제 타겟 프로젝트 없어도 통과)
+    fake_overlay_result = {
+        "java_copied": 0, "resources_copied": 0, "xfdl_copied": 0,
+        "renamed_imports": 0, "backed_up": 0, "typedef_added": False,
+        "menu_warning": None,
+    }
+    with patch("scaffold_orchestrator.stage5_overlay.run_overlay", return_value=fake_overlay_result):
+        report = run_scaffold(args)
+
+    assert "stage5" in report.stages_run
+    result = profile_yaml.read_text(encoding="utf-8")
+    assert "  - order" in result
+    assert "domains_seen:\n  - order\n" in result
+
+
+def test_stage5_pass_dedup_and_sort(tmp_path):
+    """기존 [zebra, alpha] 에 mango 추가 → [alpha, mango, zebra] 정렬, 중복 없음."""
+    profiles_dir = tmp_path / "creater" / "profiles"
+    profiles_dir.mkdir(parents=True, exist_ok=True)
+    profile_yaml = profiles_dir / "acme.yaml"
+    _make_profile_yaml(profile_yaml, "domains_seen:\n  - zebra\n  - alpha\n")
+
+    customer_profile = {"customer": {"slug": "acme"}}
+    args = _make_stage5_args(tmp_path, domain_slug="mango", customer_profile=customer_profile)
+
+    fake_overlay_result = {
+        "java_copied": 0, "resources_copied": 0, "xfdl_copied": 0,
+        "renamed_imports": 0, "backed_up": 0, "typedef_added": False,
+        "menu_warning": None,
+    }
+    with patch("scaffold_orchestrator.stage5_overlay.run_overlay", return_value=fake_overlay_result):
+        run_scaffold(args)
+
+    result = profile_yaml.read_text(encoding="utf-8")
+    assert "domains_seen:\n  - alpha\n  - mango\n  - zebra\n" in result
+
+
+def test_stage5_skipped_does_not_append(tmp_path):
+    """--target-project 없으면 stage5-skipped → domains_seen 변경 없음."""
+    # stage5_skipped: target_project=None, shell_mode="none"
+    _make_fake_s1(tmp_path, "t")
+    s2_src = (
+        "import sys, pathlib\n"
+        "out = pathlib.Path(sys.argv[sys.argv.index('--out')+1])\n"
+        "out.mkdir(parents=True, exist_ok=True)\n"
+        "(out / 'ddl_create.sql').write_text('-- ddl')\n"
+    )
+    s3_src = (
+        "import sys, pathlib\n"
+        "argv = sys.argv[1:]\n"
+        "out = pathlib.Path(argv[argv.index('--out')+1])\n"
+        "out.mkdir(parents=True, exist_ok=True)\n"
+        "(out / 'mapper.xml').write_text('<mapper/>')\n"
+    )
+    s4_src = (
+        "import sys, pathlib\n"
+        "argv = sys.argv[1:]\n"
+        "out = pathlib.Path(argv[argv.index('--out')+1])\n"
+        "out.mkdir(parents=True, exist_ok=True)\n"
+        "(out / 'dummy.xfdl').write_text('<form/>')\n"
+    )
+    _make_fake_stage(tmp_path, "ddl",     {"ddl_compile.py": s2_src})
+    _make_fake_stage(tmp_path, "mybatis", {"compile.py": s3_src})
+    _make_fake_stage(tmp_path, "nexacro", {"form_gen.py": s4_src})
+
+    creator = tmp_path / "creater"
+    creator.mkdir(exist_ok=True)
+    profiles_dir = creator / "profiles"
+    profiles_dir.mkdir()
+    profile_yaml = profiles_dir / "acme.yaml"
+    original_content = (
+        "version: 1\ncustomer:\n  slug: acme\ndomains_seen: []\n"
+    )
+    profile_yaml.write_text(original_content, encoding="utf-8")
+
+    customer_profile = {"customer": {"slug": "acme"}}
+    args = ScaffoldArgs(
+        domain="t", domain_slug="order",
+        wiki_mode="preset", preset="t", wiki_path=None,
+        lane="nexacro", default_pattern="D2",
+        package="com.example.order", out_dir=tmp_path / "out",
+        creator_root=creator, stop_after_stage=5,
+        target_project=None,   # ← stage5 skipped
+        customer_profile=customer_profile,
+    )
+    report = run_scaffold(args)
+
+    assert "stage5-skipped" in report.stages_run
+    assert "stage5" not in report.stages_run
+    # 프로파일 파일은 변경되지 않아야 한다
+    assert profile_yaml.read_text(encoding="utf-8") == original_content
+
+
+def test_stage5_failure_does_not_append(tmp_path):
+    """Stage 5 에서 StageFailure 발생 시 domains_seen 은 변경되지 않는다."""
+    profiles_dir = tmp_path / "creater" / "profiles"
+    profiles_dir.mkdir(parents=True, exist_ok=True)
+    profile_yaml = profiles_dir / "acme.yaml"
+    original_content = "version: 1\ncustomer:\n  slug: acme\ndomains_seen: []\n"
+    profile_yaml.write_text(original_content, encoding="utf-8")
+
+    customer_profile = {"customer": {"slug": "acme"}}
+    args = _make_stage5_args(tmp_path, domain_slug="order", customer_profile=customer_profile)
+
+    # run_overlay 가 RuntimeError 를 던지도록 — _run_stage5 가 StageFailure 로 변환
+    with patch("scaffold_orchestrator.stage5_overlay.run_overlay",
+               side_effect=RuntimeError("conflict")):
+        with pytest.raises(StageFailure):
+            run_scaffold(args)
+
+    # 스테이지 실패 → domains_seen 변경 없음
+    assert profile_yaml.read_text(encoding="utf-8") == original_content
+
+
+def test_no_profile_no_writeback(tmp_path):
+    """customer_profile=None 이면 프로파일 파일이 있어도 건드리지 않는다."""
+    profiles_dir = tmp_path / "creater" / "profiles"
+    profiles_dir.mkdir(parents=True, exist_ok=True)
+    profile_yaml = profiles_dir / "acme.yaml"
+    original_content = "version: 1\ncustomer:\n  slug: acme\ndomains_seen: []\n"
+    profile_yaml.write_text(original_content, encoding="utf-8")
+
+    # customer_profile=None (기본값)
+    args = _make_stage5_args(tmp_path, domain_slug="order", customer_profile=None)
+
+    fake_overlay_result = {
+        "java_copied": 0, "resources_copied": 0, "xfdl_copied": 0,
+        "renamed_imports": 0, "backed_up": 0, "typedef_added": False,
+        "menu_warning": None,
+    }
+    with patch("scaffold_orchestrator.stage5_overlay.run_overlay", return_value=fake_overlay_result):
+        run_scaffold(args)
+
+    # 프로파일 파일은 변경되지 않아야 한다
+    assert profile_yaml.read_text(encoding="utf-8") == original_content
+
+
+def test_env_var_placeholders_preserved_after_writeback(tmp_path):
+    """Stage 5 write-back 후에도 ${ACME_DB_PASS} 등 ENV_VAR 플레이스홀더가 byte-identical 로 보존."""
+    profiles_dir = tmp_path / "creater" / "profiles"
+    profiles_dir.mkdir(parents=True, exist_ok=True)
+    profile_yaml = profiles_dir / "acme.yaml"
+    _make_profile_yaml(
+        profile_yaml,
+        "domains_seen: []",
+        extra="database:\n  password: ${ACME_DB_PASS}\n  url: ${ACME_JDBC_URL}\n",
+    )
+    original = profile_yaml.read_text(encoding="utf-8")
+
+    customer_profile = {"customer": {"slug": "acme"}}
+    args = _make_stage5_args(tmp_path, domain_slug="order", customer_profile=customer_profile)
+
+    fake_overlay_result = {
+        "java_copied": 0, "resources_copied": 0, "xfdl_copied": 0,
+        "renamed_imports": 0, "backed_up": 0, "typedef_added": False,
+        "menu_warning": None,
+    }
+    with patch("scaffold_orchestrator.stage5_overlay.run_overlay", return_value=fake_overlay_result):
+        run_scaffold(args)
+
+    result = profile_yaml.read_text(encoding="utf-8")
+    assert "${ACME_DB_PASS}" in result
+    assert "${ACME_JDBC_URL}" in result
+    # domains_seen 이 추가됐는지도 확인
+    assert "  - order" in result
+    # 플레이스홀더 줄은 원본과 동일
+    for line in original.splitlines():
+        if "${ACME_" in line:
+            assert line in result

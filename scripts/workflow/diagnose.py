@@ -212,6 +212,12 @@ def check_cross_layer_coherence(
         를 노출하고 `extract_trap_guards_count()` 가 diagnose 텍스트의 가드 수를
         읽는다. 회귀하면 CEO 페르소나의 "축적된 자산 한눈에 보기" (M2 Exec
         Status Board 수락 기준) 가 깨지고 portal 의 status 섹션이 비어버린다.
+      - G-74 (Growth-74 Orchestrator ops_pack auto-emit): `scaffold_orchestrator.py`
+        가 Stage 5 PASS 후 `_run_emit_ops_pack` 헬퍼를 통해 `emit_ops_pack.emit` 을
+        자동 호출 + `ops_pack-skipped-no-shell` / `ops_pack-failed` 마커를 report
+        에 흘려야 한다. 회귀하면 M3 Slice b 의 "사용자가 ops pack 을 잊지 않게
+        scaffold 직후 자동 생성" 약속이 깨지고 IT-담당자 페르소나가 다시 수동
+        emit_ops_pack 호출 절차에 의존한다.
     """
     failures: list[str] = []
 
@@ -443,17 +449,44 @@ def check_cross_layer_coherence(
                 f"({', '.join(sb_markers)})"
             )
 
+    # G-74: scaffold_orchestrator.py wires emit_ops_pack auto-call after Stage 5
+    # PASS via `_run_emit_ops_pack` helper, emitting `ops_pack-skipped-no-shell`
+    # / `ops_pack-failed` markers when conditions diverge. Regression breaks the
+    # M3 Slice b promise (IT-담당자 페르소나는 scaffold 직후 ops pack 을 자동으로
+    # 받는다 — 별도 emit_ops_pack 호출 단계가 사라진다).
+    if not orch.exists():
+        failures.append("G-74 guard: scaffold_orchestrator.py missing")
+    else:
+        text = orch.read_text(encoding="utf-8")
+        orch_markers = [
+            m
+            for m in (
+                "def _run_emit_ops_pack(",
+                "_run_emit_ops_pack(args, report)",
+                "ops_pack-skipped-no-shell",
+                "ops_pack-failed",
+                "import emit_ops_pack",
+                "Growth-74",
+            )
+            if m not in text
+        ]
+        if orch_markers:
+            failures.append(
+                "G-74 regression: scaffold_orchestrator.py lost ops_pack auto-emit wiring "
+                f"({', '.join(orch_markers)})"
+            )
+
     if failures:
         return Check(
             "cross-layer-coherence",
             "FAIL",
             "; ".join(failures),
-            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72) 추적 후 복원",
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74) 추적 후 복원",
         )
     return Check(
         "cross-layer-coherence",
         "PASS",
-        "12 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72)",
+        "13 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74)",
     )
 
 

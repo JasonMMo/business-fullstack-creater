@@ -218,6 +218,12 @@ def check_cross_layer_coherence(
         에 흘려야 한다. 회귀하면 M3 Slice b 의 "사용자가 ops pack 을 잊지 않게
         scaffold 직후 자동 생성" 약속이 깨지고 IT-담당자 페르소나가 다시 수동
         emit_ops_pack 호출 절차에 의존한다.
+      - G-75 (Growth-75 Web ops pack download route): `web/routes/ops.py` 가
+        `/{run_id}/ops.zip` GET 라우트를 노출하고 `out_dir/shell/ops/` 만 zip 으로
+        bundle 한다(`emit_ops_pack` 재호출 금지 — Growth-74 의 단일 진실 소스
+        유지). `web/app.py` 가 `ops_router` 를 include 해야 라우트가 활성화된다.
+        회귀하면 M3 Slice c 의 "IT-담당자 페르소나가 ops pack 만 별도로 받는다"
+        약속이 깨지고 사용자가 전체 산출물 zip 에서 직접 추출해야 한다.
     """
     failures: list[str] = []
 
@@ -476,17 +482,57 @@ def check_cross_layer_coherence(
                 f"({', '.join(orch_markers)})"
             )
 
+    # G-75: web/routes/ops.py exposes /{run_id}/ops.zip route + web/app.py
+    # includes ops_router. Route must read shell/ops/ from Growth-74 emit (not
+    # re-call emit_ops_pack). Regression breaks the M3 Slice c promise that
+    # IT-담당자 can download the ops pack separately from the full scaffold.
+    ops_route = creater_root / "web" / "routes" / "ops.py"
+    if not ops_route.exists():
+        failures.append("G-75 guard: web/routes/ops.py missing")
+    else:
+        text = ops_route.read_text(encoding="utf-8")
+        ops_route_markers = [
+            m
+            for m in (
+                "/{run_id}/ops.zip",
+                'shell',
+                'ops',
+                "zip_emitter",
+                "Growth-75",
+            )
+            if m not in text
+        ]
+        if ops_route_markers:
+            failures.append(
+                "G-75 regression: web/routes/ops.py lost ops download contract "
+                f"({', '.join(ops_route_markers)})"
+            )
+        # Single-source rule: ops route must NOT re-emit (Growth-74 owns emit).
+        # Docstring mention is fine; actual import/call is the violation.
+        if "import emit_ops_pack" in text or "emit_ops_pack.emit" in text:
+            failures.append(
+                "G-75 regression: web/routes/ops.py re-invokes emit_ops_pack "
+                "(violates Growth-74 single-source contract — read shell/ops/ instead)"
+            )
+    web_app = creater_root / "web" / "app.py"
+    if web_app.exists():
+        app_text = web_app.read_text(encoding="utf-8")
+        if "ops_router" not in app_text or "web.routes.ops" not in app_text:
+            failures.append(
+                "G-75 regression: web/app.py does not include ops_router"
+            )
+
     if failures:
         return Check(
             "cross-layer-coherence",
             "FAIL",
             "; ".join(failures),
-            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74) 추적 후 복원",
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75) 추적 후 복원",
         )
     return Check(
         "cross-layer-coherence",
         "PASS",
-        "13 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74)",
+        "14 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75)",
     )
 
 

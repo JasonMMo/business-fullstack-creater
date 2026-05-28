@@ -133,6 +133,19 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
         "def post():\n    result = scaffold_runner.run(req)\n",
         encoding="utf-8",
     )
+    # G-70 guard: scripts/extract_target_profile.py emits v1 customer profile
+    # (Growth-70 M5 Slice C). build_profile must stamp version: 1 + slug,
+    # dump_profile header must reference Growth-70.
+    scripts_dir = creater_root / "scripts"
+    scripts_dir.mkdir(parents=True, exist_ok=True)
+    (scripts_dir / "extract_target_profile.py").write_text(
+        '"""Growth-70 extractor stub for diagnose test fixture."""\n'
+        "def build_profile(project_dir, slug='x'):\n"
+        '    return {"version": 1, "customer": {"slug": slug}}\n'
+        "def dump_profile(profile):\n"
+        '    return "# Auto-extracted Growth-70\\n"\n',
+        encoding="utf-8",
+    )
     return workspace, creater_root
 
 
@@ -247,7 +260,7 @@ def test_check_cross_layer_coherence_pass(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "9 trap guards intact (G-47/48/50a/50b/58/61/62/63/69)" in c.detail
+    assert "10 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70)" in c.detail
 
 
 def test_check_cross_layer_coherence_fail_g47_uia_namespace_lost(tmp_path):
@@ -468,6 +481,54 @@ def test_check_cross_layer_coherence_fail_g69_domain_route_lost_call(tmp_path):
     )
     assert c.status == "FAIL"
     assert "G-69" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g70_missing_extractor(tmp_path):
+    # Growth-70: G-70 guard — scripts/extract_target_profile.py absent breaks
+    # M5 input path (target_project → customer profile YAML).
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "extract_target_profile.py").unlink()
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-70 guard" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g70_lost_version_stamp(tmp_path):
+    # Extractor that no longer stamps `"version": 1` would emit profiles that
+    # fail load_customer_profile's G-62/G-63 pin — silent corruption.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "extract_target_profile.py").write_text(
+        '"""Growth-70 extractor — broken."""\n'
+        "def build_profile(project_dir, slug='x'):\n"
+        '    return {"customer": {"slug": slug}}  # missing version stamp\n'
+        "def dump_profile(profile):\n"
+        '    return "# Auto-extracted Growth-70\\n"\n',
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-70" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g70_lost_header(tmp_path):
+    # Header that no longer references Growth-70 — provenance loss.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "extract_target_profile.py").write_text(
+        "def build_profile(project_dir, slug='x'):\n"
+        '    return {"version": 1, "customer": {"slug": slug}}\n'
+        "def dump_profile(profile):\n"
+        '    return "# Auto-extracted profile\\n"  # Growth- marker dropped\n',
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-70" in c.detail
 
 
 def test_format_table_summary_lines():

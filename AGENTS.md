@@ -30,7 +30,7 @@
 - **M1**: User Web Form (도메인 정의 → preview → zip 다운로드 30분 내)
 - **M3**: Ops Pack (docker-compose + vault 후크 + 배포 SOP)
 - **M2**: Exec Status Board (Growth-55 portal 확장; 누적 자산 시각화)
-- **M4**: Hosting modes (self-host 우선, SaaS 는 M4 진입 시 재평가)
+- **M4**: Hosting modes (self-host 단일 모드 v1.0 확정 — Growth-73, 2026-05-28; SaaS 는 v2.0 진입 조건 4건 모두 충족 시 재평가. 결정 근거 → `docs/hosting-modes.md`)
 
 병행: **M5** target_project overlay (기존 SpringBoot 프로젝트 → profile 자동 추출).
 

@@ -263,3 +263,99 @@ def test_discover_scaffold_lane_returns_none_when_lane_line_absent(tmp_path):
         "# Scaffold Report\n\n- dialect: `hsqldb`\n", encoding="utf-8"
     )
     assert live_overlay.discover_scaffold_lane(scaffold) is None
+
+
+# ---- Growth-64: customer-profile-driven base_package (e.g. com.acme.customer) ----
+
+@pytest.fixture
+def acme_scaffold(tmp_path):
+    """Mirror a scaffold built with --customer-profile acme (base_package=com.acme)."""
+    scaffold = tmp_path / "acme-customer"
+    java_root = scaffold / "3-mybatis" / "src" / "main" / "java" / "com" / "acme" / "customer"
+    (java_root / "controller").mkdir(parents=True)
+    (java_root / "controller" / "CustomerController.java").write_text(
+        "package com.acme.customer.controller;\npublic class CustomerController {}\n",
+        encoding="utf-8",
+    )
+    (java_root / "domain").mkdir()
+    (java_root / "domain" / "Customer.java").write_text(
+        "package com.acme.customer.domain;\npublic class Customer {}\n",
+        encoding="utf-8",
+    )
+    res = scaffold / "3-mybatis" / "src" / "main" / "resources"
+    res.mkdir(parents=True)
+    (res / "schema.sql").write_text(
+        "CREATE TABLE customer (id BIGINT IDENTITY PRIMARY KEY);\n", encoding="utf-8"
+    )
+    (res / "data.sql").write_text("INSERT INTO customer(id) VALUES(0);\n", encoding="utf-8")
+    mapper_dir = res / "mybatis" / "mapper"
+    mapper_dir.mkdir(parents=True)
+    (mapper_dir / "CustomerMapper.xml").write_text(
+        "<?xml version='1.0'?><mapper namespace='com.acme.customer.mapper.CustomerMapper'/>",
+        encoding="utf-8",
+    )
+    return scaffold
+
+
+def test_derive_scaffold_base_and_slug_acme(acme_scaffold):
+    assert live_overlay.derive_scaffold_base_and_slug(acme_scaffold) == ("com.acme", "customer")
+
+
+def test_derive_scaffold_base_and_slug_nexacro(stage3_scaffold):
+    assert live_overlay.derive_scaffold_base_and_slug(stage3_scaffold) == (
+        "com.nexacro.uiadapter",
+        "sales",
+    )
+
+
+def test_derive_scaffold_base_and_slug_legacy_example(fake_scaffold):
+    # com.example.finance with controller/ child — primary path catches it.
+    assert live_overlay.derive_scaffold_base_and_slug(fake_scaffold) == ("com.example", "finance")
+
+
+def test_discover_scaffold_acme_plan_has_base_package(acme_scaffold):
+    plan = live_overlay.discover_scaffold(acme_scaffold)
+    assert plan.domain_slug == "customer"
+    assert plan.base_package == "com.acme"
+    # java_src points into the acme tree, not com/example or com/nexacro
+    assert "acme" in plan.java_src.as_posix()
+    assert "customer" in plan.java_src.name
+
+
+def test_discover_scaffold_legacy_default_base_package(fake_scaffold):
+    plan = live_overlay.discover_scaffold(fake_scaffold, "finance")
+    assert plan.base_package == "com.example"
+
+
+def test_apply_overlay_acme_injects_com_acme_into_application(fake_runner, acme_scaffold):
+    plan = live_overlay.discover_scaffold(acme_scaffold)
+    live_overlay.apply_overlay(fake_runner, plan)
+    app_text = (
+        fake_runner / "src/main/java/com/nexacro/uiadapter/Application.java"
+    ).read_text(encoding="utf-8")
+    assert '"com.acme.customer"' in app_text
+    assert '"com.acme.customer.mapper"' in app_text
+    # Legacy com.example.customer must NOT have leaked into the runner config
+    assert '"com.example.customer"' not in app_text
+
+
+def test_apply_overlay_acme_copies_java_into_com_acme_tree(fake_runner, acme_scaffold):
+    plan = live_overlay.discover_scaffold(acme_scaffold)
+    live_overlay.apply_overlay(fake_runner, plan)
+    # Java source must land under runner_dir/src/main/java/com/acme/customer/
+    java_copy = fake_runner / "src/main/java/com/acme/customer/controller/CustomerController.java"
+    assert java_copy.exists()
+    # The legacy com/example/customer/ path must NOT have been created
+    legacy = fake_runner / "src/main/java/com/example/customer"
+    assert not legacy.exists()
+
+
+def test_apply_overlay_acme_idempotent(fake_runner, acme_scaffold):
+    plan = live_overlay.discover_scaffold(acme_scaffold)
+    live_overlay.apply_overlay(fake_runner, plan)
+    live_overlay.apply_overlay(fake_runner, plan)
+    app_text = (
+        fake_runner / "src/main/java/com/nexacro/uiadapter/Application.java"
+    ).read_text(encoding="utf-8")
+    assert app_text.count('"com.acme.customer"') == 1
+    assert app_text.count('"com.acme.customer.mapper"') == 1

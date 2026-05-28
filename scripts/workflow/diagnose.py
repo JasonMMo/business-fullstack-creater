@@ -201,6 +201,11 @@ def check_cross_layer_coherence(
         `customer.slug` 가 박혀있고 `dump_profile()` 헤더가 Growth-70 을 명시.
         회귀하면 추출된 profile 이 `load_customer_profile` 의 G-62/G-63 가드를 통과
         못해 M5 입력단이 깨지면서 6번째 축이 우회된다.
+      - G-71 (Growth-71 Ops Pack emitter contract): `scripts/emit_ops_pack.py` 가
+        4 산출물(Dockerfile / docker-compose.yml / .env.example / DEPLOY-SOP.md)
+        을 모두 emit + multi-stage 빌더(`maven:3.9-eclipse-temurin-17 AS builder`)
+        패턴 유지. 회귀하면 IT-담당자 페르소나가 dev 환경 없이 1시간 배포 시나리오
+        (M-Ops acceptance) 가 깨진다.
     """
     failures: list[str] = []
 
@@ -381,17 +386,43 @@ def check_cross_layer_coherence(
                 f"({', '.join(extractor_markers)})"
             )
 
+    # G-71: emit_ops_pack.py emits 4 ops artifacts + multi-stage Docker builder.
+    # Regression breaks the M3 Ops Pack 1-hour deploy scenario for the IT-담당자
+    # persona (no dev environment required).
+    emitter = creater_root / "scripts" / "emit_ops_pack.py"
+    if not emitter.exists():
+        failures.append("G-71 guard: scripts/emit_ops_pack.py missing")
+    else:
+        text = emitter.read_text(encoding="utf-8")
+        emitter_markers = [
+            m
+            for m in (
+                "def render_dockerfile(",
+                "def render_compose(",
+                "def render_env_example(",
+                "def render_sop(",
+                "maven:3.9-eclipse-temurin-17 AS builder",
+                "Growth-71",
+            )
+            if m not in text
+        ]
+        if emitter_markers:
+            failures.append(
+                "G-71 regression: emit_ops_pack.py lost ops pack emission contract "
+                f"({', '.join(emitter_markers)})"
+            )
+
     if failures:
         return Check(
             "cross-layer-coherence",
             "FAIL",
             "; ".join(failures),
-            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70) 추적 후 복원",
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71) 추적 후 복원",
         )
     return Check(
         "cross-layer-coherence",
         "PASS",
-        "10 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70)",
+        "11 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71)",
     )
 
 

@@ -57,7 +57,7 @@
 
 ## Cross-layer Coherence Guards
 
-`scripts/workflow/diagnose.py` 가 15개 회귀 가드 점검: G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76. 새 cross-layer 결합이 생기면 G-77+ 로 추가.
+`scripts/workflow/diagnose.py` 가 16개 회귀 가드 점검: G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77. 새 cross-layer 결합이 생기면 G-78+ 로 추가.
 
 **G-69 (Growth-69 Web-axis subprocess invariant)**: `web/` 가 `scripts/scaffold_cli.py` 를 subprocess 로 호출하는 형태를 유지해야 한다. web 경로에서 scaffold 로직을 재구현하면 6-axis 누적(skill/ddl/mybatis/nexacro/creater/customer) 이 web 사용자에게만 우회되어 깨진다.
 
@@ -72,6 +72,8 @@
 **G-75 (Growth-75 Web ops pack download route)**: `web/routes/ops.py` 가 `GET /domain/{run_id}/ops.zip` 라우트를 노출하고 `out_dir/shell/ops/` 디렉터리만 `zip_emitter.emit()` 으로 묶어 응답해야 한다. `web/app.py` 가 `ops_router` 를 include 해야 활성화. 단일 진실 소스 규칙: 라우트는 Growth-74 의 emit 결과를 *읽기만* 한다 — `import emit_ops_pack` / `emit_ops_pack.emit(` 호출은 금지. 회귀하면 M3 Slice c 의 "IT-담당자 페르소나가 전체 산출물 대신 ops pack 만 따로 받는다" 약속이 깨지고, ops 산출을 두 곳에서 emit 하게 되면서 Growth-74 와 결과가 어긋날 수 있다.
 
 **G-76 (Growth-76 Vault Agent sidecar emitter contract)**: `scripts/emit_ops_pack.py` 가 `--vault` (또는 profile `overlay.vault_agent: true`) 옵트인 시 추가 3 산출물 (`docker-compose.vault.yml`, `vault-agent.hcl`, `env.tmpl`) 을 emit 하고 `render_vault_hcl` / `render_vault_env_tmpl` / `render_vault_compose` 3 헬퍼 + `_VAULT_SOP_SECTION` (DEPLOY-SOP §9) + AppRole 인증 + consul-template 패턴을 유지해야 한다. 회귀하면 M3 Slice d 의 "IT-담당자가 사내 Vault 에 DB 자격증명을 위임한다" 약속이 깨지고 enterprise on-prem 환경에서 `.env` 평문 의존이 다시 시작된다.
+
+**G-77 (Growth-77 Keycloak/OIDC SSO sidecar emitter contract)**: `scripts/emit_ops_pack.py` 가 `--sso` (또는 profile `overlay.sso_keycloak: true`) 옵트인 시 추가 3 산출물 (`docker-compose.sso.yml`, `keycloak-realm.json`, `.env.sso.example`) 을 emit 하고 `render_sso_compose` / `render_sso_realm` / `render_sso_env_example` 3 헬퍼 + `_SSO_SOP_SECTION` (DEPLOY-SOP §10) + `quay.io/keycloak/keycloak` 이미지 + OIDC client (realm import 1 + standard flow) 패턴을 유지해야 한다. 회귀하면 M3 Slice e 의 "IT-담당자가 Keycloak 사이드카로 인증을 위임, 사내 SSO 전환 시 `OIDC_ISSUER_URI` 만 교체" 약속이 깨진다.
 
 ## Git Commit Rules
 

@@ -106,6 +106,7 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
         encoding="utf-8",
     )
     # G-62 guard: scaffold_cli.py with customer-profile wiring (Growth-63)
+    # G-63 guard: version != 1 condition present (Growth-65)
     (creater_root / "scripts" / "scaffold_cli.py").write_text(
         "def load_customer_profile(slug, *, profiles_root=None):\n"
         "    if version != 1: raise ValueError('expected 1')\n"
@@ -227,7 +228,7 @@ def test_check_cross_layer_coherence_pass(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "G-47/48/50a/50b/58/61/62" in c.detail
+    assert "8 trap guards intact (G-47/48/50a/50b/58/61/62/63)" in c.detail
 
 
 def test_check_cross_layer_coherence_fail_g47_uia_namespace_lost(tmp_path):
@@ -378,6 +379,35 @@ def test_check_cross_layer_coherence_fail_g62_missing_scaffold_cli(tmp_path):
     )
     assert c.status == "FAIL"
     assert "G-62 guard" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g63_version_check_lost(tmp_path):
+    # Growth-65: G-63 regression guard — scaffold_cli.py must keep the
+    # `version != 1` condition in load_customer_profile; removing it causes
+    # future-schema profiles (version: 2) to be silently accepted.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "scaffold_cli.py").write_text(
+        "def load_customer_profile(slug, *, profiles_root=None):\n"
+        "    if version < 0: raise ValueError('expected 1')\n"
+        'parser.add_argument("--customer-profile")\n'
+        "args = ScaffoldArgs(customer_profile=profile)\n",
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-63" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g63_missing_scaffold_cli(tmp_path):
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "scaffold_cli.py").unlink()
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-63 guard" in c.detail
 
 
 def test_format_table_summary_lines():

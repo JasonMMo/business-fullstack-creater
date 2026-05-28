@@ -57,7 +57,7 @@ class ScaffoldArgs:
     ds_username: Optional[str] = None         # overlay.datasource.username override
     ds_password: Optional[str] = None         # overlay.datasource.password override
     ds_url: Optional[str] = None              # overlay.datasource.url_template (interpolated) override
-    url_prefix: Optional[str] = None          # mybatis.url_prefix — stored for future use; mybatis compile.py lacks --url-prefix (Growth-67 known gap)
+    url_prefix: Optional[str] = None          # mybatis.url_prefix → --url-prefix (stage3); Growth-68 closed the sibling gap
 
 
 @dataclass
@@ -235,6 +235,9 @@ def _run_stage3(args, stage_paths, report):
     # Growth-67: forward table_prefix when set by customer profile
     if args.table_prefix is not None:
         cmd += ["--table-prefix", args.table_prefix]
+    # Growth-68: forward url_prefix when set by customer profile
+    if args.url_prefix is not None:
+        cmd += ["--url-prefix", args.url_prefix]
     dur, _ = _run(cmd, cwd=s3, label="stage3.compile")
     report.stages_run.append("stage3")
     report.stage_durations_ms["stage3"] = dur

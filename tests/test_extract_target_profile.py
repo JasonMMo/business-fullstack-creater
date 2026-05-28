@@ -177,7 +177,7 @@ def test_build_profile_hsqldb_no_app_yml(tmp_path):
 def test_build_profile_missing_pom(tmp_path):
     proj = tmp_path / "empty"
     proj.mkdir()
-    with pytest.raises(FileNotFoundError, match="pom.xml not found"):
+    with pytest.raises(FileNotFoundError, match="No pom.xml or build.gradle"):
         etp.build_profile(proj)
 
 
@@ -266,3 +266,187 @@ def test_cli_rejects_missing_project(tmp_path, capsys):
     rc = etp.main([str(tmp_path / "does-not-exist"), "--print"])
     assert rc == 2
     assert "not a directory" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# Growth-78 (M5 Slice C-b) — Gradle input
+# ---------------------------------------------------------------------------
+
+def _write_gradle_groovy(
+    project: pathlib.Path,
+    *,
+    group: str,
+    version: str = "1.0.0-SNAPSHOT",
+    root_name: str | None = None,
+    extra_deps: str = "",
+) -> None:
+    body = textwrap.dedent(
+        f"""\
+        plugins {{
+            id 'org.springframework.boot' version '3.1.0'
+            id 'java'
+        }}
+        group = '{group}'
+        version = '{version}'
+        dependencies {{
+            implementation 'org.springframework.boot:spring-boot-starter-web'
+            {extra_deps}
+        }}
+        """
+    )
+    (project / "build.gradle").write_text(body, encoding="utf-8")
+    if root_name:
+        (project / "settings.gradle").write_text(
+            f"rootProject.name = '{root_name}'\n", encoding="utf-8"
+        )
+
+
+def _write_gradle_kts(
+    project: pathlib.Path,
+    *,
+    group: str,
+    version: str = "1.0.0-SNAPSHOT",
+    root_name: str | None = None,
+    extra_deps: str = "",
+) -> None:
+    body = textwrap.dedent(
+        f"""\
+        plugins {{
+            id("org.springframework.boot") version "3.1.0"
+            java
+        }}
+        group = "{group}"
+        version = "{version}"
+        dependencies {{
+            implementation("org.springframework.boot:spring-boot-starter-web")
+            {extra_deps}
+        }}
+        """
+    )
+    (project / "build.gradle.kts").write_text(body, encoding="utf-8")
+    if root_name:
+        (project / "settings.gradle.kts").write_text(
+            f"rootProject.name = \"{root_name}\"\n", encoding="utf-8"
+        )
+
+
+def test_gradle_groovy_jakarta_postgres(tmp_path):
+    proj = tmp_path / "shipping-shell"
+    proj.mkdir()
+    _write_gradle_groovy(
+        proj,
+        group="com.acme.uiadapter",
+        root_name="shipping-shell",
+        extra_deps="implementation 'jakarta.servlet:jakarta.servlet-api'",
+    )
+    _write_app_yml(
+        proj,
+        textwrap.dedent(
+            """\
+            spring:
+              datasource:
+                url: jdbc:postgresql://db.acme.internal:5432/shipping
+            mybatis:
+              type-aliases-package: com.acme.uiadapter.shipping.domain
+            """
+        ),
+    )
+    profile = etp.build_profile(proj)
+    assert profile["customer"]["slug"] == "shipping"
+    assert profile["ddl"]["dialect"] == "postgres"
+    assert profile["defaults"]["lane"] == "jakarta"
+    assert profile["overlay"]["maven"]["group_id"] == "com.acme.uiadapter"
+    assert profile["overlay"]["maven"]["version"] == "1.0.0-SNAPSHOT"
+    assert profile["overlay"]["shell_app_id"] == "shipping-shell"
+
+
+def test_gradle_kts_jakarta_mysql(tmp_path):
+    proj = tmp_path / "billing-portal"
+    proj.mkdir()
+    _write_gradle_kts(
+        proj,
+        group="com.bill.uiadapter",
+        root_name="billing-portal",
+        extra_deps="implementation(\"jakarta.servlet:jakarta.servlet-api\")",
+    )
+    _write_app_yml(
+        proj,
+        "spring:\n  datasource:\n    url: jdbc:mysql://db.local:3306/billing\n",
+    )
+    profile = etp.build_profile(proj)
+    assert profile["customer"]["slug"] == "billing"
+    assert profile["ddl"]["dialect"] == "mysql"
+    assert profile["defaults"]["lane"] == "jakarta"
+
+
+def test_gradle_groovy_javax_no_settings_uses_dir_name(tmp_path):
+    proj = tmp_path / "legacy-app"
+    proj.mkdir()
+    # No settings.gradle, no jakarta dep — should pick javax + dir name
+    body = textwrap.dedent(
+        """\
+        plugins {
+            id 'org.springframework.boot' version '2.7.18'
+            id 'java'
+        }
+        group = 'com.legacy'
+        version = '0.5.0'
+        dependencies {
+            implementation 'javax.servlet:servlet-api'
+        }
+        """
+    )
+    (proj / "build.gradle").write_text(body, encoding="utf-8")
+    profile = etp.build_profile(proj)
+    assert profile["customer"]["slug"] == "legacy"
+    assert profile["defaults"]["lane"] == "javax"
+    assert profile["overlay"]["shell_app_id"] == "legacy-app"
+    assert profile["overlay"]["maven"]["version"] == "0.5.0"
+
+
+def test_gradle_kts_takes_precedence_over_groovy(tmp_path):
+    """If both build.gradle.kts and build.gradle exist, KTS wins."""
+    proj = tmp_path / "dual-app"
+    proj.mkdir()
+    (proj / "build.gradle").write_text(
+        "group = 'com.groovy.wrong'\nversion = '0.0.1'\n", encoding="utf-8"
+    )
+    (proj / "build.gradle.kts").write_text(
+        'group = "com.kts.right"\nversion = "9.9.9"\n', encoding="utf-8"
+    )
+    profile = etp.build_profile(proj)
+    assert profile["overlay"]["maven"]["group_id"] == "com.kts.right"
+    assert profile["overlay"]["maven"]["version"] == "9.9.9"
+
+
+def test_pom_takes_precedence_over_gradle(tmp_path):
+    """If both pom.xml and build.gradle exist, pom wins (Maven-first contract)."""
+    proj = tmp_path / "mixed-app"
+    proj.mkdir()
+    _write_pom(proj, group_id="com.maven", artifact_id="mixed-app")
+    _write_gradle_groovy(proj, group="com.gradle.ignored", root_name="should-not-win")
+    profile = etp.build_profile(proj)
+    assert profile["overlay"]["maven"]["group_id"] == "com.maven"
+    assert profile["customer"]["slug"] == "mixed"
+
+
+def test_gradle_roundtrips_through_loader(tmp_path, monkeypatch):
+    """Gradle-extracted profile must satisfy load_customer_profile v1 contract."""
+    proj = tmp_path / "round-shell"
+    proj.mkdir()
+    _write_gradle_kts(
+        proj,
+        group="com.round.uiadapter",
+        root_name="round-shell",
+        extra_deps='implementation("jakarta.servlet:jakarta.servlet-api")',
+    )
+    _write_app_yml(proj, "spring:\n  datasource:\n    url: jdbc:postgresql://h:5432/r\n")
+    profiles_dir = tmp_path / "profiles"
+    profiles_dir.mkdir()
+    profile = etp.build_profile(proj)
+    (profiles_dir / "round.yaml").write_text(etp.dump_profile(profile), encoding="utf-8")
+    loaded = load_customer_profile("round", profiles_root=profiles_dir)
+    assert loaded["version"] == 1
+    assert loaded["mybatis"]["uia_namespace"] == "jakarta"
+    monkeypatch.delenv("ROUND_DB_USER", raising=False)
+    assert loaded["datasource"]["username"] == "${ROUND_DB_USER}"

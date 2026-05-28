@@ -1,0 +1,39 @@
+version: 1
+customer:
+  slug: acme
+  display: ACME 코퍼레이션
+  status: active
+  contact: aj@acme.example
+
+ddl:
+  dialect: postgres
+
+mybatis:
+  base_package: com.acme
+  project_root_pkg: com.acme.uiadapter
+  uia_namespace: jakarta
+
+nexacro:
+  default_pattern: D2
+
+overlay:
+  target_pkg_prefix: com.acme.uiadapter
+  shell_app_id: acme-portal
+
+auth:
+  mode: session
+  lane: jakarta
+
+defaults:
+  lane: jakarta
+  ui: nexacro
+
+datasource:
+  username: ${ACME_DB_USER}
+  password: ${ACME_DB_PASS}
+  url_template: "jdbc:postgresql://{host}:{port}/{db}"
+  host: db.acme.internal
+  port: 5432
+  db: acme_prod
+
+domains_seen: []

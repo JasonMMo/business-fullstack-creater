@@ -1,0 +1,113 @@
+{% extends "base.html" %}
+
+{% block title %}도메인 정의 — 고객사 풀스택 생성기{% endblock %}
+
+{% block content %}
+<h1>도메인 정의</h1>
+<p>도메인 정보를 입력하면 SpringBoot + Nexacro + DDL 산출물을 자동 생성합니다.</p>
+
+{% if errors %}
+<div class="error-list">
+  <p>다음 항목을 확인해 주세요:</p>
+  <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<form method="post" action="/domain/new" class="scaffold-form">
+
+  <div class="form-group">
+    <label for="domain">도메인명 <span class="required">*</span></label>
+    <input
+      type="text"
+      id="domain"
+      name="domain"
+      value="{{ form.domain | default('') }}"
+      placeholder="예: 고객관리"
+      required
+    >
+    <small>한글 도메인명을 입력하세요.</small>
+  </div>
+
+  <div class="form-group">
+    <label for="slug">슬러그 <span class="required">*</span></label>
+    <input
+      type="text"
+      id="slug"
+      name="slug"
+      value="{{ form.slug | default('') }}"
+      placeholder="예: customer"
+      pattern="[a-z][a-z0-9_-]*"
+      required
+    >
+    <small>소문자 알파벳으로 시작, 소문자·숫자·하이픈·언더스코어만 허용됩니다.</small>
+  </div>
+
+  <div class="form-group">
+    <label for="dialect">데이터베이스 방언</label>
+    <select id="dialect" name="dialect">
+      {% set _dialect = form.dialect | default('hsqldb') %}
+      <option value="hsqldb"  {% if _dialect == 'hsqldb'  %}selected{% endif %}>HSQLDB</option>
+      <option value="postgres" {% if _dialect == 'postgres' %}selected{% endif %}>PostgreSQL</option>
+      <option value="mysql"   {% if _dialect == 'mysql'   %}selected{% endif %}>MySQL</option>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label for="lane">레인 (Lane)</label>
+    <select id="lane" name="lane">
+      {% set _lane = form.lane | default('jakarta') %}
+      <option value="jakarta"  {% if _lane == 'jakarta'  %}selected{% endif %}>Jakarta EE (JDK 17+)</option>
+      <option value="javax"    {% if _lane == 'javax'    %}selected{% endif %}>Javax (JDK 11)</option>
+      <option value="nexacro"  {% if _lane == 'nexacro'  %}selected{% endif %}>Nexacro</option>
+      <option value="vanilla"  {% if _lane == 'vanilla'  %}selected{% endif %}>Vanilla</option>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label for="default_pattern">기본 패턴</label>
+    <select id="default_pattern" name="default_pattern">
+      {% set _pattern = form.default_pattern | default('D2') %}
+      <option value="D2" {% if _pattern == 'D2' %}selected{% endif %}>D2</option>
+      <option value="D3" {% if _pattern == 'D3' %}selected{% endif %}>D3</option>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label for="wiki_mode">위키 모드</label>
+    <select id="wiki_mode" name="wiki_mode">
+      {% set _wiki = form.wiki_mode | default('preset') %}
+      <option value="preset" {% if _wiki == 'preset' %}selected{% endif %}>프리셋 (Preset)</option>
+      <option value="wiki"   {% if _wiki == 'wiki'   %}selected{% endif %}>위키 (Wiki)</option>
+    </select>
+  </div>
+
+  <div class="form-group">
+    <label for="preset">프리셋 이름</label>
+    <input
+      type="text"
+      id="preset"
+      name="preset"
+      value="{{ form.preset | default('') }}"
+      placeholder="예: basic (wiki_mode=preset 일 때만 사용)"
+    >
+    <small>wiki_mode가 preset일 때만 적용됩니다.</small>
+  </div>
+
+  <div class="form-group">
+    <label for="customer_profile">고객 프로파일</label>
+    <input
+      type="text"
+      id="customer_profile"
+      name="customer_profile"
+      value="{{ form.customer_profile | default('') }}"
+      placeholder="예: acme (선택 입력)"
+    >
+    <small>고객 고유 관습이 정의된 프로파일 슬러그 (선택 사항).</small>
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn-primary">산출물 생성</button>
+  </div>
+
+</form>
+{% endblock %}

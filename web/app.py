@@ -39,8 +39,10 @@ def create_app() -> FastAPI:
 
     # Routers
     from web.routes.home import router as home_router  # noqa: PLC0415
+    from web.routes.domain import router as domain_router  # noqa: PLC0415
 
     application.include_router(home_router)
+    application.include_router(domain_router)
 
     return application
 

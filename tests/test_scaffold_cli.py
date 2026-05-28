@@ -150,3 +150,103 @@ class TestResolveUiDefault:
         from scaffold_cli import resolve_ui_default
         # User may force react overlay on a nexacro lane
         assert resolve_ui_default("react", "nexacro") == "react"
+
+
+# Growth-63 (2026-05-28): customer profile loader (6th axis)
+class TestLoadCustomerProfile:
+    def _write(self, tmp_path, slug, body):
+        (tmp_path / f"{slug}.yaml").write_text(body, encoding="utf-8")
+        return tmp_path
+
+    def test_returns_none_when_slug_is_none(self):
+        from scaffold_cli import load_customer_profile
+        assert load_customer_profile(None) is None
+
+    def test_missing_file_raises_value_error(self, tmp_path):
+        from scaffold_cli import load_customer_profile
+        with pytest.raises(ValueError, match="not found"):
+            load_customer_profile("nope", profiles_root=tmp_path)
+
+    def test_version_other_than_1_rejected(self, tmp_path):
+        from scaffold_cli import load_customer_profile
+        self._write(tmp_path, "x", "version: 2\ncustomer:\n  slug: x\n")
+        with pytest.raises(ValueError, match="unsupported version"):
+            load_customer_profile("x", profiles_root=tmp_path)
+
+    def test_missing_version_rejected(self, tmp_path):
+        from scaffold_cli import load_customer_profile
+        self._write(tmp_path, "x", "customer:\n  slug: x\n")
+        with pytest.raises(ValueError, match="unsupported version"):
+            load_customer_profile("x", profiles_root=tmp_path)
+
+    def test_slug_mismatch_raises(self, tmp_path):
+        from scaffold_cli import load_customer_profile
+        self._write(tmp_path, "acme", "version: 1\ncustomer:\n  slug: foo\n")
+        with pytest.raises(ValueError, match="does not match filename"):
+            load_customer_profile("acme", profiles_root=tmp_path)
+
+    def test_happy_path_returns_dict(self, tmp_path):
+        from scaffold_cli import load_customer_profile
+        self._write(
+            tmp_path,
+            "acme",
+            "version: 1\ncustomer:\n  slug: acme\n  display: ACME\nmybatis:\n  base_package: com.acme\n",
+        )
+        data = load_customer_profile("acme", profiles_root=tmp_path)
+        assert data["customer"]["display"] == "ACME"
+        assert data["mybatis"]["base_package"] == "com.acme"
+
+    def test_env_var_interpolated(self, tmp_path, monkeypatch):
+        from scaffold_cli import load_customer_profile
+        monkeypatch.setenv("ACME_DB_PASS", "s3cret")
+        self._write(
+            tmp_path,
+            "acme",
+            'version: 1\ncustomer:\n  slug: acme\ndatasource:\n  password: ${ACME_DB_PASS}\n',
+        )
+        data = load_customer_profile("acme", profiles_root=tmp_path)
+        assert data["datasource"]["password"] == "s3cret"
+
+    def test_env_var_missing_stays_literal(self, tmp_path, monkeypatch):
+        from scaffold_cli import load_customer_profile
+        monkeypatch.delenv("ACME_DB_PASS", raising=False)
+        self._write(
+            tmp_path,
+            "acme",
+            'version: 1\ncustomer:\n  slug: acme\ndatasource:\n  password: ${ACME_DB_PASS}\n',
+        )
+        data = load_customer_profile("acme", profiles_root=tmp_path)
+        assert data["datasource"]["password"] == "${ACME_DB_PASS}"
+
+    def test_non_mapping_root_rejected(self, tmp_path):
+        from scaffold_cli import load_customer_profile
+        self._write(tmp_path, "x", "- 1\n- 2\n")
+        with pytest.raises(ValueError, match="must be a mapping"):
+            load_customer_profile("x", profiles_root=tmp_path)
+
+
+class TestResolveWithProfile:
+    def test_cli_value_wins_over_profile(self):
+        from scaffold_cli import resolve_with_profile
+        profile = {"ddl": {"dialect": "postgres"}}
+        assert resolve_with_profile("hsqldb", profile, "ddl", "dialect", default="mysql") == "hsqldb"
+
+    def test_profile_wins_when_cli_none(self):
+        from scaffold_cli import resolve_with_profile
+        profile = {"ddl": {"dialect": "postgres"}}
+        assert resolve_with_profile(None, profile, "ddl", "dialect", default="mysql") == "postgres"
+
+    def test_default_used_when_both_missing(self):
+        from scaffold_cli import resolve_with_profile
+        assert resolve_with_profile(None, None, "ddl", "dialect", default="mysql") == "mysql"
+
+    def test_missing_nested_key_returns_default(self):
+        from scaffold_cli import resolve_with_profile
+        profile = {"ddl": {}}
+        assert resolve_with_profile(None, profile, "ddl", "dialect", default="mysql") == "mysql"
+
+    def test_cli_empty_string_still_wins(self):
+        # Falsy but non-None CLI value must still override (current contract: only None defers).
+        from scaffold_cli import resolve_with_profile
+        profile = {"defaults": {"lane": "jakarta"}}
+        assert resolve_with_profile("", profile, "defaults", "lane", default="nexacro") == ""

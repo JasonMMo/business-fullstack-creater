@@ -384,6 +384,75 @@ def _run_stage5(args, stage_paths, report):
     report.stage_durations_ms["stage5"] = dur
 
 
+def _append_domain_to_profile(profile_path: pathlib.Path, domain_slug: str) -> None:
+    """Append domain_slug to profiles/<slug>.yaml `domains_seen` (dedup+sort).
+
+    텍스트 패치 방식 (yaml round-trip 없음) — ${ENV_VAR} 플레이스홀더와 기존 포맷을 보존.
+    인라인 빈 목록(`domains_seen: []`)과 블록 리스트 형식 모두 처리.
+    항상 블록 리스트 형식으로 출력.
+    """
+    if not profile_path.exists():
+        raise FileNotFoundError(f"profile not found: {profile_path}")
+
+    text = profile_path.read_text(encoding="utf-8")
+    lines = text.splitlines(keepends=True)
+
+    # domains_seen: 행 위치를 찾는다 (컬럼 0 앵커, 선행 공백 허용하지 않음)
+    ds_pattern = re.compile(r'^domains_seen\s*:')
+    ds_idx = None
+    for i, line in enumerate(lines):
+        if ds_pattern.match(line):
+            ds_idx = i
+            break
+
+    if ds_idx is None:
+        raise ValueError(
+            f"'domains_seen:' field not found in {profile_path}. "
+            "Add 'domains_seen: []' to the profile."
+        )
+
+    # 기존 슬러그 목록 수집
+    existing: list[str] = []
+
+    # 인라인 형식: domains_seen: [] 또는 domains_seen: [a, b]
+    inline_match = re.match(r'^domains_seen\s*:\s*\[([^\]]*)\]', lines[ds_idx])
+    if inline_match:
+        inner = inline_match.group(1).strip()
+        if inner:
+            existing = [s.strip().strip('"\'') for s in inner.split(',') if s.strip()]
+        # 인라인 형식: ds_idx 한 줄만 교체
+        block_end_idx = ds_idx + 1
+    else:
+        # 블록 리스트 형식: 다음 줄부터 '  - item' 패턴 수집
+        block_end_idx = ds_idx + 1
+        item_pattern = re.compile(r'^\s+-\s+(.+)')
+        while block_end_idx < len(lines):
+            m = item_pattern.match(lines[block_end_idx])
+            if m:
+                existing.append(m.group(1).strip())
+                block_end_idx += 1
+            else:
+                break
+
+    # 새 슬러그 추가 → dedup + 정렬
+    merged = sorted(set(existing) | {domain_slug})
+
+    # 블록 리스트 형식으로 직렬화
+    new_block = "domains_seen:\n" + "".join(f"  - {s}\n" for s in merged)
+
+    # 교체: ds_idx ~ block_end_idx-1 범위를 new_block 으로 대체
+    new_lines = lines[:ds_idx] + [new_block] + lines[block_end_idx:]
+
+    result = "".join(new_lines)
+    # 파일 원본 trailing newline 보존
+    if text.endswith("\n") and not result.endswith("\n"):
+        result += "\n"
+    elif not text.endswith("\n") and result.endswith("\n"):
+        result = result.rstrip("\n")
+
+    profile_path.write_text(result, encoding="utf-8")
+
+
 def _write_report(args, report, failure=None):
     lines = [
         f"# Scaffold Report — {args.domain}",
@@ -473,4 +542,23 @@ def run_scaffold(args):
         _write_report(args, report, failure=(next_stage, str(e)))
         raise
     _write_report(args, report)
+
+    # Growth-66 (Slice B-2): Stage 5 성공 시 도메인 슬러그를 프로파일에 기록.
+    # stage5-skipped 또는 stage5 실패 시에는 쓰지 않는다.
+    if args.customer_profile is not None and "stage5" in report.stages_run:
+        profile = args.customer_profile
+        customer_slug = (profile.get("customer") or {}).get("slug")
+        if customer_slug and args.domain_slug:
+            # scaffold_cli.load_customer_profile 과 동일한 경로 해석 방식 사용
+            profile_path = pathlib.Path(args.creator_root) / "profiles" / f"{customer_slug}.yaml"
+            if profile_path.exists():
+                try:
+                    _append_domain_to_profile(profile_path, args.domain_slug)
+                except Exception as e:
+                    # 스캐폴드는 이미 완료됨 — 비치명적 경고만 출력
+                    print(
+                        f"[orchestrator] WARN: domains_seen write-back failed: {e}",
+                        file=sys.stderr,
+                    )
+
     return report

@@ -1,15 +1,16 @@
 """
-web/routes/domain.py — /domain routes for M1 S1.4.
+web/routes/domain.py — /domain routes for M1 S1.4 + S1.5.
 
-GET  /domain/new  — Render empty scaffold form.
-POST /domain/new  — Validate, run scaffold, register result, redirect to preview.
+GET  /domain/new                — Render empty scaffold form.
+POST /domain/new                — Validate, run scaffold, register result, redirect to preview.
+GET  /domain/{run_id}/preview   — Display scaffold results for a completed run.
 """
 from __future__ import annotations
 
 import re
 from typing import List, Optional
 
-from fastapi import APIRouter, Form, Request
+from fastapi import APIRouter, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from web.adapters import scaffold_runner
@@ -120,4 +121,34 @@ async def domain_form_post(
     return RedirectResponse(
         url=f"/domain/{run_id}/preview",
         status_code=303,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /domain/{run_id}/preview
+# ---------------------------------------------------------------------------
+
+@router.get("/{run_id}/preview", response_class=HTMLResponse)
+async def domain_preview(request: Request, run_id: str) -> HTMLResponse:
+    """Display the scaffold results for *run_id*."""
+    templates = request.app.state.templates
+
+    result = run_registry.get(run_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="해당 실행 결과를 찾을 수 없습니다.")
+
+    stage_count = len(result.stages)
+    ok_count = sum(1 for s in result.stages if s.status == "OK")
+    fail_count = sum(1 for s in result.stages if s.status == "FAIL")
+
+    return templates.TemplateResponse(
+        request,
+        "domain_preview.html",
+        {
+            "run_id": run_id,
+            "result": result,
+            "ok_count": ok_count,
+            "fail_count": fail_count,
+            "stage_count": stage_count,
+        },
     )

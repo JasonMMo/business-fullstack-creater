@@ -248,6 +248,16 @@ def check_cross_layer_coherence(
         "Gradle SpringBoot 프로젝트도 동일 v1 profile (G-70) 출력 계약으로
         흐른다" 약속이 깨지고 사용자가 Gradle 프로젝트마다 profile 을 손으로
         써야 한다.
+      - G-79 (Growth-79 Web target-upload single-source contract):
+        `web/routes/target.py` 가 `/target/upload` GET/POST 라우트를 노출하고
+        `web/adapters/target_extractor.py` 가 `extract_target_profile` 을
+        import 해 `build_profile` + `dump_profile` 을 호출해야 한다. adapter
+        는 `parse_pom` / `parse_gradle` 을 재구현하면 안 된다 (G-69 와 동일한
+        single-source 원칙 — 6-axis 누적이 web 경로에서 우회되는 것을 차단).
+        `web/app.py` 가 `target_router` 를 include 해야 라우트가 활성화된다.
+        회귀하면 M5 Slice C-c 의 "비 CLI 사용자가 zip 업로드만으로 v1 profile
+        을 얻는다" 약속이 깨지고 IT-담당자 페르소나가 다시 CLI 환경에 의존해야
+        한다.
     """
     failures: list[str] = []
 
@@ -572,6 +582,67 @@ def check_cross_layer_coherence(
                 "G-75 regression: web/app.py does not include ops_router"
             )
 
+    # G-79: web/routes/target.py exposes /target/upload + web/adapters/target_extractor.py
+    # delegates parsing to scripts/extract_target_profile.py (single source of
+    # truth — adapter MUST NOT re-implement parse_pom/parse_gradle). web/app.py
+    # must include target_router. Regression breaks the M5 Slice C-c promise that
+    # non-CLI users can extract a v1 customer profile by uploading a project zip.
+    target_route = creater_root / "web" / "routes" / "target.py"
+    if not target_route.exists():
+        failures.append("G-79 guard: web/routes/target.py missing")
+    else:
+        text = target_route.read_text(encoding="utf-8")
+        target_route_markers = [
+            m
+            for m in (
+                "/upload",
+                "target_extractor",
+                "extract_from_zip",
+                "Growth-79",
+            )
+            if m not in text
+        ]
+        if target_route_markers:
+            failures.append(
+                "G-79 regression: web/routes/target.py lost upload contract "
+                f"({', '.join(target_route_markers)})"
+            )
+
+    target_adapter = creater_root / "web" / "adapters" / "target_extractor.py"
+    if not target_adapter.exists():
+        failures.append("G-79 guard: web/adapters/target_extractor.py missing")
+    else:
+        text = target_adapter.read_text(encoding="utf-8")
+        adapter_markers = [
+            m
+            for m in (
+                "import extract_target_profile",
+                "extract_target_profile.build_profile",
+                "extract_target_profile.dump_profile",
+                "Growth-79",
+            )
+            if m not in text
+        ]
+        if adapter_markers:
+            failures.append(
+                "G-79 regression: target_extractor.py lost single-source delegation "
+                f"({', '.join(adapter_markers)})"
+            )
+        # Single-source rule: adapter must NOT re-implement extractor internals.
+        if "def parse_pom(" in text or "def parse_gradle(" in text:
+            failures.append(
+                "G-79 regression: target_extractor.py re-implements parse_pom/"
+                "parse_gradle (violates single-source rule — delegate to "
+                "scripts/extract_target_profile.py instead)"
+            )
+
+    if web_app.exists():
+        app_text = web_app.read_text(encoding="utf-8")
+        if "target_router" not in app_text or "web.routes.target" not in app_text:
+            failures.append(
+                "G-79 regression: web/app.py does not include target_router"
+            )
+
     # G-76: emit_ops_pack.py preserves the Vault Agent sidecar contract.
     # Required markers: 3 render_vault_* helpers + AppRole + consul-template +
     # SOP §9 + the 3 emitted artifact names. Regression breaks the M3 Slice d
@@ -633,12 +704,12 @@ def check_cross_layer_coherence(
             "cross-layer-coherence",
             "FAIL",
             "; ".join(failures),
-            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75/76/77/78) 추적 후 복원",
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75/76/77/78/79) 추적 후 복원",
         )
     return Check(
         "cross-layer-coherence",
         "PASS",
-        "17 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78)",
+        "18 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79)",
     )
 
 

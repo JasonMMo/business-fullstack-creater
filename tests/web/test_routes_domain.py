@@ -227,3 +227,132 @@ def test_post_scaffold_failure_still_redirects(
     assert response.status_code == 303
     assert response.headers["location"].startswith("/domain/")
     assert response.headers["location"].endswith("/preview")
+
+
+# ---------------------------------------------------------------------------
+# Preview tests (S1.5)
+# ---------------------------------------------------------------------------
+
+from web.adapters.scaffold_runner import StageResult  # noqa: E402
+
+
+def _make_preview_result(
+    success: bool = True,
+    slug: str = "cust",
+    stages: list | None = None,
+    **kw,
+) -> ScaffoldResult:
+    return ScaffoldResult(
+        success=success,
+        slug=slug,
+        out_dir=f"/tmp/out/{slug}",
+        stages=stages if stages is not None else [
+            StageResult(name="stage1", status="OK", duration_ms=120),
+        ],
+        stdout="hello stdout",
+        stderr="",
+        returncode=0 if success else 1,
+        **kw,
+    )
+
+
+# Preview test 1 — success=True → 200, contains "성공" + slug
+def test_preview_success_200(client: TestClient) -> None:
+    import web.run_registry as rr
+
+    result = _make_preview_result(success=True, slug="myslug")
+    run_id = rr.register(result)
+
+    response = client.get(f"/domain/{run_id}/preview")
+    assert response.status_code == 200
+    assert "성공" in response.text
+    assert "myslug" in response.text
+
+
+# Preview test 2 — success=False → 200, contains "실패" (not 422)
+def test_preview_failure_200(client: TestClient) -> None:
+    import web.run_registry as rr
+
+    result = _make_preview_result(success=False, slug="failslug")
+    run_id = rr.register(result)
+
+    response = client.get(f"/domain/{run_id}/preview")
+    assert response.status_code == 200
+    assert "실패" in response.text
+
+
+# Preview test 3 — unknown run_id → 404 + "찾을 수 없습니다" in detail
+def test_preview_unknown_run_id_404(client: TestClient) -> None:
+    response = client.get("/domain/doesnotexist/preview")
+    assert response.status_code == 404
+    data = response.json()
+    assert "찾을 수 없습니다" in data["detail"]
+
+
+# Preview test 4 — all stage rows from result.stages appear in the page
+def test_preview_shows_all_stage_rows(client: TestClient) -> None:
+    import web.run_registry as rr
+
+    stages = [
+        StageResult(name="stage1", status="OK", duration_ms=100),
+        StageResult(name="stage2", status="SKIPPED", duration_ms=None),
+        StageResult(name="stage3", status="FAIL", duration_ms=50, note="error!"),
+    ]
+    result = _make_preview_result(success=False, slug="multistage", stages=stages)
+    run_id = rr.register(result)
+
+    response = client.get(f"/domain/{run_id}/preview")
+    assert response.status_code == 200
+    assert "stage1" in response.text
+    assert "stage2" in response.text
+    assert "stage3" in response.text
+    assert "SKIPPED" in response.text
+    assert "FAIL" in response.text
+
+
+# Preview test 5 — download CTA link is present
+def test_preview_contains_download_link(client: TestClient) -> None:
+    import web.run_registry as rr
+
+    result = _make_preview_result(slug="dlslug")
+    run_id = rr.register(result)
+
+    response = client.get(f"/domain/{run_id}/preview")
+    assert response.status_code == 200
+    assert f"/domain/{run_id}/download" in response.text
+
+
+# Preview test 6 — stdout content is shown on page
+def test_preview_shows_stdout(client: TestClient) -> None:
+    import web.run_registry as rr
+
+    result = _make_preview_result(slug="stdoutslug")
+    run_id = rr.register(result)
+
+    response = client.get(f"/domain/{run_id}/preview")
+    assert response.status_code == 200
+    assert "hello stdout" in response.text
+
+
+# Preview test 7 — raw_report=None → no raw_report <details> block
+def test_preview_omits_raw_report_when_none(client: TestClient) -> None:
+    import web.run_registry as rr
+
+    result = _make_preview_result(slug="noreport", raw_report=None)
+    run_id = rr.register(result)
+
+    response = client.get(f"/domain/{run_id}/preview")
+    assert response.status_code == 200
+    assert "scaffold-report.md" not in response.text
+
+
+# Preview test 8 — end-to-end: POST → follow redirect → preview rendered
+def test_preview_end_to_end(client: TestClient, fake_run) -> None:
+    response = client.post(
+        "/domain/new",
+        data=_valid_form(),
+        follow_redirects=True,
+    )
+    assert response.status_code == 200
+    # After following the redirect the preview page must render the slug
+    assert "customer" in response.text

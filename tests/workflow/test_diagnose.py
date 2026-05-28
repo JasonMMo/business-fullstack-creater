@@ -105,6 +105,14 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
         "    plan = discover_scaffold(scaffold_root, domain_slug=None)\n",
         encoding="utf-8",
     )
+    # G-62 guard: scaffold_cli.py with customer-profile wiring (Growth-63)
+    (creater_root / "scripts" / "scaffold_cli.py").write_text(
+        "def load_customer_profile(slug, *, profiles_root=None):\n"
+        "    if version != 1: raise ValueError('expected 1')\n"
+        'parser.add_argument("--customer-profile")\n'
+        "args = ScaffoldArgs(customer_profile=profile)\n",
+        encoding="utf-8",
+    )
     return workspace, creater_root
 
 
@@ -219,7 +227,7 @@ def test_check_cross_layer_coherence_pass(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "G-47/48/50a/50b/58/61" in c.detail
+    assert "G-47/48/50a/50b/58/61/62" in c.detail
 
 
 def test_check_cross_layer_coherence_fail_g47_uia_namespace_lost(tmp_path):
@@ -344,6 +352,32 @@ def test_check_cross_layer_coherence_fail_g61_missing_web_index(tmp_path):
     )
     assert c.status == "FAIL"
     assert "G-61 guard" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g62_scaffold_cli_lost_wiring(tmp_path):
+    # Growth-63: G-62 regression guard — scaffold_cli.py must keep customer
+    # profile loader + --customer-profile flag + version:1 enforcement +
+    # ScaffoldArgs forwarding, else the 6th axis (customer) silently regresses.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "scaffold_cli.py").write_text(
+        "def main():\n    pass\n",
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-62" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g62_missing_scaffold_cli(tmp_path):
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "scaffold_cli.py").unlink()
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-62 guard" in c.detail
 
 
 def test_format_table_summary_lines():

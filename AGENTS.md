@@ -57,7 +57,7 @@
 
 ## Cross-layer Coherence Guards
 
-`scripts/workflow/diagnose.py` 가 12개 회귀 가드 점검: G-47/48/50a/50b/58/61/62/63/69/70/71/72. 새 cross-layer 결합이 생기면 G-73+ 로 추가.
+`scripts/workflow/diagnose.py` 가 13개 회귀 가드 점검: G-47/48/50a/50b/58/61/62/63/69/70/71/72/74. 새 cross-layer 결합이 생기면 G-75+ 로 추가.
 
 **G-69 (Growth-69 Web-axis subprocess invariant)**: `web/` 가 `scripts/scaffold_cli.py` 를 subprocess 로 호출하는 형태를 유지해야 한다. web 경로에서 scaffold 로직을 재구현하면 6-axis 누적(skill/ddl/mybatis/nexacro/creater/customer) 이 web 사용자에게만 우회되어 깨진다.
 
@@ -66,6 +66,8 @@
 **G-71 (Growth-71 Ops Pack emitter contract)**: `scripts/emit_ops_pack.py` 가 4 산출물 (Dockerfile / docker-compose.yml / .env.example / DEPLOY-SOP.md) 을 모두 emit 하고 multi-stage Docker 빌더 (`maven:3.9-eclipse-temurin-17 AS builder`) 패턴을 유지해야 한다. 회귀하면 IT-담당자 페르소나의 "dev 환경 없이 1시간 배포" 시나리오 (M3 Ops Pack 수락 기준) 가 깨진다.
 
 **G-72 (Growth-72 Status Board emitter contract)**: `scripts/workflow/status_board.py` 가 `compute()` + `render_status_section()` + `STATUS_BOARD_CSS` + `extract_trap_guards_count()` 4 계약을 유지해야 한다. 회귀하면 CEO 페르소나의 "축적된 자산 한눈에 보기" (M2 Exec Status Board 수락 기준) 가 깨지고 portal 의 status 섹션이 비어버린다.
+
+**G-74 (Growth-74 Orchestrator ops_pack auto-emit)**: `scripts/scaffold_orchestrator.py` 가 Stage 5 PASS 직후 `_run_emit_ops_pack(args, report)` 헬퍼를 통해 `emit_ops_pack.emit` 을 자동 호출해야 한다. `out_dir/shell/pom.xml` 부재 시 `ops_pack-skipped-no-shell`, 실패 시 `ops_pack-failed` 마커로 report 에 흘려야 한다 (Growth-66 와 동일한 best-effort 비치명 패턴). 회귀하면 M3 Slice b 의 "scaffold 직후 IT-담당자가 ops pack 을 자동으로 받는다" 약속이 깨지고 사용자가 다시 수동 `python scripts/emit_ops_pack.py` 절차에 의존하게 된다.
 
 ## Git Commit Rules
 

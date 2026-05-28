@@ -356,3 +356,117 @@ def test_preview_end_to_end(client: TestClient, fake_run) -> None:
     assert response.status_code == 200
     # After following the redirect the preview page must render the slug
     assert "customer" in response.text
+
+
+# ---------------------------------------------------------------------------
+# Download tests (S1.6)
+# ---------------------------------------------------------------------------
+
+import io       # noqa: E402
+import zipfile  # noqa: E402
+
+
+def _make_download_result(out_dir: str, slug: str = "customer") -> ScaffoldResult:
+    return ScaffoldResult(
+        success=True,
+        slug=slug,
+        out_dir=out_dir,
+        stages=[StageResult(name="stage1", status="OK")],
+        stdout="",
+        stderr="",
+        returncode=0,
+    )
+
+
+def _make_out_dir(tmp_path):
+    """Create a realistic scaffold output directory for zip tests."""
+    out_dir = tmp_path / "myout"
+    out_dir.mkdir()
+    (out_dir / "README.md").write_text("hello")
+    (out_dir / "sub").mkdir()
+    (out_dir / "sub" / "file.txt").write_text("data")
+    return out_dir
+
+
+# Download test 1 — unknown run_id → 404 + "찾을 수 없습니다" in detail
+def test_download_unknown_run_id_404(client: TestClient) -> None:
+    response = client.get("/domain/doesnotexist/download")
+    assert response.status_code == 404
+    data = response.json()
+    assert "찾을 수 없습니다" in data["detail"]
+
+
+# Download test 2 — non-existent out_dir → 409 + "존재하지 않습니다" in detail
+def test_download_missing_out_dir_409(client: TestClient, tmp_path) -> None:
+    import web.run_registry as rr
+
+    result = _make_download_result(str(tmp_path / "missing"), slug="gone")
+    run_id = rr.register(result)
+
+    response = client.get(f"/domain/{run_id}/download")
+    assert response.status_code == 409
+    data = response.json()
+    assert "존재하지 않습니다" in data["detail"]
+
+
+# Download test 3 — valid out_dir → 200 with application/zip content-type
+def test_download_valid_returns_200_zip(client: TestClient, tmp_path) -> None:
+    import web.run_registry as rr
+
+    out_dir = _make_out_dir(tmp_path)
+    result = _make_download_result(str(out_dir), slug="customer")
+    run_id = rr.register(result)
+
+    response = client.get(f"/domain/{run_id}/download")
+    assert response.status_code == 200
+    assert response.headers["content-type"] == "application/zip"
+
+
+# Download test 4 — Content-Disposition uses slug as filename
+def test_download_content_disposition_uses_slug(client: TestClient, tmp_path) -> None:
+    import web.run_registry as rr
+
+    out_dir = _make_out_dir(tmp_path)
+    result = _make_download_result(str(out_dir), slug="myslug")
+    run_id = rr.register(result)
+
+    response = client.get(f"/domain/{run_id}/download")
+    assert response.status_code == 200
+    disposition = response.headers["content-disposition"]
+    assert 'filename="myslug.zip"' in disposition
+
+
+# Download test 5 — returned bytes are a valid zip containing the files
+def test_download_bytes_are_valid_zip(client: TestClient, tmp_path) -> None:
+    import web.run_registry as rr
+
+    out_dir = _make_out_dir(tmp_path)
+    result = _make_download_result(str(out_dir), slug="customer")
+    run_id = rr.register(result)
+
+    response = client.get(f"/domain/{run_id}/download")
+    assert response.status_code == 200
+
+    zf = zipfile.ZipFile(io.BytesIO(response.content))
+    names = zf.namelist()
+    assert any("README.md" in n for n in names)
+    assert any("file.txt" in n for n in names)
+
+
+# Download test 6 — top-level folder in zip matches basename of out_dir
+def test_download_zip_top_level_folder_matches_out_dir_basename(
+    client: TestClient, tmp_path
+) -> None:
+    import web.run_registry as rr
+
+    out_dir = _make_out_dir(tmp_path)
+    result = _make_download_result(str(out_dir), slug="customer")
+    run_id = rr.register(result)
+
+    response = client.get(f"/domain/{run_id}/download")
+    assert response.status_code == 200
+
+    zf = zipfile.ZipFile(io.BytesIO(response.content))
+    names = sorted(zf.namelist())
+    expected_prefix = out_dir.name + "/"
+    assert all(n.startswith(expected_prefix) for n in names)

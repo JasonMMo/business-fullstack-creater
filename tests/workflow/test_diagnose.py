@@ -160,6 +160,17 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
         '    return "# 배포 SOP\\n"\n',
         encoding="utf-8",
     )
+    # G-72 guard: scripts/workflow/status_board.py exposes compute() +
+    # render_status_section() + STATUS_BOARD_CSS + extract_trap_guards_count
+    # (Growth-72 M2 Exec Status Board).
+    (scripts / "status_board.py").write_text(
+        '"""Growth-72 status board stub."""\n'
+        "STATUS_BOARD_CSS = '.status-board{}'\n"
+        "def compute(*a, **k):\n    return object()\n"
+        "def render_status_section(board):\n    return ''\n"
+        "def extract_trap_guards_count(text):\n    return 0\n",
+        encoding="utf-8",
+    )
     return workspace, creater_root
 
 
@@ -274,7 +285,7 @@ def test_check_cross_layer_coherence_pass(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "11 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71)" in c.detail
+    assert "12 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72)" in c.detail
 
 
 def test_check_cross_layer_coherence_fail_g47_uia_namespace_lost(tmp_path):
@@ -600,6 +611,55 @@ def test_check_cross_layer_coherence_fail_g71_lost_render_function(tmp_path):
     )
     assert c.status == "FAIL"
     assert "G-71" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g72_missing_status_board(tmp_path):
+    # Growth-72: G-72 guard — scripts/workflow/status_board.py absent breaks
+    # the M2 Exec Status Board (portal status section disappears).
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "workflow" / "status_board.py").unlink()
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-72 guard" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g72_lost_render_function(tmp_path):
+    # Dropping render_status_section means the portal HTML fragment is never
+    # emitted — CEO 페르소나가 누적 자산을 볼 수 없게 된다.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "workflow" / "status_board.py").write_text(
+        '"""Growth-72 status board — render dropped."""\n'
+        "STATUS_BOARD_CSS = ''\n"
+        "def compute(*a, **k):\n    return object()\n"
+        "def extract_trap_guards_count(text):\n    return 0\n",
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-72" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g72_lost_growth_marker(tmp_path):
+    # Dropping the Growth-72 provenance marker loses the audit trail back to
+    # the milestone that introduced the contract.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "workflow" / "status_board.py").write_text(
+        '"""status board — provenance dropped."""\n'
+        "STATUS_BOARD_CSS = ''\n"
+        "def compute(*a, **k):\n    return object()\n"
+        "def render_status_section(board):\n    return ''\n"
+        "def extract_trap_guards_count(text):\n    return 0\n",
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-72" in c.detail
 
 
 def test_format_table_summary_lines():

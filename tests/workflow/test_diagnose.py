@@ -114,6 +114,25 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
         "args = ScaffoldArgs(customer_profile=profile)\n",
         encoding="utf-8",
     )
+    # G-69 guard: web/adapters/scaffold_runner.py 가 subprocess.run 으로 scaffold_cli
+    # 호출 + web/routes/domain.py 가 scaffold_runner.run 사용 (Growth-69)
+    web_adapters = creater_root / "web" / "adapters"
+    web_adapters.mkdir(parents=True, exist_ok=True)
+    (web_adapters / "scaffold_runner.py").write_text(
+        "import subprocess\n"
+        "from web.settings import get_settings\n"
+        "def run(request, *, timeout_sec=300):\n"
+        "    cli_path = get_settings().scaffold_cli_path  # scaffold_cli.py\n"
+        "    subprocess.run([cli_path], cwd='.')\n",
+        encoding="utf-8",
+    )
+    web_routes = creater_root / "web" / "routes"
+    web_routes.mkdir(parents=True, exist_ok=True)
+    (web_routes / "domain.py").write_text(
+        "from web.adapters import scaffold_runner\n"
+        "def post():\n    result = scaffold_runner.run(req)\n",
+        encoding="utf-8",
+    )
     return workspace, creater_root
 
 
@@ -228,7 +247,7 @@ def test_check_cross_layer_coherence_pass(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "8 trap guards intact (G-47/48/50a/50b/58/61/62/63)" in c.detail
+    assert "9 trap guards intact (G-47/48/50a/50b/58/61/62/63/69)" in c.detail
 
 
 def test_check_cross_layer_coherence_fail_g47_uia_namespace_lost(tmp_path):
@@ -408,6 +427,47 @@ def test_check_cross_layer_coherence_fail_g63_missing_scaffold_cli(tmp_path):
     )
     assert c.status == "FAIL"
     assert "G-63 guard" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g69_runner_lost_subprocess(tmp_path):
+    # Growth-69: G-69 regression guard — web/adapters/scaffold_runner.py must
+    # invoke scripts/scaffold_cli.py via subprocess. Re-implementing scaffold
+    # logic in the web layer bypasses the 6-axis compounding.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "web" / "adapters" / "scaffold_runner.py").write_text(
+        "def run(request, *, timeout_sec=300):\n"
+        "    return reimplemented_scaffold(request)\n",
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-69" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g69_missing_runner(tmp_path):
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "web" / "adapters" / "scaffold_runner.py").unlink()
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-69 guard" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g69_domain_route_lost_call(tmp_path):
+    # Web 경로가 scaffold_runner.run 을 호출하지 않으면 adapter 우회 가능 — 트랩.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "web" / "routes" / "domain.py").write_text(
+        "def post():\n    return reimplemented_scaffold()\n",
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-69" in c.detail
 
 
 def test_format_table_summary_lines():

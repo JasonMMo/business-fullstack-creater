@@ -92,11 +92,22 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
         encoding="utf-8",
     )
     # G-58 guard: scaffold_orchestrator.py with vanilla Stage 4 skip gate
+    # G-74 guard: ops_pack auto-emit wiring (Growth-74 M3 Slice b)
     (creater_root / "scripts" / "scaffold_orchestrator.py").write_text(
         'def _run_stage4(args, stage_paths, report):\n'
         '    if args.lane == "vanilla":\n'
         '        report.stages_run.append("stage4-skipped-vanilla")\n'
-        '        return\n',
+        '        return\n'
+        '\n'
+        '# Growth-74 (M3 Slice b)\n'
+        'def _run_emit_ops_pack(args, report):\n'
+        '    import emit_ops_pack\n'
+        '    if False:\n'
+        '        report.stages_run.append("ops_pack-skipped-no-shell")\n'
+        '        report.stages_run.append("ops_pack-failed")\n'
+        '\n'
+        'def run_scaffold(args):\n'
+        '    _run_emit_ops_pack(args, report)\n',
         encoding="utf-8",
     )
     # G-61 guard: web_index._default_source_resolver with domain_slug=None
@@ -285,7 +296,10 @@ def test_check_cross_layer_coherence_pass(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "12 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72)" in c.detail
+    assert (
+        "13 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74)"
+        in c.detail
+    )
 
 
 def test_check_cross_layer_coherence_fail_g47_uia_namespace_lost(tmp_path):
@@ -660,6 +674,66 @@ def test_check_cross_layer_coherence_fail_g72_lost_growth_marker(tmp_path):
     )
     assert c.status == "FAIL"
     assert "G-72" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g74_missing_orchestrator(tmp_path):
+    # Growth-74: G-74 guard — scaffold_orchestrator.py absent breaks ops_pack
+    # auto-emit (M3 Slice b). Already triggers G-58, but G-74 must also fire.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "scaffold_orchestrator.py").unlink()
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-74 guard" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g74_lost_helper(tmp_path):
+    # Dropping _run_emit_ops_pack helper means Stage 5 PASS no longer auto-emits
+    # the ops pack — IT-담당자 페르소나는 다시 수동 emit_ops_pack 호출에 의존.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "scaffold_orchestrator.py").write_text(
+        'def _run_stage4(args, stage_paths, report):\n'
+        '    if args.lane == "vanilla":\n'
+        '        report.stages_run.append("stage4-skipped-vanilla")\n'
+        '        return\n'
+        '\n'
+        '# Growth-74 marker present but helper deleted\n'
+        'def run_scaffold(args):\n'
+        '    pass\n',
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-74" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g74_lost_skip_marker(tmp_path):
+    # Dropping the `ops_pack-skipped-no-shell` marker means the orchestrator can
+    # no longer signal forward-compatible skip — _write_report rendering breaks.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "scaffold_orchestrator.py").write_text(
+        'def _run_stage4(args, stage_paths, report):\n'
+        '    if args.lane == "vanilla":\n'
+        '        report.stages_run.append("stage4-skipped-vanilla")\n'
+        '        return\n'
+        '\n'
+        '# Growth-74 (M3 Slice b) — helper kept, but markers stripped\n'
+        'def _run_emit_ops_pack(args, report):\n'
+        '    import emit_ops_pack\n'
+        '    report.stages_run.append("ops_pack-failed")\n'
+        '\n'
+        'def run_scaffold(args):\n'
+        '    _run_emit_ops_pack(args, report)\n',
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-74" in c.detail
 
 
 def test_format_table_summary_lines():

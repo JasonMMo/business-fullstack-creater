@@ -826,6 +826,41 @@ def test_stage3_no_table_prefix_when_none(tmp_path):
     assert "--table-prefix" not in argv_txt
 
 
+def test_stage3_forwards_url_prefix(tmp_path):
+    """Growth-68: --url-prefix forwarded to stage3 compile.py."""
+    _make_full_fake_chain(tmp_path)
+    creator = tmp_path / "creater"; creator.mkdir()
+    out = tmp_path / "out"
+    args = ScaffoldArgs(
+        domain="t", domain_slug="t", wiki_mode="preset", preset="t",
+        wiki_path=None, lane="nexacro", default_pattern="D2",
+        package="com.example.t", out_dir=out, creator_root=creator,
+        stop_after_stage=3,
+        url_prefix="/api/v1",
+    )
+    run_scaffold(args)
+    argv_txt = (out / "3-mybatis" / "argv.txt").read_text(encoding="utf-8")
+    assert "--url-prefix" in argv_txt
+    assert "/api/v1" in argv_txt
+
+
+def test_stage3_no_url_prefix_when_none(tmp_path):
+    """Growth-68: url_prefix=None must NOT add --url-prefix arg."""
+    _make_full_fake_chain(tmp_path)
+    creator = tmp_path / "creater"; creator.mkdir()
+    out = tmp_path / "out"
+    args = ScaffoldArgs(
+        domain="t", domain_slug="t", wiki_mode="preset", preset="t",
+        wiki_path=None, lane="nexacro", default_pattern="D2",
+        package="com.example.t", out_dir=out, creator_root=creator,
+        stop_after_stage=3,
+        url_prefix=None,
+    )
+    run_scaffold(args)
+    argv_txt = (out / "3-mybatis" / "argv.txt").read_text(encoding="utf-8")
+    assert "--url-prefix" not in argv_txt
+
+
 def test_stage4_forwards_frame(tmp_path):
     """Growth-67: --frame forwarded to stage4 form_gen.py."""
     _make_full_fake_chain(tmp_path)

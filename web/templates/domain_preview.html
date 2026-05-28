@@ -60,6 +60,9 @@
 
 <section class="download-section">
   <a class="btn-cta" href="/domain/{{ run_id }}/download">산출물 ZIP 다운로드</a>
+  {% if ops_pack_available %}
+  <a class="btn-cta btn-ops" href="/domain/{{ run_id }}/ops.zip">Ops Pack 다운로드 (IT-담당자)</a>
+  {% endif %}
 </section>
 
 <section class="log-section">

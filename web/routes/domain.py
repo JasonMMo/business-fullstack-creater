@@ -10,7 +10,7 @@ import re
 from typing import List, Optional
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 from web.adapters import scaffold_runner
 from web.adapters.scaffold_runner import ScaffoldRequest
@@ -48,7 +48,7 @@ async def domain_form_get(request: Request) -> HTMLResponse:
 # POST /domain/new
 # ---------------------------------------------------------------------------
 
-@router.post("/new")
+@router.post("/new", response_model=None)
 async def domain_form_post(
     request: Request,
     domain: str = Form(default=""),
@@ -59,7 +59,7 @@ async def domain_form_post(
     wiki_mode: str = Form(default="preset"),
     preset: str = Form(default=""),
     customer_profile: str = Form(default=""),
-) -> HTMLResponse | RedirectResponse:
+) -> Response:
     """Validate form, run scaffold, register result, redirect to preview."""
     templates = request.app.state.templates
 

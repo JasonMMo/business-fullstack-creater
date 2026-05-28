@@ -57,13 +57,15 @@
 
 ## Cross-layer Coherence Guards
 
-`scripts/workflow/diagnose.py` 가 11개 회귀 가드 점검: G-47/48/50a/50b/58/61/62/63/69/70/71. 새 cross-layer 결합이 생기면 G-72+ 로 추가.
+`scripts/workflow/diagnose.py` 가 12개 회귀 가드 점검: G-47/48/50a/50b/58/61/62/63/69/70/71/72. 새 cross-layer 결합이 생기면 G-73+ 로 추가.
 
 **G-69 (Growth-69 Web-axis subprocess invariant)**: `web/` 가 `scripts/scaffold_cli.py` 를 subprocess 로 호출하는 형태를 유지해야 한다. web 경로에서 scaffold 로직을 재구현하면 6-axis 누적(skill/ddl/mybatis/nexacro/creater/customer) 이 web 사용자에게만 우회되어 깨진다.
 
 **G-70 (Growth-70 target_project extractor contract)**: `scripts/extract_target_profile.py` 가 v1 customer profile (`version: 1` + `customer.slug` + Growth-70 헤더) 만 emit 해야 한다. 회귀하면 추출된 profile 이 `load_customer_profile` 의 G-62/G-63 pin 을 통과 못해 M5 (target_project overlay) 입력단이 깨지면서 6번째 축 자동 적용이 무력화된다.
 
 **G-71 (Growth-71 Ops Pack emitter contract)**: `scripts/emit_ops_pack.py` 가 4 산출물 (Dockerfile / docker-compose.yml / .env.example / DEPLOY-SOP.md) 을 모두 emit 하고 multi-stage Docker 빌더 (`maven:3.9-eclipse-temurin-17 AS builder`) 패턴을 유지해야 한다. 회귀하면 IT-담당자 페르소나의 "dev 환경 없이 1시간 배포" 시나리오 (M3 Ops Pack 수락 기준) 가 깨진다.
+
+**G-72 (Growth-72 Status Board emitter contract)**: `scripts/workflow/status_board.py` 가 `compute()` + `render_status_section()` + `STATUS_BOARD_CSS` + `extract_trap_guards_count()` 4 계약을 유지해야 한다. 회귀하면 CEO 페르소나의 "축적된 자산 한눈에 보기" (M2 Exec Status Board 수락 기준) 가 깨지고 portal 의 status 섹션이 비어버린다.
 
 ## Git Commit Rules
 

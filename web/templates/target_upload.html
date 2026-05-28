@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+
+{% block title %}기존 프로젝트 업로드 — 고객사 풀스택 생성기{% endblock %}
+
+{% block content %}
+<h1>기존 프로젝트에서 고객 프로파일 추출</h1>
+<p>
+  운영 중인 SpringBoot 프로젝트(Maven 또는 Gradle) zip 을 업로드하면
+  <strong>customer profile (v1) YAML</strong> 을 자동 생성합니다.
+  추출된 YAML 은 <code>/scaffold --customer-profile &lt;slug&gt;</code> 로 바로 사용할 수 있습니다.
+</p>
+
+{% if errors %}
+<div class="error-list">
+  <p>다음 항목을 확인해 주세요:</p>
+  <ul>{% for e in errors %}<li>{{ e }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<form method="post" action="/target/upload" enctype="multipart/form-data" class="scaffold-form">
+
+  <div class="form-group">
+    <label for="project_zip">프로젝트 zip <span class="required">*</span></label>
+    <input
+      type="file"
+      id="project_zip"
+      name="project_zip"
+      accept=".zip,application/zip"
+      required
+    >
+    <small>최상위에 <code>pom.xml</code> 또는 <code>build.gradle(.kts)</code> 가 있어야 합니다.</small>
+  </div>
+
+  <div class="form-group">
+    <label for="slug">슬러그 (선택)</label>
+    <input
+      type="text"
+      id="slug"
+      name="slug"
+      value="{{ form.slug | default('') }}"
+      placeholder="예: acme (생략 시 artifact-id 에서 자동 추론)"
+      pattern="[a-z][a-z0-9_-]*"
+    >
+    <small>비워두면 <code>pom.xml &lt;artifactId&gt;</code> 또는 <code>settings.gradle rootProject.name</code> 에서 도출합니다.</small>
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" name="download" value="" class="btn-primary">미리보기</button>
+    <button type="submit" name="download" value="1" class="btn-secondary">YAML 다운로드</button>
+  </div>
+
+</form>
+
+{% if result %}
+<section class="extraction-result">
+  <h2>추출 결과</h2>
+  <dl>
+    <dt>슬러그</dt><dd><code>{{ result.slug }}</code></dd>
+    <dt>입력 형식</dt><dd>{{ result.source }}</dd>
+  </dl>
+  <h3>profiles/{{ result.slug }}.yaml</h3>
+  <pre class="yaml-preview"><code>{{ result.yaml_text }}</code></pre>
+  <form method="post" action="/target/upload" enctype="multipart/form-data" style="display:none">
+    <!-- placeholder; download is re-issued by user clicking from the form above -->
+  </form>
+  <p class="hint">
+    YAML 을 <code>profiles/{{ result.slug }}.yaml</code> 로 저장 → <code>customer.status</code> 를
+    <code>active</code> 로 변경 → 환경변수(<code>${...}</code>) 채운 후
+    <code>/scaffold --customer-profile {{ result.slug }}</code> 로 사용하세요.
+  </p>
+</section>
+{% endif %}
+{% endblock %}

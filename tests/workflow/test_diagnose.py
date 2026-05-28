@@ -182,6 +182,23 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
         "def extract_trap_guards_count(text):\n    return 0\n",
         encoding="utf-8",
     )
+    # G-75 guard: web/routes/ops.py exposes /{run_id}/ops.zip route + reads
+    # shell/ops/ via zip_emitter (Growth-75 M3 Slice c). web/app.py includes
+    # ops_router.
+    (web_routes / "ops.py").write_text(
+        '"""Growth-75 ops download route stub."""\n'
+        'from web.adapters import zip_emitter\n'
+        '@router.get("/{run_id}/ops.zip")\n'
+        'def domain_ops_download(run_id):\n'
+        '    ops_dir = out_dir / "shell" / "ops"\n'
+        '    return zip_emitter.emit(ops_dir)\n',
+        encoding="utf-8",
+    )
+    (creater_root / "web" / "app.py").write_text(
+        "from web.routes.ops import router as ops_router\n"
+        "application.include_router(ops_router)\n",
+        encoding="utf-8",
+    )
     return workspace, creater_root
 
 
@@ -297,7 +314,7 @@ def test_check_cross_layer_coherence_pass(tmp_path):
     )
     assert c.status == "PASS"
     assert (
-        "13 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74)"
+        "14 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75)"
         in c.detail
     )
 
@@ -734,6 +751,55 @@ def test_check_cross_layer_coherence_fail_g74_lost_skip_marker(tmp_path):
     )
     assert c.status == "FAIL"
     assert "G-74" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g75_missing_route(tmp_path):
+    # Growth-75: G-75 guard — web/routes/ops.py absent breaks the M3 Slice c
+    # promise that IT-담당자 페르소나 can download just the ops pack zip.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "web" / "routes" / "ops.py").unlink()
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-75 guard" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g75_reinvokes_emit(tmp_path):
+    # If web/routes/ops.py imports emit_ops_pack, it violates the Growth-74
+    # single-source contract (orchestrator owns emit; route only reads).
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "web" / "routes" / "ops.py").write_text(
+        '"""Growth-75 ops download route stub — bad: re-invokes emit."""\n'
+        "from web.adapters import zip_emitter\n"
+        "import emit_ops_pack\n"
+        '@router.get("/{run_id}/ops.zip")\n'
+        "def domain_ops_download(run_id):\n"
+        '    emit_ops_pack.emit(out_dir)\n'
+        '    return zip_emitter.emit(out_dir / "shell" / "ops")\n',
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-75 regression" in c.detail
+    assert "re-invokes emit_ops_pack" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g75_app_does_not_include_router(tmp_path):
+    # web/app.py must include ops_router for the route to be active.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "web" / "app.py").write_text(
+        "# ops_router not included — regression\n",
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-75" in c.detail
+    assert "ops_router" in c.detail
 
 
 def test_format_table_summary_lines():

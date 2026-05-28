@@ -389,3 +389,113 @@ def test_cli_vault_flag_wires_through(tmp_path):
     assert (ops / "vault-agent.hcl").exists()
     assert (ops / "docker-compose.vault.yml").exists()
     assert (ops / "env.tmpl").exists()
+
+
+# ---------------------------------------------------------------------------
+# Growth-77 — Keycloak/OIDC SSO sidecar overlay
+# ---------------------------------------------------------------------------
+
+import json as _json
+
+
+def test_sso_off_by_default_emits_no_sso_artifacts(tmp_path):
+    _write_scaffold(tmp_path)
+    ops = eop.emit(tmp_path)
+    assert not (ops / "docker-compose.sso.yml").exists()
+    assert not (ops / "keycloak-realm.json").exists()
+    assert not (ops / ".env.sso.example").exists()
+
+
+def test_sso_flag_emits_three_additional_artifacts(tmp_path):
+    _write_scaffold(tmp_path)
+    ops = eop.emit(tmp_path, sso=True)
+    assert (ops / "docker-compose.sso.yml").exists()
+    assert (ops / "keycloak-realm.json").exists()
+    assert (ops / ".env.sso.example").exists()
+
+
+def test_sso_compose_overlay_contains_keycloak_service(tmp_path):
+    _write_scaffold(tmp_path)
+    ops = eop.emit(tmp_path, sso=True)
+    compose = (ops / "docker-compose.sso.yml").read_text(encoding="utf-8")
+    assert "keycloak:" in compose
+    assert "quay.io/keycloak/keycloak" in compose
+    assert "start-dev" in compose
+    assert "OIDC_ISSUER_URI" in compose
+    assert "depends_on:" in compose
+
+
+def test_sso_realm_json_is_valid_with_one_client(tmp_path):
+    _write_scaffold(tmp_path)
+    profile = {"version": 1, "customer": {"slug": "acme"}}
+    ops = eop.emit(tmp_path, profile=profile, sso=True)
+    realm = _json.loads((ops / "keycloak-realm.json").read_text(encoding="utf-8"))
+    assert realm["realm"] == "acme"
+    assert realm["enabled"] is True
+    assert len(realm["clients"]) == 1
+    client = realm["clients"][0]
+    assert client["clientId"] == "acme-app"
+    assert client["protocol"] == "openid-connect"
+    assert "redirectUris" in client
+
+
+def test_sso_env_example_contract(tmp_path):
+    _write_scaffold(tmp_path)
+    profile = {"version": 1, "customer": {"slug": "acme"}}
+    ops = eop.emit(tmp_path, profile=profile, sso=True)
+    env = (ops / ".env.sso.example").read_text(encoding="utf-8")
+    assert "OIDC_ISSUER_URI=http://keycloak:8080/realms/acme" in env
+    assert "OIDC_CLIENT_ID=acme-app" in env
+    assert "OIDC_CLIENT_SECRET=" in env  # left blank for IT-담당자
+    assert "OIDC_REDIRECT_URI=" in env
+
+
+def test_sso_sop_appends_section_10(tmp_path):
+    _write_scaffold(tmp_path)
+    profile = {"version": 1, "customer": {"slug": "acme"}}
+    ops = eop.emit(tmp_path, profile=profile, sso=True)
+    sop = (ops / "DEPLOY-SOP.md").read_text(encoding="utf-8")
+    assert "## 10. Keycloak/OIDC SSO sidecar" in sop
+    assert "docker-compose.sso.yml" in sop
+    assert 'realm "acme"' in sop or 'realm `acme`' in sop or "realm `acme-shell`" in sop or "acme" in sop
+
+
+def test_sso_sop_omitted_when_sso_off(tmp_path):
+    _write_scaffold(tmp_path)
+    ops = eop.emit(tmp_path)
+    sop = (ops / "DEPLOY-SOP.md").read_text(encoding="utf-8")
+    assert "## 10. Keycloak/OIDC SSO sidecar" not in sop
+
+
+def test_sso_opt_in_via_profile(tmp_path):
+    _write_scaffold(tmp_path)
+    profile = {
+        "version": 1,
+        "customer": {"slug": "acme"},
+        "overlay": {"sso_keycloak": True},
+    }
+    ops = eop.emit(tmp_path, profile=profile)  # sso=False by default
+    assert (ops / "docker-compose.sso.yml").exists()
+    assert (ops / "keycloak-realm.json").exists()
+
+
+def test_cli_sso_flag_wires_through(tmp_path):
+    _write_scaffold(tmp_path)
+    rc = eop.main([str(tmp_path), "--sso"])
+    assert rc == 0
+    ops = tmp_path / "shell" / "ops"
+    assert (ops / "docker-compose.sso.yml").exists()
+    assert (ops / "keycloak-realm.json").exists()
+    assert (ops / ".env.sso.example").exists()
+
+
+def test_sso_and_vault_can_combine(tmp_path):
+    _write_scaffold(tmp_path)
+    profile = {"version": 1, "customer": {"slug": "acme"}}
+    ops = eop.emit(tmp_path, profile=profile, vault=True, sso=True)
+    # Both overlays emit
+    assert (ops / "docker-compose.vault.yml").exists()
+    assert (ops / "docker-compose.sso.yml").exists()
+    sop = (ops / "DEPLOY-SOP.md").read_text(encoding="utf-8")
+    assert "## 9. Vault Agent sidecar" in sop
+    assert "## 10. Keycloak/OIDC SSO sidecar" in sop

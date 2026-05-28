@@ -359,6 +359,70 @@ def _build_parser() -> argparse.ArgumentParser:
             "Ignored when --auth-mode=none."
         ),
     )
+    # ---- Growth-67: 9 gap fields from customer profile ---------------------
+    p.add_argument(
+        "--table-prefix",
+        metavar="<prefix>",
+        default=None,
+        dest="table_prefix",
+        help="Stage 3 MyBatis table prefix (profile: mybatis.table_prefix, default 'TB_').",
+    )
+    p.add_argument(
+        "--frame",
+        metavar="<frame>",
+        default=None,
+        dest="frame",
+        help="Stage 4 Nexacro frame type (profile: nexacro.frame, default 'packageN').",
+    )
+    p.add_argument(
+        "--maven-group-id",
+        metavar="<groupId>",
+        default=None,
+        dest="maven_group_id",
+        help="Stage 5 Maven groupId (profile: overlay.maven.group_id).",
+    )
+    p.add_argument(
+        "--maven-artifact-id",
+        metavar="<artifactId>",
+        default=None,
+        dest="maven_artifact_id",
+        help="Stage 5 Maven artifactId template (profile: overlay.maven.artifact_id_template).",
+    )
+    p.add_argument(
+        "--maven-version",
+        metavar="<version>",
+        default=None,
+        dest="maven_version",
+        help="Stage 5 Maven version (profile: overlay.maven.version, default '1.0.0-SNAPSHOT').",
+    )
+    p.add_argument(
+        "--ds-username",
+        metavar="<user>",
+        default=None,
+        dest="ds_username",
+        help="Stage 5 datasource username override (profile: overlay.datasource.username).",
+    )
+    p.add_argument(
+        "--ds-password",
+        metavar="<pass>",
+        default=None,
+        dest="ds_password",
+        help="Stage 5 datasource password override (profile: overlay.datasource.password).",
+    )
+    p.add_argument(
+        "--ds-url",
+        metavar="<url>",
+        default=None,
+        dest="ds_url",
+        help="Stage 5 datasource JDBC URL override (profile: overlay.datasource.url_template interpolated).",
+    )
+    p.add_argument(
+        "--url-prefix",
+        metavar="<prefix>",
+        default=None,
+        dest="url_prefix",
+        help="MyBatis URL prefix (profile: mybatis.url_prefix, default '/uiadapter'). Stored for future use.",
+    )
     return p
 
 
@@ -437,6 +501,34 @@ def main(argv=None):
     uia_namespace = resolve_with_profile(
         a.uia_namespace, profile, "mybatis", "uia_namespace", default="jakarta",
     )
+    # Growth-67: 9 gap fields
+    table_prefix = resolve_with_profile(
+        a.table_prefix, profile, "mybatis", "table_prefix", default=None,
+    )
+    frame = resolve_with_profile(
+        a.frame, profile, "nexacro", "frame", default=None,
+    )
+    maven_group_id = resolve_with_profile(
+        a.maven_group_id, profile, "overlay", "maven", "group_id", default=None,
+    )
+    maven_artifact_id = resolve_with_profile(
+        a.maven_artifact_id, profile, "overlay", "maven", "artifact_id_template", default=None,
+    )
+    maven_version = resolve_with_profile(
+        a.maven_version, profile, "overlay", "maven", "version", default=None,
+    )
+    ds_username = resolve_with_profile(
+        a.ds_username, profile, "overlay", "datasource", "username", default=None,
+    )
+    ds_password = resolve_with_profile(
+        a.ds_password, profile, "overlay", "datasource", "password", default=None,
+    )
+    ds_url = resolve_with_profile(
+        a.ds_url, profile, "overlay", "datasource", "url_template", default=None,
+    )
+    url_prefix = resolve_with_profile(
+        a.url_prefix, profile, "mybatis", "url_prefix", default=None,
+    )
 
     # Resolve creator_root: parent of this script's parent directory
     creator_root = pathlib.Path(__file__).resolve().parent.parent
@@ -491,6 +583,16 @@ def main(argv=None):
         auth_lane=auth_lane,
         uia_namespace=uia_namespace,
         customer_profile=profile,
+        # Growth-67: 9 gap fields
+        table_prefix=table_prefix,
+        frame=frame,
+        maven_group_id=maven_group_id,
+        maven_artifact_id=maven_artifact_id,
+        maven_version=maven_version,
+        ds_username=ds_username,
+        ds_password=ds_password,
+        ds_url=ds_url,
+        url_prefix=url_prefix,
     )
 
     try:

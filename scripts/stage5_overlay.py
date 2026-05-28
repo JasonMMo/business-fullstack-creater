@@ -148,6 +148,9 @@ def _nexacro_overlay_run(
     # so this is intentionally ignored here.
     auth_mode: str = "none",
     auth_lane: str = "jakarta",
+    # Growth-67: accepted for signature parity with shell adapter; nexacro overlay
+    # does not use maven_* / ds_* (no pom.xml emitted here).
+    **_unused,
 ) -> dict:
     """Nexacro UIAdapter overlay (xfdl + menu + typedef + Java package rename).
 

@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block title %}산출 결과 — {{ result.slug }} — 고객사 풀스택 생성기{% endblock %}
+
+{% block content %}
+<h1>산출 결과 — {{ result.slug }}</h1>
+
+<div class="preview-summary">
+  {% if result.success %}
+  <span class="badge badge-success">성공</span>
+  {% else %}
+  <span class="badge badge-fail">실패</span>
+  {% endif %}
+
+  <p class="stage-counts">
+    스테이지 {{ ok_count }}/{{ stage_count }} 통과
+    {% if fail_count > 0 %}
+    &nbsp;&mdash;&nbsp;<span class="fail-count">{{ fail_count }}개 실패</span>
+    {% endif %}
+  </p>
+</div>
+
+{% if result.stages %}
+<section class="stages-section">
+  <h2>스테이지 결과</h2>
+  <table class="stages-table">
+    <thead>
+      <tr>
+        <th>단계</th>
+        <th>상태</th>
+        <th>소요(ms)</th>
+        <th>비고</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for stage in result.stages %}
+      <tr>
+        <td>{{ stage.name }}</td>
+        <td>
+          {% if stage.status == "OK" %}
+          <span class="stage-ok">{{ stage.status }}</span>
+          {% elif stage.status == "SKIPPED" %}
+          <span class="stage-skipped">{{ stage.status }}</span>
+          {% else %}
+          <span class="stage-fail">{{ stage.status }}</span>
+          {% endif %}
+        </td>
+        <td>{{ stage.duration_ms if stage.duration_ms is not none else "—" }}</td>
+        <td>{{ stage.note or "" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<section class="out-dir-section">
+  <p><strong>산출 디렉터리:</strong> <code>{{ result.out_dir }}</code></p>
+</section>
+
+<section class="download-section">
+  <a class="btn-cta" href="/domain/{{ run_id }}/download">산출물 ZIP 다운로드</a>
+</section>
+
+<section class="log-section">
+  <details>
+    <summary>로그 (stdout)</summary>
+    <pre class="log-output">{{ result.stdout }}</pre>
+  </details>
+  <details>
+    <summary>오류 로그 (stderr)</summary>
+    <pre class="log-output">{{ result.stderr }}</pre>
+  </details>
+  {% if result.raw_report %}
+  <details>
+    <summary>리포트 (scaffold-report.md)</summary>
+    <pre class="log-output">{{ result.raw_report }}</pre>
+  </details>
+  {% endif %}
+</section>
+
+<p class="back-link"><a href="/domain/new">다른 도메인 정의하기</a></p>
+{% endblock %}

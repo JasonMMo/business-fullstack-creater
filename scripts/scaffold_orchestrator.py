@@ -48,6 +48,16 @@ class ScaffoldArgs:
     # Growth-63: parsed customer profile (6th axis). None when --customer-profile not used.
     # Schema in profiles/_README.md; loader: scaffold_cli.load_customer_profile.
     customer_profile: Optional[dict] = None
+    # Growth-67: 9 gap fields wired from customer profile to sibling stage CLIs.
+    table_prefix: Optional[str] = None        # mybatis.table_prefix → --table-prefix (stage3)
+    frame: Optional[str] = None               # nexacro.frame → --frame (stage4 form_gen.py)
+    maven_group_id: Optional[str] = None      # overlay.maven.group_id → run_overlay(maven_group_id=)
+    maven_artifact_id: Optional[str] = None   # overlay.maven.artifact_id_template → run_overlay(maven_artifact_id=)
+    maven_version: Optional[str] = None       # overlay.maven.version → run_overlay(maven_version=)
+    ds_username: Optional[str] = None         # overlay.datasource.username override
+    ds_password: Optional[str] = None         # overlay.datasource.password override
+    ds_url: Optional[str] = None              # overlay.datasource.url_template (interpolated) override
+    url_prefix: Optional[str] = None          # mybatis.url_prefix — stored for future use; mybatis compile.py lacks --url-prefix (Growth-67 known gap)
 
 
 @dataclass
@@ -222,6 +232,9 @@ def _run_stage3(args, stage_paths, report):
     # E4: pass --seed-dir only when Stage 2 actually emitted seed files
     if seed_dir.exists() and any(seed_dir.iterdir()):
         cmd += ["--seed-dir", str(seed_dir)]
+    # Growth-67: forward table_prefix when set by customer profile
+    if args.table_prefix is not None:
+        cmd += ["--table-prefix", args.table_prefix]
     dur, _ = _run(cmd, cwd=s3, label="stage3.compile")
     report.stages_run.append("stage3")
     report.stage_durations_ms["stage3"] = dur
@@ -260,6 +273,9 @@ def _run_stage4(args, stage_paths, report):
     # E5: derive service_name from domain_slug when not explicit
     service_name = args.service_name or _derive_service_pascal(args.domain_slug)
     cmd += ["--service-name", service_name]
+    # Growth-67: forward frame when set by customer profile
+    if args.frame is not None:
+        cmd += ["--frame", args.frame]
     dur, _ = _run(cmd, cwd=s4, label="stage4.compile")
     report.stages_run.append("stage4")
     report.stage_durations_ms["stage4"] = dur
@@ -326,12 +342,15 @@ def _run_stage5(args, stage_paths, report):
                 nexacro_skill_root=nexacro_skill_root,
                 target_pkg_prefix=args.target_pkg_prefix,
                 source_pkg_prefix=".".join(args.package.split(".")[:-1]) or "com.example",
-                maven_group_id=getattr(args, "maven_group_id", None) or args.target_pkg_prefix,
-                maven_artifact_id=getattr(args, "maven_artifact_id", None),
-                maven_version=getattr(args, "maven_version", None) or "0.1.0-SNAPSHOT",
+                maven_group_id=args.maven_group_id or args.target_pkg_prefix,
+                maven_artifact_id=args.maven_artifact_id,
+                maven_version=args.maven_version or "0.1.0-SNAPSHOT",
                 dialect=args.dialect,
                 auth_mode=args.auth_mode,
                 auth_lane=args.auth_lane,
+                ds_username=args.ds_username,
+                ds_password=args.ds_password,
+                ds_url=args.ds_url,
             )
             shell_dur = int((time.monotonic() - t0s) * 1000)
         except RuntimeError as exc:
@@ -375,6 +394,13 @@ def _run_stage5(args, stage_paths, report):
             # Growth-24: react adapter uses auth_mode to gate LoginPage.tsx
             auth_mode=args.auth_mode,
             auth_lane=args.auth_lane,
+            # Growth-67: maven and datasource overrides from customer profile
+            maven_group_id=args.maven_group_id,
+            maven_artifact_id=args.maven_artifact_id,
+            maven_version=args.maven_version,
+            ds_username=args.ds_username,
+            ds_password=args.ds_password,
+            ds_url=args.ds_url,
         )
         dur = int((time.monotonic() - t0) * 1000)
     except RuntimeError as exc:

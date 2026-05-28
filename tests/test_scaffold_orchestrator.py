@@ -703,6 +703,140 @@ def test_no_profile_no_writeback(tmp_path):
     assert profile_yaml.read_text(encoding="utf-8") == original_content
 
 
+# ---------------------------------------------------------------------------
+# Growth-74 (M3 Slice b): emit_ops_pack auto-call post-Stage 5
+# ---------------------------------------------------------------------------
+
+def test_stage5_pass_no_shell_marks_skipped(tmp_path):
+    """Stage 5 PASS 했지만 out/shell/pom.xml 부재 → 'ops_pack-skipped-no-shell' 마커."""
+    args = _make_stage5_args(tmp_path, domain_slug="order", customer_profile=None)
+    fake_overlay_result = {
+        "java_copied": 0, "resources_copied": 0, "xfdl_copied": 0,
+        "renamed_imports": 0, "backed_up": 0, "typedef_added": False,
+        "menu_warning": None,
+    }
+    with patch(
+        "scaffold_orchestrator.stage5_overlay.run_overlay",
+        return_value=fake_overlay_result,
+    ):
+        report = run_scaffold(args)
+
+    assert "stage5" in report.stages_run
+    assert "ops_pack-skipped-no-shell" in report.stages_run
+    assert "ops_pack" not in report.stages_run
+    # report 본문에 forward-compatible 스킵 사유가 적혀있어야 한다
+    report_md = (args.out_dir / "scaffold-report.md").read_text(encoding="utf-8")
+    assert "ops_pack: SKIPPED" in report_md
+    assert "Growth-74" in report_md
+
+
+def test_stage5_pass_with_shell_pom_invokes_emit(tmp_path):
+    """out/shell/pom.xml 존재 시 emit_ops_pack.emit 호출 + 'ops_pack' 마커."""
+    args = _make_stage5_args(tmp_path, domain_slug="order", customer_profile=None)
+    fake_overlay_result = {
+        "java_copied": 0, "resources_copied": 0, "xfdl_copied": 0,
+        "renamed_imports": 0, "backed_up": 0, "typedef_added": False,
+        "menu_warning": None,
+    }
+
+    def _seed_shell(*a, **kw):
+        shell_dir = args.out_dir / "shell"
+        shell_dir.mkdir(parents=True, exist_ok=True)
+        (shell_dir / "pom.xml").write_text("<project/>", encoding="utf-8")
+        return fake_overlay_result
+
+    with patch(
+        "scaffold_orchestrator.stage5_overlay.run_overlay",
+        side_effect=_seed_shell,
+    ), patch("emit_ops_pack.emit") as mock_emit:
+        report = run_scaffold(args)
+
+    assert "stage5" in report.stages_run
+    assert "ops_pack" in report.stages_run
+    assert "ops_pack-skipped-no-shell" not in report.stages_run
+    assert "ops_pack-failed" not in report.stages_run
+    mock_emit.assert_called_once()
+    kwargs = mock_emit.call_args.kwargs
+    assert kwargs.get("profile") is None
+    assert kwargs.get("shell_subdir") == "shell"
+
+
+def test_stage5_pass_emit_failure_is_nonfatal(tmp_path):
+    """emit_ops_pack.emit 실패 시 'ops_pack-failed' 마커 + scaffold 자체는 PASS."""
+    args = _make_stage5_args(tmp_path, domain_slug="order", customer_profile=None)
+    fake_overlay_result = {
+        "java_copied": 0, "resources_copied": 0, "xfdl_copied": 0,
+        "renamed_imports": 0, "backed_up": 0, "typedef_added": False,
+        "menu_warning": None,
+    }
+
+    def _seed_shell(*a, **kw):
+        shell_dir = args.out_dir / "shell"
+        shell_dir.mkdir(parents=True, exist_ok=True)
+        (shell_dir / "pom.xml").write_text("<project/>", encoding="utf-8")
+        return fake_overlay_result
+
+    with patch(
+        "scaffold_orchestrator.stage5_overlay.run_overlay",
+        side_effect=_seed_shell,
+    ), patch("emit_ops_pack.emit", side_effect=RuntimeError("ops boom")):
+        report = run_scaffold(args)  # Growth-66 패턴: 비치명 — 예외 전파 금지
+
+    assert "stage5" in report.stages_run
+    assert "ops_pack-failed" in report.stages_run
+    assert "ops_pack" not in report.stages_run
+    report_md = (args.out_dir / "scaffold-report.md").read_text(encoding="utf-8")
+    assert "ops_pack: FAILED" in report_md
+
+
+def test_stage5_skipped_does_not_invoke_emit(tmp_path):
+    """target_project 미지정 → stage5-skipped → ops_pack 마커 어느 것도 없음."""
+    _make_fake_s1(tmp_path, "t")
+    s2_src = (
+        "import sys, pathlib\n"
+        "out = pathlib.Path(sys.argv[sys.argv.index('--out')+1])\n"
+        "out.mkdir(parents=True, exist_ok=True)\n"
+        "(out / 'ddl_create.sql').write_text('-- ddl')\n"
+    )
+    s3_src = (
+        "import sys, pathlib\n"
+        "argv = sys.argv[1:]\n"
+        "out = pathlib.Path(argv[argv.index('--out')+1])\n"
+        "out.mkdir(parents=True, exist_ok=True)\n"
+        "(out / 'mapper.xml').write_text('<mapper/>')\n"
+    )
+    s4_src = (
+        "import sys, pathlib\n"
+        "argv = sys.argv[1:]\n"
+        "out = pathlib.Path(argv[argv.index('--out')+1])\n"
+        "out.mkdir(parents=True, exist_ok=True)\n"
+        "(out / 'dummy.xfdl').write_text('<form/>')\n"
+    )
+    _make_fake_stage(tmp_path, "ddl",     {"ddl_compile.py": s2_src})
+    _make_fake_stage(tmp_path, "mybatis", {"compile.py": s3_src})
+    _make_fake_stage(tmp_path, "nexacro", {"form_gen.py": s4_src})
+
+    creator = tmp_path / "creater"
+    creator.mkdir(exist_ok=True)
+    args = ScaffoldArgs(
+        domain="t", domain_slug="order",
+        wiki_mode="preset", preset="t", wiki_path=None,
+        lane="nexacro", default_pattern="D2",
+        package="com.example.order", out_dir=tmp_path / "out",
+        creator_root=creator, stop_after_stage=5,
+        target_project=None,
+    )
+    with patch("emit_ops_pack.emit") as mock_emit:
+        report = run_scaffold(args)
+
+    assert "stage5-skipped" in report.stages_run
+    assert "stage5" not in report.stages_run
+    assert "ops_pack" not in report.stages_run
+    assert "ops_pack-skipped-no-shell" not in report.stages_run
+    assert "ops_pack-failed" not in report.stages_run
+    mock_emit.assert_not_called()
+
+
 def test_env_var_placeholders_preserved_after_writeback(tmp_path):
     """Stage 5 write-back 후에도 ${ACME_DB_PASS} 등 ENV_VAR 플레이스홀더가 byte-identical 로 보존."""
     profiles_dir = tmp_path / "creater" / "profiles"

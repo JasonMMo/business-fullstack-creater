@@ -4,9 +4,9 @@
 
 이 프로젝트는 **계속 성장하는 프로젝트**다. 일회성 스캐폴드 도구가 아니라, 사용 횟수에 비례해 자산이 누적되어야 한다.
 
-## 핵심 운영 원칙 — 복리식 축적 (5축)
+## 핵심 운영 원칙 — 복리식 축적 (6축)
 
-새 도메인을 다루거나 기존 도메인을 다시 만질 때마다, 다음 5축에서 **살을 붙이며 깊이를 더해간다**:
+새 도메인을 다루거나 기존 도메인을 다시 만질 때마다, 다음 6축에서 **살을 붙이며 깊이를 더해간다**:
 
 | 축 | 누적 위치 |
 |---|---|
@@ -15,6 +15,7 @@
 | **mybatis** (Stage 3) | `andrej-karpathy-rdb-mybatis/templates/<lane>/` + lane (nexacro/vanilla/jakarta/javax) |
 | **nexacro** (Stage 4+5) | `andrej-karpathy-rdb-nexacro/patterns/` + UI overlay |
 | **creater** (Orchestrator) | `.claude/commands/` + `scripts/workflow/` |
+| **customer** (6th, Growth-63) | `profiles/<slug>.yaml` — 고객 고유 관습(패키지/URL/JDBC/lane/ui)을 한 장으로 묶어 `/scaffold --customer-profile <name>` 으로 Stage 1–5 전체에 일관 적용 |
 
 > 활동 뷰(현재 트랩 카운트·미해결 환류·검증 상태)는 `learn-log.md` §0/§1 참조.
 

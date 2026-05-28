@@ -250,3 +250,105 @@ class TestResolveWithProfile:
         from scaffold_cli import resolve_with_profile
         profile = {"defaults": {"lane": "jakarta"}}
         assert resolve_with_profile("", profile, "defaults", "lane", default="nexacro") == ""
+
+
+# Growth-67: 9 gap fields — profile→args resolution + CLI override precedence
+class TestGrowth67GapFields:
+    """Verify that each of the 9 Growth-67 fields resolves correctly via
+    resolve_with_profile: CLI wins over profile, profile wins over default."""
+
+    def _make_profile(self):
+        return {
+            "mybatis": {
+                "table_prefix": "TBL_",
+                "url_prefix": "/myuia",
+            },
+            "nexacro": {
+                "frame": "packageN-custom",
+            },
+            "overlay": {
+                "maven": {
+                    "group_id": "com.profile",
+                    "artifact_id_template": "{slug}-prof",
+                    "version": "2.0.0-SNAPSHOT",
+                },
+                "datasource": {
+                    "username": "profile_user",
+                    "password": "profile_pass",
+                    "url_template": "jdbc:postgresql://profile-host/db",
+                },
+            },
+        }
+
+    def test_table_prefix_from_profile(self):
+        from scaffold_cli import resolve_with_profile
+        p = self._make_profile()
+        assert resolve_with_profile(None, p, "mybatis", "table_prefix", default="TB_") == "TBL_"
+
+    def test_table_prefix_cli_wins(self):
+        from scaffold_cli import resolve_with_profile
+        p = self._make_profile()
+        assert resolve_with_profile("MY_", p, "mybatis", "table_prefix", default="TB_") == "MY_"
+
+    def test_table_prefix_default_when_both_missing(self):
+        from scaffold_cli import resolve_with_profile
+        assert resolve_with_profile(None, None, "mybatis", "table_prefix", default="TB_") == "TB_"
+
+    def test_frame_from_profile(self):
+        from scaffold_cli import resolve_with_profile
+        p = self._make_profile()
+        assert resolve_with_profile(None, p, "nexacro", "frame", default=None) == "packageN-custom"
+
+    def test_frame_cli_wins(self):
+        from scaffold_cli import resolve_with_profile
+        p = self._make_profile()
+        assert resolve_with_profile("myFrame", p, "nexacro", "frame", default=None) == "myFrame"
+
+    def test_maven_group_id_from_profile(self):
+        from scaffold_cli import resolve_with_profile
+        p = self._make_profile()
+        assert resolve_with_profile(None, p, "overlay", "maven", "group_id", default=None) == "com.profile"
+
+    def test_maven_group_id_cli_wins(self):
+        from scaffold_cli import resolve_with_profile
+        p = self._make_profile()
+        assert resolve_with_profile("com.cli", p, "overlay", "maven", "group_id", default=None) == "com.cli"
+
+    def test_maven_artifact_id_from_profile(self):
+        from scaffold_cli import resolve_with_profile
+        p = self._make_profile()
+        assert resolve_with_profile(None, p, "overlay", "maven", "artifact_id_template", default=None) == "{slug}-prof"
+
+    def test_maven_version_from_profile(self):
+        from scaffold_cli import resolve_with_profile
+        p = self._make_profile()
+        assert resolve_with_profile(None, p, "overlay", "maven", "version", default=None) == "2.0.0-SNAPSHOT"
+
+    def test_ds_username_from_profile(self):
+        from scaffold_cli import resolve_with_profile
+        p = self._make_profile()
+        assert resolve_with_profile(None, p, "overlay", "datasource", "username", default=None) == "profile_user"
+
+    def test_ds_username_cli_wins(self):
+        from scaffold_cli import resolve_with_profile
+        p = self._make_profile()
+        assert resolve_with_profile("cli_user", p, "overlay", "datasource", "username", default=None) == "cli_user"
+
+    def test_ds_password_from_profile(self):
+        from scaffold_cli import resolve_with_profile
+        p = self._make_profile()
+        assert resolve_with_profile(None, p, "overlay", "datasource", "password", default=None) == "profile_pass"
+
+    def test_ds_url_from_profile(self):
+        from scaffold_cli import resolve_with_profile
+        p = self._make_profile()
+        assert resolve_with_profile(None, p, "overlay", "datasource", "url_template", default=None) == "jdbc:postgresql://profile-host/db"
+
+    def test_url_prefix_from_profile(self):
+        from scaffold_cli import resolve_with_profile
+        p = self._make_profile()
+        assert resolve_with_profile(None, p, "mybatis", "url_prefix", default=None) == "/myuia"
+
+    def test_url_prefix_default_when_both_missing(self):
+        from scaffold_cli import resolve_with_profile
+        assert resolve_with_profile(None, None, "mybatis", "url_prefix", default="/uiadapter") == "/uiadapter"

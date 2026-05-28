@@ -482,6 +482,41 @@ def _append_domain_to_profile(profile_path: pathlib.Path, domain_slug: str) -> N
     profile_path.write_text(result, encoding="utf-8")
 
 
+def _run_emit_ops_pack(args, report):
+    """Growth-74 (M3 Slice b): Stage 5 PASS 시 emit_ops_pack 자동 호출.
+
+    out_dir/shell/pom.xml 부재 시 'ops_pack-skipped-no-shell' 마커만 추가
+    (forward-compatible: shell/ 생성은 Stage 5/overlay 책임).
+    실패 시 'ops_pack-failed' 마커 + stderr 경고 (비치명).
+    Growth-66 domains_seen write-back 과 동일한 best-effort 패턴.
+    """
+    if "stage5" not in report.stages_run:
+        return  # stage5-skipped 또는 실패한 경우 ops pack 도 건너뜀
+
+    shell_pom = pathlib.Path(args.out_dir) / "shell" / "pom.xml"
+    if not shell_pom.exists():
+        report.stages_run.append("ops_pack-skipped-no-shell")
+        return
+
+    try:
+        import emit_ops_pack
+        t0 = time.monotonic()
+        emit_ops_pack.emit(
+            pathlib.Path(args.out_dir),
+            profile=args.customer_profile,
+            shell_subdir="shell",
+            force=True,
+        )
+        report.stage_durations_ms["ops_pack"] = int((time.monotonic() - t0) * 1000)
+        report.stages_run.append("ops_pack")
+    except Exception as e:
+        print(
+            f"[orchestrator] WARN: emit_ops_pack failed: {e}",
+            file=sys.stderr,
+        )
+        report.stages_run.append("ops_pack-failed")
+
+
 def _write_report(args, report, failure=None):
     lines = [
         f"# Scaffold Report — {args.domain}",
@@ -506,6 +541,7 @@ def _write_report(args, report, failure=None):
         "stage1", "stage2", "stage3",
         "stage4", "stage4-skipped-vanilla",
         "stage5", "stage5-skipped",
+        "ops_pack", "ops_pack-skipped-no-shell", "ops_pack-failed",
     ):
         if name in report.stages_run:
             if name == "stage5-skipped":
@@ -513,6 +549,14 @@ def _write_report(args, report, failure=None):
             elif name == "stage4-skipped-vanilla":
                 lines.append(
                     "- stage4: SKIPPED (vanilla lane has no nexacro XFDL forms)"
+                )
+            elif name == "ops_pack-skipped-no-shell":
+                lines.append(
+                    "- ops_pack: SKIPPED (no <out>/shell/pom.xml — Growth-74 M3 Slice b)"
+                )
+            elif name == "ops_pack-failed":
+                lines.append(
+                    "- ops_pack: FAILED (non-fatal — see stderr; Growth-74 M3 Slice b)"
                 )
             else:
                 lines.append(f"- {name}: OK ({report.stage_durations_ms.get(name, 0)} ms)")
@@ -570,6 +614,7 @@ def run_scaffold(args):
         next_stage = f"stage{len(report.stages_run) + 1}"
         _write_report(args, report, failure=(next_stage, str(e)))
         raise
+    _run_emit_ops_pack(args, report)  # Growth-74 (M3 Slice b): Stage 5 PASS 후 ops pack auto-emit
     _write_report(args, report)
 
     # Growth-66 (Slice B-2): Stage 5 성공 시 도메인 슬러그를 프로파일에 기록.

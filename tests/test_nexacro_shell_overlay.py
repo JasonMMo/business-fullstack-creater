@@ -282,3 +282,50 @@ def test_shell_overlay_unknown_dialect_falls_back_to_hsqldb(tmp_path):
     )
     yml = (tmp_path / "src" / "main" / "resources" / "application.yml").read_text(encoding="utf-8")
     assert "jdbc:hsqldb:mem:shipping" in yml
+
+
+# --- Growth-67: datasource override (ds_username / ds_password / ds_url) ---
+
+
+def test_ds_username_override_wins_over_dialect_default(tmp_path):
+    """Growth-67: ds_username kwarg replaces the postgres default 'postgres'."""
+    kwargs = _build_kwargs(tmp_path, "postgres")
+    kwargs["ds_username"] = "acme_user"
+    ui_overlay_registry.dispatch("nexacro-shell", **kwargs)
+    yml = (tmp_path / "src" / "main" / "resources" / "application.yml").read_text(encoding="utf-8")
+    assert "username: acme_user" in yml
+    assert "username: postgres" not in yml
+
+
+def test_ds_password_override_wins_over_dialect_default(tmp_path):
+    """Growth-67: ds_password kwarg replaces the postgres default 'postgres'."""
+    kwargs = _build_kwargs(tmp_path, "postgres")
+    kwargs["ds_password"] = "s3cret"
+    ui_overlay_registry.dispatch("nexacro-shell", **kwargs)
+    yml = (tmp_path / "src" / "main" / "resources" / "application.yml").read_text(encoding="utf-8")
+    # Template may quote the password value (e.g. password: "s3cret")
+    assert "s3cret" in yml
+    assert "password: postgres" not in yml
+    assert 'password: "postgres"' not in yml
+
+
+def test_ds_url_override_wins_over_dialect_default(tmp_path):
+    """Growth-67: ds_url kwarg replaces the dialect URL template."""
+    kwargs = _build_kwargs(tmp_path, "postgres")
+    kwargs["ds_url"] = "jdbc:postgresql://db.acme.internal:5432/acme_prod"
+    ui_overlay_registry.dispatch("nexacro-shell", **kwargs)
+    yml = (tmp_path / "src" / "main" / "resources" / "application.yml").read_text(encoding="utf-8")
+    assert "jdbc:postgresql://db.acme.internal:5432/acme_prod" in yml
+    # default postgres URL must not appear
+    assert "jdbc:postgresql://localhost:5432/shipping" not in yml
+
+
+def test_ds_none_overrides_use_dialect_defaults(tmp_path):
+    """Growth-67: when all ds_* are None the dialect defaults are unchanged."""
+    kwargs = _build_kwargs(tmp_path, "postgres")
+    # do NOT set ds_username / ds_password / ds_url
+    ui_overlay_registry.dispatch("nexacro-shell", **kwargs)
+    yml = (tmp_path / "src" / "main" / "resources" / "application.yml").read_text(encoding="utf-8")
+    # Template may quote values; check the value is present regardless of quoting
+    assert "postgres" in yml  # username and password both default to "postgres"
+    assert "jdbc:postgresql://localhost:5432/shipping" in yml

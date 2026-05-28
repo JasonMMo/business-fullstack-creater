@@ -25,11 +25,13 @@ from typing import Callable, Optional
 # and `python scripts/workflow/web_index.py` (direct script invocation).
 try:
     from .list_domains import Domain, load_domains, DEFAULT_INDEX_PATH
+    from . import status_board
 except ImportError:
     _root = str(Path(__file__).resolve().parents[2])
     if _root not in sys.path:
         sys.path.insert(0, _root)
     from scripts.workflow.list_domains import Domain, load_domains, DEFAULT_INDEX_PATH
+    from scripts.workflow import status_board
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -687,7 +689,8 @@ def _write_assets(docs_root: Path) -> None:
     """Write style.css and preview.js into docs_root/assets/."""
     assets_dir = docs_root / "assets"
     assets_dir.mkdir(parents=True, exist_ok=True)
-    (assets_dir / "style.css").write_text(_STYLE_CSS, encoding="utf-8")
+    style_css = _STYLE_CSS + "\n" + status_board.STATUS_BOARD_CSS
+    (assets_dir / "style.css").write_text(style_css, encoding="utf-8")
     (assets_dir / "preview.js").write_text(_PREVIEW_JS, encoding="utf-8")
 
 
@@ -705,6 +708,7 @@ def render_index_html(
     domains: list["Domain"],
     *,
     build_date: str,
+    status_section: str = "",
 ) -> str:
     """Return full index.html string per spec §5."""
     # Build per-domain chip map: {domain_name: [(lane, status), ...]}
@@ -760,6 +764,7 @@ def render_index_html(
         "  </header>\n"
         "\n"
         "  <main>\n"
+        f"{status_section}"
         '    <section aria-label="Domain tiles">\n'
         f"      <h2>{domain_count} Preset Domains</h2>\n"
         '      <div class="tile-grid">\n'
@@ -1041,7 +1046,19 @@ def build(
         build_date = datetime.date.today().isoformat()
         (docs_root / "domain").mkdir(parents=True, exist_ok=True)
 
-        index_html = render_index_html(matrix, all_domains, build_date=build_date)
+        try:
+            board = status_board.compute()
+            status_section = status_board.render_status_section(board)
+        except Exception as exc:  # pragma: no cover - keep portal build resilient
+            result.warnings.append(f"status-board render failed ({exc})")
+            status_section = ""
+
+        index_html = render_index_html(
+            matrix,
+            all_domains,
+            build_date=build_date,
+            status_section=status_section,
+        )
         (docs_root / "index.html").write_text(index_html, encoding="utf-8")
 
         # M3: render per-domain pages

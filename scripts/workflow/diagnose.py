@@ -231,6 +231,14 @@ def check_cross_layer_coherence(
         + AppRole + consul-template 패턴을 유지해야 한다. 회귀하면 M3 Slice d
         의 "IT-담당자가 사내 Vault 에 DB 자격증명을 위임한다" 약속이 깨지고
         enterprise on-prem 환경에서 `.env` 평문 의존이 다시 시작된다.
+      - G-77 (Growth-77 Keycloak/OIDC SSO sidecar emitter contract):
+        `emit_ops_pack.py` 가 `--sso` (또는 profile `overlay.sso_keycloak: true`)
+        옵트인 시 추가 3 산출물 (`docker-compose.sso.yml`, `keycloak-realm.json`,
+        `.env.sso.example`) 을 emit 하고 `render_sso_*` 3 헬퍼 +
+        `_SSO_SOP_SECTION` (DEPLOY-SOP §10) + `quay.io/keycloak/keycloak` 이미지
+        + OIDC client (realm import 1 + standard flow) 패턴을 유지해야 한다.
+        회귀하면 M3 Slice e 의 "IT-담당자가 Keycloak 사이드카로 인증을 위임,
+        사내 SSO 전환 시 `OIDC_ISSUER_URI` 만 교체" 약속이 깨진다.
     """
     failures: list[str] = []
 
@@ -559,17 +567,43 @@ def check_cross_layer_coherence(
                 f"contract ({', '.join(vault_markers)})"
             )
 
+        # G-77: emit_ops_pack.py preserves the Keycloak/OIDC SSO sidecar contract.
+        # Required markers: 3 render_sso_* helpers + Keycloak image + start-dev +
+        # SOP §10 + the 3 emitted artifact names + OIDC env contract. Regression
+        # breaks the M3 Slice e promise that IT-담당자 can delegate auth to a
+        # Keycloak sidecar (or swap OIDC_ISSUER_URI for in-house IdP).
+        sso_markers = [
+            m
+            for m in (
+                "render_sso_compose",
+                "render_sso_realm",
+                "render_sso_env_example",
+                "_SSO_SOP_SECTION",
+                "quay.io/keycloak/keycloak",
+                "docker-compose.sso.yml",
+                "keycloak-realm.json",
+                "OIDC_ISSUER_URI",
+                "Growth-77",
+            )
+            if m not in emit_text
+        ]
+        if sso_markers:
+            failures.append(
+                "G-77 regression: emit_ops_pack.py lost Keycloak/OIDC SSO "
+                f"sidecar contract ({', '.join(sso_markers)})"
+            )
+
     if failures:
         return Check(
             "cross-layer-coherence",
             "FAIL",
             "; ".join(failures),
-            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75/76) 추적 후 복원",
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75/76/77) 추적 후 복원",
         )
     return Check(
         "cross-layer-coherence",
         "PASS",
-        "15 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76)",
+        "16 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77)",
     )
 
 

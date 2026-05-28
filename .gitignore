@@ -17,3 +17,9 @@ target/
 
 # Scaffold output (Stage 1~5 산출물 — 검증용, 산출물은 git 추적 대상 아님)
 out/
+
+# Full-test scaffold artifacts (풀테스트 자동 생성물 — repo 영구 자산 아님)
+docs/scaffolds/
+
+# Scheduled task lock (claude-code runtime)
+.claude/scheduled_tasks.lock

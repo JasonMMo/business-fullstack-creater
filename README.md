@@ -32,9 +32,9 @@ Stage 5  overlay       runner 골격 위에 Stage 2-4 산출물 덮어쓰기 →
 - `scaffold-report.md` — stage별 PASS/SKIP/FAIL 라벨
 - `~/.karpathy-rdb/catalog/<도메인>/` — 글로벌 카탈로그 누적 (복리식)
 
-## 2. 핵심 원칙 — 5축 복리식 축적
+## 2. 핵심 원칙 — 6축 복리식 축적
 
-사용 횟수에 비례해 자산이 누적되는 **성장형 프로젝트**입니다. 새 도메인을 다루거나 기존 도메인을 다시 만질 때마다 5축에 살을 붙입니다:
+사용 횟수에 비례해 자산이 누적되는 **성장형 프로젝트**입니다. 새 도메인을 다루거나 기존 도메인을 다시 만질 때마다 6축에 살을 붙입니다:
 
 | 축 | 누적 위치 |
 |---|---|
@@ -43,6 +43,7 @@ Stage 5  overlay       runner 골격 위에 Stage 2-4 산출물 덮어쓰기 →
 | **mybatis** (Stage 3) | `andrej-karpathy-rdb-mybatis/templates/<lane>/` |
 | **nexacro** (Stage 4+5) | `andrej-karpathy-rdb-nexacro/patterns/` |
 | **creater** (Orchestrator) | `business-fullstack-creater/.claude/commands/` + `scripts/workflow/` |
+| **customer** (6th, Growth-63) | `business-fullstack-creater/profiles/<slug>.yaml` — 고객 고유 관습(패키지/URL/JDBC/lane/ui)을 한 장에 묶어 `/scaffold --customer-profile <name>` 으로 Stage 1–5 전체에 일관 적용 |
 
 `learn-log.md` §0 Layer Ownership Card 가 현재 누적 상태 — 트랩 카운트, 미해결 환류, 검증 마일스톤이 표 한 장에 모입니다.
 
@@ -93,7 +94,7 @@ Claude Code 안에서는 동일 흐름이 슬래시 커맨드로 노출:
 | 지점 | 명령 | 노출하는 자산 |
 |---|---|---|
 | **진입** | `/orient` | USER-GUIDE 한 줄 정의 + Layer Ownership Card + 최근 Growth |
-| **사전** | `/diagnose` | 5축 sibling repo + INDEX.md + runner + JDK + 6 회귀 가드 |
+| **사전** | `/diagnose` | 6축 sibling repo + INDEX.md + runner + JDK + 7 회귀 가드 |
 | **실행** | `/full-test` | 4계층 PASS/FAIL + lane × runner 매트릭스 |
 | **사후** | `recovery_hint` | 실패 layer 별 다음 명령 1줄 |
 
@@ -127,7 +128,7 @@ tests/                   workflow 281 + 기타 159 = 440 그린
 
 ## 8. 참고
 
-- **운영 원칙**: [`CLAUDE.md`](CLAUDE.md) — 변하지 않는 5축 복리식 축적 원칙
+- **운영 원칙**: [`CLAUDE.md`](CLAUDE.md) — 변하지 않는 6축 복리식 축적 원칙
 - **활동 원장**: [`learn-log.md`](learn-log.md) — Growth 누적 / 트랩 / 회귀 가드
 - **통합 가이드**: [`docs/USER-GUIDE.md`](docs/USER-GUIDE.md) — Quick Start + Stage reference + 트러블슈팅
 - **정적 portal**: `docs/index.html` (브라우저로 열기)

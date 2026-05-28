@@ -224,9 +224,30 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
         '    return zip_emitter.emit(ops_dir)\n',
         encoding="utf-8",
     )
+    # G-79 guard: web/routes/target.py exposes /target/upload + adapter delegates
+    # to scripts/extract_target_profile (Growth-79 M5 Slice C-c). web/app.py
+    # includes target_router. Adapter MUST NOT re-implement parse_pom/parse_gradle.
+    (web_routes / "target.py").write_text(
+        '"""Growth-79 target upload route stub."""\n'
+        'from web.adapters import target_extractor\n'
+        '@router.get("/upload")\n'
+        'def target_upload_get():\n'
+        '    return target_extractor.extract_from_zip(b"")\n',
+        encoding="utf-8",
+    )
+    (web_adapters / "target_extractor.py").write_text(
+        '"""Growth-79 target extractor adapter stub."""\n'
+        'import extract_target_profile\n'
+        'def extract_from_zip(payload):\n'
+        '    profile = extract_target_profile.build_profile(None)\n'
+        '    return extract_target_profile.dump_profile(profile)\n',
+        encoding="utf-8",
+    )
     (creater_root / "web" / "app.py").write_text(
         "from web.routes.ops import router as ops_router\n"
-        "application.include_router(ops_router)\n",
+        "from web.routes.target import router as target_router\n"
+        "application.include_router(ops_router)\n"
+        "application.include_router(target_router)\n",
         encoding="utf-8",
     )
     return workspace, creater_root
@@ -344,7 +365,7 @@ def test_check_cross_layer_coherence_pass(tmp_path):
     )
     assert c.status == "PASS"
     assert (
-        "17 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78)"
+        "18 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79)"
         in c.detail
     )
 
@@ -1034,6 +1055,44 @@ def test_check_cross_layer_coherence_fail_g78_missing_kts_marker(tmp_path):
     assert c.status == "FAIL"
     assert "G-78 regression" in c.detail
     assert "build.gradle.kts" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g79_adapter_reimplements_parser(tmp_path):
+    # If target_extractor.py defines its own parse_pom/parse_gradle (instead of
+    # delegating to scripts/extract_target_profile.py), G-79 must fire — the
+    # single-source contract for the web upload path is broken.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "web" / "adapters" / "target_extractor.py").write_text(
+        '"""Growth-79 stub — but reimplements parser locally."""\n'
+        "import extract_target_profile\n"
+        "def parse_pom(path): return {}\n"
+        "def extract_from_zip(payload):\n"
+        '    return extract_target_profile.dump_profile({})\n',
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-79 regression" in c.detail
+    assert "re-implements" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g79_app_missing_target_router(tmp_path):
+    # If web/app.py forgets to include target_router, G-79 must fire — the
+    # /target/upload route is unreachable and M5 Slice C-c web path is dead.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "web" / "app.py").write_text(
+        "from web.routes.ops import router as ops_router\n"
+        "application.include_router(ops_router)\n",
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-79 regression" in c.detail
+    assert "target_router" in c.detail
 
 
 def test_format_table_summary_lines():

@@ -131,6 +131,8 @@ async def domain_form_post(
 @router.get("/{run_id}/preview", response_class=HTMLResponse)
 async def domain_preview(request: Request, run_id: str) -> HTMLResponse:
     """Display the scaffold results for *run_id*."""
+    from pathlib import Path  # local import — preview-only filesystem probe
+
     templates = request.app.state.templates
 
     result = run_registry.get(run_id)
@@ -141,6 +143,10 @@ async def domain_preview(request: Request, run_id: str) -> HTMLResponse:
     ok_count = sum(1 for s in result.stages if s.status == "OK")
     fail_count = sum(1 for s in result.stages if s.status == "FAIL")
 
+    # Growth-75 (M3 Slice c): ops pack 가용 여부 — emit_ops_pack 가 Growth-74
+    # auto-call 로 out_dir/shell/ops/ 에 emit 했는지 확인.
+    ops_pack_available = (Path(result.out_dir) / "shell" / "ops").is_dir()
+
     return templates.TemplateResponse(
         request,
         "domain_preview.html",
@@ -150,6 +156,7 @@ async def domain_preview(request: Request, run_id: str) -> HTMLResponse:
             "ok_count": ok_count,
             "fail_count": fail_count,
             "stage_count": stage_count,
+            "ops_pack_available": ops_pack_available,
         },
     )
 

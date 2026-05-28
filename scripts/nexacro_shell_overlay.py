@@ -120,19 +120,28 @@ _DIALECT_DATASOURCES = {
 }
 
 
-def _resolve_datasource(dialect: str, domain_slug: str) -> dict:
+def _resolve_datasource(
+    dialect: str,
+    domain_slug: str,
+    ds_username: Optional[str] = None,
+    ds_password: Optional[str] = None,
+    ds_url: Optional[str] = None,
+) -> dict:
     """Compose a Spring Boot datasource block for the given dialect.
 
     Unknown dialect → falls back to hsqldb (the historical default) so older
     callers that don't yet pass `dialect=` get the legacy behavior.
+
+    Growth-67: ds_username / ds_password / ds_url override the dialect defaults
+    when not None (customer-profile-driven values win over _DIALECT_DATASOURCES).
     """
     cfg = _DIALECT_DATASOURCES.get(dialect, _DIALECT_DATASOURCES["hsqldb"])
     return {
         "dialect": dialect if dialect in _DIALECT_DATASOURCES else "hsqldb",
-        "url": cfg["url_template"].format(slug=domain_slug),
+        "url": ds_url if ds_url is not None else cfg["url_template"].format(slug=domain_slug),
         "driver_class_name": cfg["driver_class_name"],
-        "username": cfg["username"],
-        "password": cfg["password"],
+        "username": ds_username if ds_username is not None else cfg["username"],
+        "password": ds_password if ds_password is not None else cfg["password"],
         "init_mode": cfg["init_mode"],
         "driver_groupId": cfg["driver_groupId"],
         "driver_artifactId": cfg["driver_artifactId"],
@@ -234,6 +243,11 @@ def _shell_overlay_run(
     # Ignored when auth_mode == "none". Resolution is strict — javax requires
     # all 11 templates to exist under variants/<variant>/auth-javax/.
     auth_lane: str = "jakarta",
+    # Growth-67: datasource credential/URL overrides from customer profile.
+    # None = use _DIALECT_DATASOURCES defaults.
+    ds_username: Optional[str] = None,
+    ds_password: Optional[str] = None,
+    ds_url: Optional[str] = None,
     **_unused,
 ) -> dict:
     if nexacro_skill_root is None:
@@ -288,7 +302,12 @@ def _shell_overlay_run(
         "maven_artifact_id": artifact_id,
         "maven_version": maven_version,
         "dialect": dialect,
-        "datasource": _resolve_datasource(dialect, domain_slug),
+        "datasource": _resolve_datasource(
+            dialect, domain_slug,
+            ds_username=ds_username,
+            ds_password=ds_password,
+            ds_url=ds_url,
+        ),
         "auth_mode": auth_mode,
         "auth_lane": auth_lane,
     }

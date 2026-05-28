@@ -12,13 +12,24 @@ mybatis:
   base_package: com.acme
   project_root_pkg: com.acme.uiadapter
   uia_namespace: jakarta
+  table_prefix: ACM_
+  url_prefix: /acmuiadapter
 
 nexacro:
   default_pattern: D2
+  frame: packageN
 
 overlay:
   target_pkg_prefix: com.acme.uiadapter
   shell_app_id: acme-portal
+  maven:
+    group_id: com.acme
+    artifact_id_template: "{slug}-shell"
+    version: 2.0.0-SNAPSHOT
+  datasource:
+    username: ${ACME_DB_USER}
+    password: ${ACME_DB_PASS}
+    url_template: "jdbc:postgresql://db.acme.internal:5432/acme_prod"
 
 auth:
   mode: session

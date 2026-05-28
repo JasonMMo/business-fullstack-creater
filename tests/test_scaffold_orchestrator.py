@@ -735,3 +735,166 @@ def test_env_var_placeholders_preserved_after_writeback(tmp_path):
     for line in original.splitlines():
         if "${ACME_" in line:
             assert line in result
+
+
+# ---------------------------------------------------------------------------
+# Growth-67: stage forwarding — table_prefix, frame, maven_*, ds_*
+# ---------------------------------------------------------------------------
+
+def _make_argv_recording_stage(tmp_path, name, script_name):
+    """Create a fake stage that writes its argv to argv.txt in --out dir."""
+    src = (
+        "import sys, pathlib\n"
+        "argv = sys.argv[1:]\n"
+        "# find --out argument\n"
+        "try:\n"
+        "    out = pathlib.Path(argv[argv.index('--out')+1])\n"
+        "except ValueError:\n"
+        "    out = pathlib.Path(argv[0]) if argv else pathlib.Path('.')\n"
+        "out.mkdir(parents=True, exist_ok=True)\n"
+        "(out / 'argv.txt').write_text(' '.join(argv))\n"
+    )
+    repo = tmp_path / f"andrej-karpathy-rdb-{name}"
+    (repo / "scripts").mkdir(parents=True, exist_ok=True)
+    (repo / "scripts" / script_name).write_text(src, encoding="utf-8")
+    return repo
+
+
+def _make_full_fake_chain(tmp_path):
+    """Create fake stages 1-4 for Growth-67 forwarding tests."""
+    _make_fake_s1(tmp_path, "t")
+    s2_src = (
+        "import sys, pathlib\n"
+        "out = pathlib.Path(sys.argv[sys.argv.index('--out')+1])\n"
+        "out.mkdir(parents=True, exist_ok=True)\n"
+        "(out / 'ddl_create.sql').write_text('-- ddl')\n"
+    )
+    # stage3 records argv AND writes mapper.xml
+    s3_src = (
+        "import sys, pathlib\n"
+        "argv = sys.argv[1:]\n"
+        "out = pathlib.Path(argv[argv.index('--out')+1])\n"
+        "out.mkdir(parents=True, exist_ok=True)\n"
+        "(out / 'mapper.xml').write_text('<mapper/>')\n"
+        "(out / 'argv.txt').write_text(' '.join(argv))\n"
+    )
+    # stage4 records argv AND writes argv.txt
+    s4_src = (
+        "import sys, pathlib\n"
+        "argv = sys.argv[1:]\n"
+        "out = pathlib.Path(argv[argv.index('--out')+1])\n"
+        "out.mkdir(parents=True, exist_ok=True)\n"
+        "(out / 'argv.txt').write_text(' '.join(argv))\n"
+    )
+    _make_fake_stage(tmp_path, "ddl",     {"ddl_compile.py": s2_src})
+    _make_fake_stage(tmp_path, "mybatis", {"compile.py": s3_src})
+    _make_fake_stage(tmp_path, "nexacro", {"form_gen.py": s4_src})
+
+
+def test_stage3_forwards_table_prefix(tmp_path):
+    """Growth-67: --table-prefix forwarded to stage3 compile.py."""
+    _make_full_fake_chain(tmp_path)
+    creator = tmp_path / "creater"; creator.mkdir()
+    out = tmp_path / "out"
+    args = ScaffoldArgs(
+        domain="t", domain_slug="t", wiki_mode="preset", preset="t",
+        wiki_path=None, lane="nexacro", default_pattern="D2",
+        package="com.example.t", out_dir=out, creator_root=creator,
+        stop_after_stage=3,
+        table_prefix="ACM_",
+    )
+    run_scaffold(args)
+    argv_txt = (out / "3-mybatis" / "argv.txt").read_text(encoding="utf-8")
+    assert "--table-prefix" in argv_txt
+    assert "ACM_" in argv_txt
+
+
+def test_stage3_no_table_prefix_when_none(tmp_path):
+    """Growth-67: table_prefix=None must NOT add --table-prefix arg."""
+    _make_full_fake_chain(tmp_path)
+    creator = tmp_path / "creater"; creator.mkdir()
+    out = tmp_path / "out"
+    args = ScaffoldArgs(
+        domain="t", domain_slug="t", wiki_mode="preset", preset="t",
+        wiki_path=None, lane="nexacro", default_pattern="D2",
+        package="com.example.t", out_dir=out, creator_root=creator,
+        stop_after_stage=3,
+        table_prefix=None,
+    )
+    run_scaffold(args)
+    argv_txt = (out / "3-mybatis" / "argv.txt").read_text(encoding="utf-8")
+    assert "--table-prefix" not in argv_txt
+
+
+def test_stage4_forwards_frame(tmp_path):
+    """Growth-67: --frame forwarded to stage4 form_gen.py."""
+    _make_full_fake_chain(tmp_path)
+    creator = tmp_path / "creater"; creator.mkdir()
+    out = tmp_path / "out"
+    args = ScaffoldArgs(
+        domain="t", domain_slug="t", wiki_mode="preset", preset="t",
+        wiki_path=None, lane="nexacro", default_pattern="D2",
+        package="com.example.t", out_dir=out, creator_root=creator,
+        stop_after_stage=4,
+        frame="myFrame",
+    )
+    run_scaffold(args)
+    argv_txt = (out / "4-nexacro" / "argv.txt").read_text(encoding="utf-8")
+    assert "--frame" in argv_txt
+    assert "myFrame" in argv_txt
+
+
+def test_stage4_no_frame_when_none(tmp_path):
+    """Growth-67: frame=None must NOT add --frame arg."""
+    _make_full_fake_chain(tmp_path)
+    creator = tmp_path / "creater"; creator.mkdir()
+    out = tmp_path / "out"
+    args = ScaffoldArgs(
+        domain="t", domain_slug="t", wiki_mode="preset", preset="t",
+        wiki_path=None, lane="nexacro", default_pattern="D2",
+        package="com.example.t", out_dir=out, creator_root=creator,
+        stop_after_stage=4,
+        frame=None,
+    )
+    run_scaffold(args)
+    argv_txt = (out / "4-nexacro" / "argv.txt").read_text(encoding="utf-8")
+    assert "--frame" not in argv_txt
+
+
+def test_stage5_nonshell_passes_maven_and_ds_to_overlay(tmp_path):
+    """Growth-67: non-shell _run_stage5 passes maven_* + ds_* to run_overlay."""
+    _make_full_fake_chain(tmp_path)
+    creator = tmp_path / "creater"; creator.mkdir()
+    target_proj = tmp_path / "target_proj"; target_proj.mkdir()
+    out = tmp_path / "out"
+    args = ScaffoldArgs(
+        domain="t", domain_slug="t", wiki_mode="preset", preset="t",
+        wiki_path=None, lane="nexacro", default_pattern="D2",
+        package="com.example.t", out_dir=out, creator_root=creator,
+        stop_after_stage=5, target_project=target_proj,
+        maven_group_id="com.test",
+        maven_artifact_id="test-shell",
+        maven_version="3.0.0-SNAPSHOT",
+        ds_username="testuser",
+        ds_password="testpass",
+        ds_url="jdbc:postgresql://testhost/testdb",
+    )
+    captured_kwargs = {}
+
+    def fake_overlay(**kw):
+        captured_kwargs.update(kw)
+        return {
+            "java_copied": 0, "resources_copied": 0, "xfdl_copied": 0,
+            "renamed_imports": 0, "backed_up": 0, "typedef_added": False,
+            "menu_warning": None,
+        }
+
+    with patch("scaffold_orchestrator.stage5_overlay.run_overlay", side_effect=fake_overlay):
+        run_scaffold(args)
+
+    assert captured_kwargs.get("maven_group_id") == "com.test"
+    assert captured_kwargs.get("maven_artifact_id") == "test-shell"
+    assert captured_kwargs.get("maven_version") == "3.0.0-SNAPSHOT"
+    assert captured_kwargs.get("ds_username") == "testuser"
+    assert captured_kwargs.get("ds_password") == "testpass"
+    assert captured_kwargs.get("ds_url") == "jdbc:postgresql://testhost/testdb"

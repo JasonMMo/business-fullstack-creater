@@ -224,6 +224,13 @@ def check_cross_layer_coherence(
         유지). `web/app.py` 가 `ops_router` 를 include 해야 라우트가 활성화된다.
         회귀하면 M3 Slice c 의 "IT-담당자 페르소나가 ops pack 만 별도로 받는다"
         약속이 깨지고 사용자가 전체 산출물 zip 에서 직접 추출해야 한다.
+      - G-76 (Growth-76 Vault Agent sidecar emitter contract): `emit_ops_pack.py`
+        가 `--vault` (또는 profile `overlay.vault_agent: true`) 옵트인 시 추가
+        3 산출물 (`docker-compose.vault.yml`, `vault-agent.hcl`, `env.tmpl`) 을
+        emit 하고 `render_vault_*` 3 헬퍼 + `_VAULT_SOP_SECTION` (DEPLOY-SOP §9)
+        + AppRole + consul-template 패턴을 유지해야 한다. 회귀하면 M3 Slice d
+        의 "IT-담당자가 사내 Vault 에 DB 자격증명을 위임한다" 약속이 깨지고
+        enterprise on-prem 환경에서 `.env` 평문 의존이 다시 시작된다.
     """
     failures: list[str] = []
 
@@ -522,17 +529,47 @@ def check_cross_layer_coherence(
                 "G-75 regression: web/app.py does not include ops_router"
             )
 
+    # G-76: emit_ops_pack.py preserves the Vault Agent sidecar contract.
+    # Required markers: 3 render_vault_* helpers + AppRole + consul-template +
+    # SOP §9 + the 3 emitted artifact names. Regression breaks the M3 Slice d
+    # promise that IT-담당자 can delegate DB creds to in-house Vault.
+    ops_emit = creater_root / "scripts" / "emit_ops_pack.py"
+    if not ops_emit.exists():
+        failures.append("G-76 guard: scripts/emit_ops_pack.py missing")
+    else:
+        emit_text = ops_emit.read_text(encoding="utf-8")
+        vault_markers = [
+            m
+            for m in (
+                "render_vault_hcl",
+                "render_vault_env_tmpl",
+                "render_vault_compose",
+                "_VAULT_SOP_SECTION",
+                'method "approle"',
+                "docker-compose.vault.yml",
+                "vault-agent.hcl",
+                "env.tmpl",
+                "Growth-76",
+            )
+            if m not in emit_text
+        ]
+        if vault_markers:
+            failures.append(
+                "G-76 regression: emit_ops_pack.py lost Vault Agent sidecar "
+                f"contract ({', '.join(vault_markers)})"
+            )
+
     if failures:
         return Check(
             "cross-layer-coherence",
             "FAIL",
             "; ".join(failures),
-            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75) 추적 후 복원",
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75/76) 추적 후 복원",
         )
     return Check(
         "cross-layer-coherence",
         "PASS",
-        "14 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75)",
+        "15 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76)",
     )
 
 

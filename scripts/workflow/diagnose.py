@@ -167,7 +167,7 @@ def check_cross_layer_coherence(
     빠르고 fresh scaffold 없이 회귀 감지. 새 트랩 발견 시 §4 등재 후 sub-check
     추가가 다음 Growth 단계.
 
-    Guards (8건):
+    Guards (21건):
       - G-47 (T-NexacroUiaPkg-javax): mybatis controller/service-impl 템플릿이
         `{{ uia_namespace }}` parametrize — `.jakarta.core.` 하드코딩 회귀 차단
       - G-50a (T-Probe-CtxPath-Missing, runner-side): nexacroN samples/runners/
@@ -495,6 +495,25 @@ def check_cross_layer_coherence(
                 f"{multimodule_markers!r}"
             )
 
+    # G-82: web/routes/target.py XHR progress + diff view contract (Growth-82 M5 Slice C-e).
+    # Required: X-Requested-With check, difflib import, Growth-82 marker in target.py,
+    # target_upload.js with XMLHttpRequest, target_upload.html with js ref + progress bar,
+    # target_upload_partial.html with extraction-result.
+    _g82_checks = [
+        ("target.py X-Requested-With", creater_root / "web" / "routes" / "target.py",                    "X-Requested-With"),
+        ("target.py difflib",           creater_root / "web" / "routes" / "target.py",                    "difflib"),
+        ("target.py G-82 marker",       creater_root / "web" / "routes" / "target.py",                    "Growth-82"),
+        ("target_upload.js exists",     creater_root / "web" / "static" / "js" / "target_upload.js",      "XMLHttpRequest"),
+        ("target_upload.html js ref",   creater_root / "web" / "templates" / "target_upload.html",         "target_upload.js"),
+        ("target_upload.html progress", creater_root / "web" / "templates" / "target_upload.html",         "upload-progress"),
+        ("partial template exists",     creater_root / "web" / "templates" / "target_upload_partial.html", "extraction-result"),
+    ]
+    for label, path, needle in _g82_checks:
+        if not path.exists():
+            failures.append(f"G-82 {label}: {path.name} missing")
+        elif needle not in path.read_text(encoding="utf-8"):
+            failures.append(f"G-82 {label}: '{needle}' not found in {path.name}")
+
     # G-71: emit_ops_pack.py emits 4 ops artifacts + multi-stage Docker builder.
     # Regression breaks the M3 Ops Pack 1-hour deploy scenario for the IT-담당자
     # persona (no dev environment required).
@@ -757,12 +776,12 @@ def check_cross_layer_coherence(
             "cross-layer-coherence",
             "FAIL",
             "; ".join(failures),
-            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81) 추적 후 복원",
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82) 추적 후 복원",
         )
     return Check(
         "cross-layer-coherence",
         "PASS",
-        "20 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81)",
+        "21 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82)",
     )
 
 

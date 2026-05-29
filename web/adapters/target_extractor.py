@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import io
 import pathlib
+import re
 import shutil
 import sys
 import tempfile
@@ -58,6 +59,13 @@ def _detect_source(project_dir: pathlib.Path) -> str:
         return "maven"
     for name in ("build.gradle.kts", "build.gradle"):
         if (project_dir / name).exists():
+            # Growth-81: distinguish multi-module via settings.gradle include
+            for settings_name in ("settings.gradle.kts", "settings.gradle"):
+                sp = project_dir / settings_name
+                if sp.exists():
+                    txt = sp.read_text(encoding="utf-8", errors="replace")
+                    if re.search(r"^\s*include\s*[\s(]", txt, re.MULTILINE):
+                        return "gradle-multi"
             return "gradle"
     return "unknown"
 

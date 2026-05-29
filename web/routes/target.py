@@ -19,7 +19,9 @@ pom.xml / build.gradle parsing.
 """
 from __future__ import annotations
 
+import difflib
 import re
+from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, File, Form, Request, UploadFile
@@ -27,6 +29,7 @@ from fastapi.responses import HTMLResponse, PlainTextResponse, Response
 
 from web.adapters import target_extractor
 
+# Growth-82
 router = APIRouter(prefix="/target")
 
 _SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
@@ -56,6 +59,7 @@ async def target_upload_post(
     templates = request.app.state.templates
     slug = slug.strip()
     form_data = {"slug": slug}
+    is_xhr = request.headers.get("X-Requested-With") == "XMLHttpRequest"
 
     errors = []
     if slug and not _SLUG_RE.match(slug):
@@ -72,6 +76,13 @@ async def target_upload_post(
         )
 
     if errors:
+        if is_xhr:
+            return templates.TemplateResponse(
+                request,
+                "target_upload_partial.html",
+                {"errors": errors, "yaml_content": None, "diff_lines": [], "slug": ""},
+                status_code=422,
+            )
         return templates.TemplateResponse(
             request,
             "target_upload.html",
@@ -85,6 +96,13 @@ async def target_upload_post(
             slug_override=slug or None,
         )
     except target_extractor.TargetExtractionError as exc:
+        if is_xhr:
+            return templates.TemplateResponse(
+                request,
+                "target_upload_partial.html",
+                {"errors": [str(exc)], "yaml_content": None, "diff_lines": [], "slug": ""},
+                status_code=422,
+            )
         return templates.TemplateResponse(
             request,
             "target_upload.html",
@@ -98,6 +116,31 @@ async def target_upload_post(
             content=result.yaml_text,
             media_type="application/x-yaml",
             headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
+
+    # Compute diff if an existing profile is present
+    diff_lines: list[str] = []
+    profiles_dir = Path(request.app.state.settings.profiles_dir) if hasattr(request.app.state, "settings") and hasattr(request.app.state.settings, "profiles_dir") else Path("profiles")
+    existing_profile = profiles_dir / f"{result.slug}.yaml"
+    if existing_profile.exists():
+        try:
+            old_text = existing_profile.read_text(encoding="utf-8")
+            old_lines = old_text.splitlines(keepends=True)
+            new_lines = result.yaml_text.splitlines(keepends=True)
+            diff_lines = list(difflib.unified_diff(old_lines, new_lines, fromfile="기존", tofile="신규"))
+        except OSError:
+            diff_lines = []
+
+    if is_xhr:
+        return templates.TemplateResponse(
+            request,
+            "target_upload_partial.html",
+            {
+                "errors": [],
+                "yaml_content": result.yaml_text,
+                "diff_lines": diff_lines,
+                "slug": result.slug,
+            },
         )
 
     return templates.TemplateResponse(

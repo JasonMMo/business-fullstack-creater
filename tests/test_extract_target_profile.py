@@ -450,3 +450,95 @@ def test_gradle_roundtrips_through_loader(tmp_path, monkeypatch):
     assert loaded["mybatis"]["uia_namespace"] == "jakarta"
     monkeypatch.delenv("ROUND_DB_USER", raising=False)
     assert loaded["datasource"]["username"] == "${ROUND_DB_USER}"
+
+
+# ---------------------------------------------------------------------------
+# Growth-81 (M5 Slice C-d) — Gradle multi-module include parsing
+# ---------------------------------------------------------------------------
+
+def test_parse_includes_groovy_single_line():
+    """include 'svc:api', 'svc:web' on one line → both captured."""
+    text = "include 'svc:api', 'svc:web'\n"
+    assert etp._parse_includes(text) == ["svc:api", "svc:web"]
+
+
+def test_parse_includes_groovy_multiple_lines():
+    """Two separate include lines → both captured, order preserved."""
+    text = "include 'alpha:core'\ninclude 'alpha:web'\n"
+    result = etp._parse_includes(text)
+    assert "alpha:core" in result
+    assert "alpha:web" in result
+    assert len(result) == 2
+
+
+def test_parse_includes_kotlin_dsl():
+    """include(\":svc:api\", \":svc:web\") Kotlin form → colon-prefix stripped."""
+    text = 'include(":svc:api", ":svc:web")\n'
+    assert etp._parse_includes(text) == ["svc:api", "svc:web"]
+
+
+def test_parse_gradle_no_includes_omits_modules_key(tmp_path):
+    """Single-module project without include → 'modules' key absent (backcompat)."""
+    proj = tmp_path / "single-app"
+    proj.mkdir()
+    _write_gradle_groovy(proj, group="com.single", root_name="single-app")
+    build = proj / "build.gradle"
+    result = etp.parse_gradle(build)
+    assert "modules" not in result
+
+
+def test_extract_modules_reads_submodule_group(tmp_path):
+    """Sub-module build.gradle with group → base_package populated."""
+    proj = tmp_path / "multi-root"
+    proj.mkdir()
+    # settings.gradle with include
+    (proj / "settings.gradle").write_text(
+        "rootProject.name = 'multi-root'\ninclude 'svc:api'\n",
+        encoding="utf-8",
+    )
+    # root build.gradle
+    (proj / "build.gradle").write_text(
+        "group = 'com.acme'\nversion = '1.0.0'\n",
+        encoding="utf-8",
+    )
+    # sub-module directory + build.gradle
+    sub_dir = proj / "svc" / "api"
+    sub_dir.mkdir(parents=True)
+    (sub_dir / "build.gradle").write_text(
+        "group = 'com.acme.api'\nversion = '1.0.0'\n",
+        encoding="utf-8",
+    )
+    modules = etp._extract_modules(proj)
+    assert len(modules) == 1
+    assert modules[0]["slug"] == "api"
+    assert modules[0]["gradle_path"] == "svc:api"
+    assert modules[0]["base_package"] == "com.acme.api"
+
+
+def test_build_profile_attaches_modules_for_multimodule_gradle(tmp_path):
+    """Full build_profile() on multi-module fixture → profile['modules'] present."""
+    proj = tmp_path / "mm-root"
+    proj.mkdir()
+    (proj / "settings.gradle").write_text(
+        "rootProject.name = 'mm-root'\ninclude 'svc:api', 'svc:web'\n",
+        encoding="utf-8",
+    )
+    (proj / "build.gradle").write_text(
+        "group = 'com.mm'\nversion = '1.0.0'\n",
+        encoding="utf-8",
+    )
+    for seg in ("api", "web"):
+        sub = proj / "svc" / seg
+        sub.mkdir(parents=True)
+        (sub / "build.gradle").write_text(
+            f"group = 'com.mm.{seg}'\n",
+            encoding="utf-8",
+        )
+    profile = etp.build_profile(proj)
+    assert "modules" in profile
+    slugs = [m["slug"] for m in profile["modules"]]
+    assert "api" in slugs
+    assert "web" in slugs
+    paths = [m["gradle_path"] for m in profile["modules"]]
+    assert "svc:api" in paths
+    assert "svc:web" in paths

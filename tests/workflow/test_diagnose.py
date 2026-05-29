@@ -177,7 +177,7 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
     # (Growth-77 M3 Slice e) — 3 render_sso_* helpers + Keycloak image +
     # SOP §10 + 3 SSO artifact names + OIDC env contract.
     (scripts_dir / "emit_ops_pack.py").write_text(
-        '"""Growth-71 + Growth-76 + Growth-77 ops pack emitter stub."""\n'
+        '"""Growth-71 + Growth-76 + Growth-77 + Growth-80 ops pack emitter stub."""\n'
         "def render_dockerfile(info):\n"
         '    return "FROM maven:3.9-eclipse-temurin-17 AS builder\\n"\n'
         "def render_compose(info, slug):\n"
@@ -194,11 +194,15 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
         "_VAULT_SOP_SECTION = '## 9. Vault Agent sidecar'\n"
         "def render_sso_compose(info, slug):\n"
         '    return "image: quay.io/keycloak/keycloak:24.0\\n"\n'
-        "def render_sso_realm(info, slug):\n    return '{}'\n"
+        "def render_sso_realm(info, slug, *, clients=None, ldap=None):\n    return '{}'\n"
         "def render_sso_env_example(info, slug):\n"
         '    return "OIDC_ISSUER_URI=http://keycloak:8080/realms/x\\n"\n'
         "_SSO_SOP_SECTION = '## 10. Keycloak/OIDC SSO sidecar'\n"
-        "# docker-compose.sso.yml keycloak-realm.json\n",
+        "# docker-compose.sso.yml keycloak-realm.json Growth-77\n"
+        "# Growth-80 marker: multi-client + LDAP federation\n"
+        "_SSO_LDAP_COMPONENT_TPL = 'org.keycloak.storage.UserStorageProvider'\n"
+        "def _render_client_json(client):\n    return '{}'\n"
+        "sso_ldap = False  # emit() parameter placeholder\n",
         encoding="utf-8",
     )
     # G-72 guard: scripts/workflow/status_board.py exposes compute() +
@@ -365,7 +369,7 @@ def test_check_cross_layer_coherence_pass(tmp_path):
     )
     assert c.status == "PASS"
     assert (
-        "18 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79)"
+        "19 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80)"
         in c.detail
     )
 
@@ -1093,6 +1097,51 @@ def test_check_cross_layer_coherence_fail_g79_app_missing_target_router(tmp_path
     assert c.status == "FAIL"
     assert "G-79 regression" in c.detail
     assert "target_router" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g80_missing_ldap_marker(tmp_path):
+    # G-80 guard: if _SSO_LDAP_COMPONENT_TPL or other G-80 markers vanish,
+    # LDAP federation contract is broken and G-80 regression must fire.
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "emit_ops_pack.py").write_text(
+        '"""stub missing G-80 LDAP markers."""\n'
+        "def render_dockerfile(info):\n"
+        '    return "FROM maven:3.9-eclipse-temurin-17 AS builder\\n"\n'
+        "def render_compose(info, slug):\n    return ''\n"
+        "def render_env_example(info, slug):\n    return ''\n"
+        "def render_sop(info, slug):\n    return ''\n"
+        "def render_vault_hcl(info, slug):\n"
+        '    return \'method "approle" {}\'\n'
+        "def render_vault_env_tmpl(info, slug):\n    return ''\n"
+        "def render_vault_compose(info, slug):\n"
+        '    return "# docker-compose.vault.yml\\n# vault-agent.hcl\\n# env.tmpl\\n"\n'
+        "_VAULT_SOP_SECTION = '## 9. Vault Agent sidecar'\n"
+        "def render_sso_compose(info, slug):\n"
+        '    return "image: quay.io/keycloak/keycloak:24.0\\n"\n'
+        "def render_sso_realm(info, slug, *, clients=None, ldap=None):\n    return '{}'\n"
+        "def render_sso_env_example(info, slug):\n"
+        '    return "OIDC_ISSUER_URI=http://keycloak:8080/realms/x\\n"\n'
+        "_SSO_SOP_SECTION = '## 10. Keycloak/OIDC SSO sidecar'\n"
+        "# docker-compose.sso.yml keycloak-realm.json Growth-77\n"
+        "# G-80 markers intentionally omitted to trigger regression\n",
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-80 regression" in c.detail
+
+
+def test_check_cross_layer_coherence_pass_g80(tmp_path):
+    # G-80 guard: real source has all markers -> PASS (uses default _make_workspace stub)
+    workspace, creater_root = _make_workspace(tmp_path)
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "PASS"
+    assert "19 trap guards intact" in c.detail
+    assert c.detail.endswith("/80)")
 
 
 def test_format_table_summary_lines():

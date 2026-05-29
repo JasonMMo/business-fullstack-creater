@@ -37,6 +37,25 @@ nexacro:
 overlay:
   target_pkg_prefix: com.acme.uiadapter
   shell_app_id: acme-portal
+  sso_keycloak: true                    # emit Keycloak sidecar (Growth-77).
+  sso_clients:                          # Growth-80: multi-client realm. omit = single {slug}-app.
+    - id: acme-app                      # required. clientId in Keycloak.
+      redirect_uris: [...]              # optional. defaults to localhost:8080 oauth2 callback.
+      web_origins: ["+"]               # optional. defaults to ["+"].
+      public_client: false              # optional. defaults to false.
+  sso_ldap: true                        # Growth-80: enable LDAP federation component.
+
+# ── LDAP federation (Growth-80) ─────────────────────
+ldap:
+  host: ldap.acme.internal              # required. LDAP server hostname.
+  port: 389                             # optional. default 389.
+  bind_dn: "cn=admin,dc=acme,dc=..."   # required. service account DN.
+  bind_credential: "${ACME_LDAP_PW}"   # required. use ${VAR} placeholder; never plain text.
+  users_dn: "ou=people,dc=acme,dc=..."  # required. search base for users.
+  username_attr: uid                    # optional. default uid.
+  rdn_attr: uid                         # optional. default uid.
+  uuid_attr: entryUUID                  # optional. default entryUUID.
+  user_object_classes: "inetOrgPerson, organizationalPerson"  # optional.
 
 # ── Auth ────────────────────────────────────────────
 auth:

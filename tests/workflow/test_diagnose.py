@@ -258,9 +258,35 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
         "from web.routes.ops import router as ops_router\n"
         "from web.routes.target import router as target_router\n"
         "from web.routes.fulltest import router as fulltest_router\n"
+        "from web.routes.status import router as status_router\n"
         "application.include_router(ops_router)\n"
         "application.include_router(target_router)\n"
-        "application.include_router(fulltest_router)\n",
+        "application.include_router(fulltest_router)\n"
+        "application.include_router(status_router)\n",
+        encoding="utf-8",
+    )
+    # G-84 guard: status route + status template + base.html nav link
+    web_templates = creater_root / "web" / "templates"
+    web_templates.mkdir(parents=True, exist_ok=True)
+    (web_routes / "status.py").write_text(
+        '"""web/routes/status.py — Growth-84 stub."""\n'
+        "from scripts.workflow import status_board\n"
+        "def _compute_green_rate(verification): return {}\n"
+        "async def status_dashboard(request): pass\n",
+        encoding="utf-8",
+    )
+    (web_templates / "status.html").write_text(
+        "{% extends 'base.html' %}\n"
+        "{% block content %}\n"
+        '<div class="status-tile">Growth-84 대시보드</div>\n'
+        "{% endblock %}\n",
+        encoding="utf-8",
+    )
+    (web_templates / "base.html").write_text(
+        "<!DOCTYPE html><html><body>\n"
+        '<a href="/status">상태 보기</a>\n'
+        "{% block content %}{% endblock %}\n"
+        "</body></html>\n",
         encoding="utf-8",
     )
     # G-83 guard: fulltest_runner.py, fulltest_registry.py, fulltest route
@@ -446,7 +472,7 @@ def test_check_cross_layer_coherence_pass(tmp_path):
     )
     assert c.status == "PASS"
     assert (
-        "22 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83)"
+        "23 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83/84)"
         in c.detail
     )
 
@@ -1217,8 +1243,8 @@ def test_check_cross_layer_coherence_pass_g80(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "22 trap guards intact" in c.detail
-    assert c.detail.endswith("/83)")
+    assert "23 trap guards intact" in c.detail
+    assert c.detail.endswith("/84)")
 
 
 def test_check_cross_layer_coherence_pass_g81(tmp_path):
@@ -1228,8 +1254,8 @@ def test_check_cross_layer_coherence_pass_g81(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "22 trap guards intact" in c.detail
-    assert c.detail.endswith("/83)")
+    assert "23 trap guards intact" in c.detail
+    assert c.detail.endswith("/84)")
 
 
 def test_check_cross_layer_coherence_fail_g81_extract(tmp_path):
@@ -1274,8 +1300,8 @@ def test_check_cross_layer_coherence_pass_g82(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "22 trap guards intact" in c.detail
-    assert c.detail.endswith("/83)")
+    assert "23 trap guards intact" in c.detail
+    assert c.detail.endswith("/84)")
 
 
 def test_check_cross_layer_coherence_fail_g82_missing_js(tmp_path):
@@ -1322,8 +1348,8 @@ def test_check_cross_layer_coherence_pass_g83(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "22 trap guards intact" in c.detail
-    assert c.detail.endswith("/83)")
+    assert "23 trap guards intact" in c.detail
+    assert c.detail.endswith("/84)")
 
 
 def test_check_cross_layer_coherence_fail_g83_missing_runner(tmp_path):
@@ -1377,6 +1403,55 @@ def test_check_cross_layer_coherence_fail_g83_missing_js(tmp_path):
     assert c.status == "FAIL"
     assert "G-83" in c.detail
     assert "fulltest.js" in c.detail
+
+
+def test_check_cross_layer_coherence_pass_g84(tmp_path):
+    # G-84 guard: all G-84 markers present → PASS
+    workspace, creater_root = _make_workspace(tmp_path)
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "PASS"
+    assert "23 trap guards intact" in c.detail
+    assert c.detail.endswith("/84)")
+
+
+def test_check_cross_layer_coherence_fail_g84_missing_status_route(tmp_path):
+    # G-84 guard: status.py missing → G-84 FAIL
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "web" / "routes" / "status.py").unlink()
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-84" in c.detail
+    assert "status.py" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g84_missing_status_html(tmp_path):
+    # G-84 guard: status.html missing → G-84 FAIL
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "web" / "templates" / "status.html").unlink()
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-84" in c.detail
+    assert "status.html" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g84_missing_status_router_in_app(tmp_path):
+    # G-84 guard: status_router absent from app.py → G-84 FAIL
+    workspace, creater_root = _make_workspace(tmp_path)
+    app_py = creater_root / "web" / "app.py"
+    content = app_py.read_text(encoding="utf-8").replace("status_router", "# removed")
+    app_py.write_text(content, encoding="utf-8")
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-84" in c.detail
+    assert "status_router" in c.detail
 
 
 def test_format_table_summary_lines():

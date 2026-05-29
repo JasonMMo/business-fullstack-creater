@@ -167,7 +167,7 @@ def check_cross_layer_coherence(
     빠르고 fresh scaffold 없이 회귀 감지. 새 트랩 발견 시 §4 등재 후 sub-check
     추가가 다음 Growth 단계.
 
-    Guards (21건):
+    Guards (22건):
       - G-47 (T-NexacroUiaPkg-javax): mybatis controller/service-impl 템플릿이
         `{{ uia_namespace }}` parametrize — `.jakarta.core.` 하드코딩 회귀 차단
       - G-50a (T-Probe-CtxPath-Missing, runner-side): nexacroN samples/runners/
@@ -272,6 +272,13 @@ def check_cross_layer_coherence(
         회귀하면 M5 Slice C-d 의 "Gradle 멀티 모듈 프로젝트도 동일 v1 profile
         추출 경로로 흐른다" 약속이 깨지고 사용자가 sub-module 목록을 수작업으로
         기재해야 한다.
+      - G-83 (Growth-83 M1 웹 풀테스트 게이트): `web/adapters/fulltest_runner.py`
+        가 `Growth-83` 마커를 포함하고, `web/fulltest_registry.py` 가 `Growth-83`
+        마커를 포함하고, `web/routes/fulltest.py` 가 `fulltest_start` 함수를
+        노출하고, `web/static/js/fulltest.js` 가 `Growth-83` 마커를 포함하고,
+        `scripts/workflow/full_test.py` 가 `FULLTEST_NO_LEARNLOG` env 체크를
+        포함해야 한다. 회귀하면 M1 페르소나의 "도메인 정의 → 풀테스트 실행 →
+        그린 확인 → zip 다운로드" 흐름이 웹에서 깨진다.
     """
     failures: list[str] = []
 
@@ -771,17 +778,36 @@ def check_cross_layer_coherence(
                 f"({', '.join(ldap_markers)})"
             )
 
+    # G-83: 웹 풀테스트 게이트 마커 (Growth-83 M1 웹 풀테스트 게이트)
+    _adapter  = creater_root / "web" / "adapters" / "fulltest_runner.py"
+    _registry = creater_root / "web" / "fulltest_registry.py"
+    _route    = creater_root / "web" / "routes" / "fulltest.py"
+    _js       = creater_root / "web" / "static" / "js" / "fulltest.js"
+    _ft       = creater_root / "scripts" / "workflow" / "full_test.py"
+
+    for _label, _path, _needle in [
+        ("fulltest_runner.py exists",         _adapter,  "Growth-83"),
+        ("fulltest_registry.py exists",       _registry, "Growth-83"),
+        ("fulltest route exists",             _route,    "fulltest_start"),
+        ("fulltest.js exists",                _js,       "Growth-83"),
+        ("full_test.py FULLTEST_NO_LEARNLOG", _ft,       "FULLTEST_NO_LEARNLOG"),
+    ]:
+        if not _path.exists():
+            failures.append(f"G-83 {_label}: {_path.name} missing")
+        elif _needle not in _path.read_text(encoding="utf-8"):
+            failures.append(f"G-83 {_label}: '{_needle}' not found in {_path.name}")
+
     if failures:
         return Check(
             "cross-layer-coherence",
             "FAIL",
             "; ".join(failures),
-            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82) 추적 후 복원",
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83) 추적 후 복원",
         )
     return Check(
         "cross-layer-coherence",
         "PASS",
-        "21 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82)",
+        "22 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83)",
     )
 
 

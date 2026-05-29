@@ -255,6 +255,12 @@ def check_cross_layer_coherence(
         는 `parse_pom` / `parse_gradle` 을 재구현하면 안 된다 (G-69 와 동일한
         single-source 원칙 — 6-axis 누적이 web 경로에서 우회되는 것을 차단).
         `web/app.py` 가 `target_router` 를 include 해야 라우트가 활성화된다.
+      - G-80 (Growth-80 Keycloak multi-client realm + LDAP federation contract):
+        `emit_ops_pack.py` 가 `_render_client_json` 헬퍼 + `_SSO_LDAP_COMPONENT_TPL`
+        상수 + `sso_ldap` emit() 파라미터/CLI 플래그 +
+        `org.keycloak.storage.UserStorageProvider` 마커를 유지해야 한다.
+        회귀하면 M3 Slice e+alpha 의 "IT-담당자가 Keycloak 에 복수 OIDC 클라이언트를
+        선언하고 LDAP 사용자 저장소를 연동한다" 약속이 깨진다.
         회귀하면 M5 Slice C-c 의 "비 CLI 사용자가 zip 업로드만으로 v1 profile
         을 얻는다" 약속이 깨지고 IT-담당자 페르소나가 다시 CLI 환경에 의존해야
         한다.
@@ -699,17 +705,39 @@ def check_cross_layer_coherence(
                 f"sidecar contract ({', '.join(sso_markers)})"
             )
 
+        # G-80: emit_ops_pack.py multi-client + LDAP federation markers (Growth-80)
+        # Required: _SSO_LDAP_COMPONENT_TPL constant, _render_client_json helper,
+        # sso_ldap parameter/CLI flag, UserStorageProvider type string, Growth-80 marker.
+        # Regression breaks M3 Slice e+alpha: multi-client realm and LDAP federation
+        # (IT-담당자가 Keycloak 에 LDAP 사용자 저장소를 연동) 약속이 깨진다.
+        ldap_markers = [
+            m
+            for m in (
+                "_SSO_LDAP_COMPONENT_TPL",
+                "_render_client_json",
+                "sso_ldap",
+                "org.keycloak.storage.UserStorageProvider",
+                "Growth-80",
+            )
+            if m not in emit_text
+        ]
+        if ldap_markers:
+            failures.append(
+                "G-80 regression: emit_ops_pack.py missing marker "
+                f"({', '.join(ldap_markers)})"
+            )
+
     if failures:
         return Check(
             "cross-layer-coherence",
             "FAIL",
             "; ".join(failures),
-            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75/76/77/78/79) 추적 후 복원",
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80) 추적 후 복원",
         )
     return Check(
         "cross-layer-coherence",
         "PASS",
-        "18 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79)",
+        "19 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80)",
     )
 
 

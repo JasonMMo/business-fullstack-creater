@@ -499,3 +499,157 @@ def test_sso_and_vault_can_combine(tmp_path):
     sop = (ops / "DEPLOY-SOP.md").read_text(encoding="utf-8")
     assert "## 9. Vault Agent sidecar" in sop
     assert "## 10. Keycloak/OIDC SSO sidecar" in sop
+
+
+# ---------------------------------------------------------------------------
+# Growth-80 — Multi-client realm + LDAP federation
+# ---------------------------------------------------------------------------
+
+
+def test_sso_default_single_client_backcompat(tmp_path):
+    # Growth-77 backcompat: no overlay.sso_clients -> realm has exactly 1 client named {slug}-app
+    _write_scaffold(tmp_path)
+    profile = {"version": 1, "customer": {"slug": "acme"}}
+    ops = eop.emit(tmp_path, profile=profile, sso=True)
+    realm = _json.loads((ops / "keycloak-realm.json").read_text(encoding="utf-8"))
+    assert len(realm["clients"]) == 1
+    assert realm["clients"][0]["clientId"] == "acme-app"
+
+
+def test_sso_multi_client_via_profile(tmp_path):
+    # Growth-80: overlay.sso_clients list -> realm clients array has both entries
+    _write_scaffold(tmp_path)
+    profile = {
+        "version": 1,
+        "customer": {"slug": "acme"},
+        "overlay": {
+            "sso_clients": [
+                {"id": "acme-app"},
+                {"id": "acme-admin"},
+            ]
+        },
+    }
+    ops = eop.emit(tmp_path, profile=profile, sso=True)
+    realm = _json.loads((ops / "keycloak-realm.json").read_text(encoding="utf-8"))
+    assert len(realm["clients"]) == 2
+    client_ids = {c["clientId"] for c in realm["clients"]}
+    assert client_ids == {"acme-app", "acme-admin"}
+
+
+def test_sso_client_default_web_origins(tmp_path):
+    # Client without explicit web_origins -> webOrigins defaults to ["+"]
+    _write_scaffold(tmp_path)
+    profile = {
+        "version": 1,
+        "customer": {"slug": "acme"},
+        "overlay": {"sso_clients": [{"id": "acme-app"}]},
+    }
+    ops = eop.emit(tmp_path, profile=profile, sso=True)
+    realm = _json.loads((ops / "keycloak-realm.json").read_text(encoding="utf-8"))
+    assert realm["clients"][0]["webOrigins"] == ["+"]
+
+
+def test_sso_client_custom_redirect_uris(tmp_path):
+    # Client with custom redirect_uris -> redirectUris matches supplied list
+    _write_scaffold(tmp_path)
+    custom_uris = ["https://app.acme.example/callback", "https://app.acme.example/*"]
+    profile = {
+        "version": 1,
+        "customer": {"slug": "acme"},
+        "overlay": {
+            "sso_clients": [{"id": "acme-app", "redirect_uris": custom_uris}]
+        },
+    }
+    ops = eop.emit(tmp_path, profile=profile, sso=True)
+    realm = _json.loads((ops / "keycloak-realm.json").read_text(encoding="utf-8"))
+    assert realm["clients"][0]["redirectUris"] == custom_uris
+
+
+def test_sso_off_emits_no_ldap(tmp_path):
+    # Neither --sso nor sso_ldap -> no .env.ldap.example, no components block
+    _write_scaffold(tmp_path)
+    ops = eop.emit(tmp_path)
+    assert not (ops / ".env.ldap.example").exists()
+    assert not (ops / "keycloak-realm.json").exists()
+
+
+def test_sso_on_ldap_off_realm_has_no_components(tmp_path):
+    # --sso only, no ldap profile -> realm JSON has no components key
+    _write_scaffold(tmp_path)
+    profile = {"version": 1, "customer": {"slug": "acme"}}
+    ops = eop.emit(tmp_path, profile=profile, sso=True)
+    realm = _json.loads((ops / "keycloak-realm.json").read_text(encoding="utf-8"))
+    assert "components" not in realm
+    assert not (ops / ".env.ldap.example").exists()
+
+
+def _ldap_profile(extra_ldap=None):
+    ldap = {
+        "host": "ldap.acme.internal",
+        "port": 389,
+        "bind_dn": "cn=admin,dc=acme,dc=internal",
+        "bind_credential": "secret",
+        "users_dn": "ou=people,dc=acme,dc=internal",
+    }
+    if extra_ldap:
+        ldap.update(extra_ldap)
+    return {
+        "version": 1,
+        "customer": {"slug": "acme"},
+        "ldap": ldap,
+    }
+
+
+def test_sso_ldap_via_cli_flag(tmp_path):
+    # emit(..., sso=True, sso_ldap=True) with profile.ldap -> realm has UserStorageProvider + .env.ldap.example
+    _write_scaffold(tmp_path)
+    ops = eop.emit(tmp_path, profile=_ldap_profile(), sso=True, sso_ldap=True)
+    realm = _json.loads((ops / "keycloak-realm.json").read_text(encoding="utf-8"))
+    assert "components" in realm
+    assert "org.keycloak.storage.UserStorageProvider" in realm["components"]
+    assert (ops / ".env.ldap.example").exists()
+
+
+def test_sso_ldap_via_profile_opt_in(tmp_path):
+    # overlay.sso_ldap: true without CLI flag -> same result as CLI flag
+    _write_scaffold(tmp_path)
+    profile = _ldap_profile()
+    profile["overlay"] = {"sso_ldap": True}
+    ops = eop.emit(tmp_path, profile=profile, sso=True)
+    realm = _json.loads((ops / "keycloak-realm.json").read_text(encoding="utf-8"))
+    assert "components" in realm
+    assert "org.keycloak.storage.UserStorageProvider" in realm["components"]
+    assert (ops / ".env.ldap.example").exists()
+
+
+def test_sso_ldap_bind_credential_env_var_preserved(tmp_path):
+    # ldap.bind_credential containing ${VAR} -> realm JSON contains literal ${VAR}
+    _write_scaffold(tmp_path)
+    profile = _ldap_profile({"bind_credential": "${ACME_LDAP_PW}"})
+    ops = eop.emit(tmp_path, profile=profile, sso=True, sso_ldap=True)
+    realm_text = (ops / "keycloak-realm.json").read_text(encoding="utf-8")
+    assert "${ACME_LDAP_PW}" in realm_text
+    # Also valid JSON
+    realm = _json.loads(realm_text)
+    provider = realm["components"]["org.keycloak.storage.UserStorageProvider"][0]
+    assert provider["config"]["bindCredential"] == ["${ACME_LDAP_PW}"]
+
+
+def test_sso_ldap_defaults_applied(tmp_path):
+    # ldap config with only required fields -> port defaults to 389, username_attr defaults to "uid"
+    _write_scaffold(tmp_path)
+    profile = {
+        "version": 1,
+        "customer": {"slug": "acme"},
+        "ldap": {
+            "host": "ldap.acme",
+            "bind_dn": "cn=admin,dc=acme,dc=internal",
+            "bind_credential": "x",
+            "users_dn": "ou=people,dc=acme,dc=internal",
+        },
+    }
+    ops = eop.emit(tmp_path, profile=profile, sso=True, sso_ldap=True)
+    realm = _json.loads((ops / "keycloak-realm.json").read_text(encoding="utf-8"))
+    provider = realm["components"]["org.keycloak.storage.UserStorageProvider"][0]
+    assert provider["config"]["connectionUrl"] == ["ldap://ldap.acme:389"]
+    assert provider["config"]["usernameLDAPAttribute"] == ["uid"]

@@ -264,6 +264,14 @@ def check_cross_layer_coherence(
         회귀하면 M5 Slice C-c 의 "비 CLI 사용자가 zip 업로드만으로 v1 profile
         을 얻는다" 약속이 깨지고 IT-담당자 페르소나가 다시 CLI 환경에 의존해야
         한다.
+      - G-81 (Growth-81 extract_target_profile.py Gradle multi-module input contract):
+        `scripts/extract_target_profile.py` 가 `settings.gradle(.kts)` 의 `include`
+        선언을 파싱해 sub-module 별 메타(`slug`/`gradle_path`/`base_package`) 를
+        `modules:` 리스트로 profile 에 첨부해야 한다. `_GRADLE_INCLUDE_RE`,
+        `_parse_includes`, `_extract_modules`, `Growth-81` 마커를 유지.
+        회귀하면 M5 Slice C-d 의 "Gradle 멀티 모듈 프로젝트도 동일 v1 profile
+        추출 경로로 흐른다" 약속이 깨지고 사용자가 sub-module 목록을 수작업으로
+        기재해야 한다.
     """
     failures: list[str] = []
 
@@ -468,6 +476,23 @@ def check_cross_layer_coherence(
             failures.append(
                 "G-78 regression: extract_target_profile.py lost Gradle input "
                 f"contract ({', '.join(gradle_markers)})"
+            )
+
+        # G-81: extract_target_profile.py supports Gradle multi-module (Growth-81).
+        # Required: _GRADLE_INCLUDE_RE regex, _parse_includes helper,
+        # _extract_modules helper, Growth-81 marker.
+        # Regression breaks M5 Slice C-d: Gradle multi-module projects lose
+        # automatic sub-module discovery and modules: list in profile.
+        multimodule_markers = [m for m in (
+            "_GRADLE_INCLUDE_RE",
+            "_parse_includes",
+            "_extract_modules",
+            "Growth-81",
+        ) if m not in text]
+        if multimodule_markers:
+            failures.append(
+                "G-81 regression: extract_target_profile.py missing marker "
+                f"{multimodule_markers!r}"
             )
 
     # G-71: emit_ops_pack.py emits 4 ops artifacts + multi-stage Docker builder.
@@ -732,12 +757,12 @@ def check_cross_layer_coherence(
             "cross-layer-coherence",
             "FAIL",
             "; ".join(failures),
-            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80) 추적 후 복원",
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81) 추적 후 복원",
         )
     return Check(
         "cross-layer-coherence",
         "PASS",
-        "19 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80)",
+        "20 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81)",
     )
 
 

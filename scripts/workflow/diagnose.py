@@ -797,17 +797,35 @@ def check_cross_layer_coherence(
         elif _needle not in _path.read_text(encoding="utf-8"):
             failures.append(f"G-83 {_label}: '{_needle}' not found in {_path.name}")
 
+    # G-84: M2 Exec 라이브 대시보드 마커 (Growth-84)
+    _g84_route    = creater_root / "web" / "routes" / "status.py"
+    _g84_template = creater_root / "web" / "templates" / "status.html"
+    _g84_base     = creater_root / "web" / "templates" / "base.html"
+    _g84_app      = creater_root / "web" / "app.py"
+
+    for _label, _path, _needle in [
+        ("status route exists",        _g84_route,    "status_board"),
+        ("status route green_rate",    _g84_route,    "_compute_green_rate"),
+        ("status.html exists",         _g84_template, "status-tile"),
+        ("base.html /status nav link", _g84_base,     "/status"),
+        ("app.py status_router",       _g84_app,      "status_router"),
+    ]:
+        if not _path.exists():
+            failures.append(f"G-84 {_label}: {_path.name} missing")
+        elif _needle not in _path.read_text(encoding="utf-8"):
+            failures.append(f"G-84 {_label}: '{_needle}' not found in {_path.name}")
+
     if failures:
         return Check(
             "cross-layer-coherence",
             "FAIL",
             "; ".join(failures),
-            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83) 추적 후 복원",
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83/84) 추적 후 복원",
         )
     return Check(
         "cross-layer-coherence",
         "PASS",
-        "22 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83)",
+        "23 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83/84)",
     )
 
 

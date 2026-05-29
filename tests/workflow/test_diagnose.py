@@ -237,10 +237,13 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
     # includes target_router. Adapter MUST NOT re-implement parse_pom/parse_gradle.
     (web_routes / "target.py").write_text(
         '"""Growth-79 target upload route stub."""\n'
+        '# Growth-82\n'
+        'import difflib\n'
         'from web.adapters import target_extractor\n'
         '@router.get("/upload")\n'
         'def target_upload_get():\n'
-        '    return target_extractor.extract_from_zip(b"")\n',
+        '    return target_extractor.extract_from_zip(b"")\n'
+        '# X-Requested-With check for XHR mode\n',
         encoding="utf-8",
     )
     (web_adapters / "target_extractor.py").write_text(
@@ -256,6 +259,37 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
         "from web.routes.target import router as target_router\n"
         "application.include_router(ops_router)\n"
         "application.include_router(target_router)\n",
+        encoding="utf-8",
+    )
+    # G-82 guard: target_upload.js + target_upload_partial.html stubs
+    js_dir = creater_root / "web" / "static" / "js"
+    js_dir.mkdir(parents=True, exist_ok=True)
+    (js_dir / "target_upload.js").write_text(
+        "// Growth-82: XHR upload with progress indicator\n"
+        "var xhr = new XMLHttpRequest();\n",
+        encoding="utf-8",
+    )
+    templates_dir = creater_root / "web" / "templates"
+    templates_dir.mkdir(parents=True, exist_ok=True)
+    existing_upload = templates_dir / "target_upload.html"
+    if not existing_upload.exists():
+        existing_upload.write_text(
+            "<!-- target_upload.html stub -->\n"
+            "<!-- target_upload.js -->\n"
+            "<!-- upload-progress -->\n",
+            encoding="utf-8",
+        )
+    else:
+        # Append markers if not present
+        content = existing_upload.read_text(encoding="utf-8")
+        if "target_upload.js" not in content:
+            content += "\n<!-- target_upload.js -->\n"
+        if "upload-progress" not in content:
+            content += "\n<!-- upload-progress -->\n"
+        existing_upload.write_text(content, encoding="utf-8")
+    (templates_dir / "target_upload_partial.html").write_text(
+        "{# Growth-82 partial #}\n"
+        '<section class="extraction-result">stub</section>\n',
         encoding="utf-8",
     )
     return workspace, creater_root
@@ -373,7 +407,7 @@ def test_check_cross_layer_coherence_pass(tmp_path):
     )
     assert c.status == "PASS"
     assert (
-        "20 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81)"
+        "21 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82)"
         in c.detail
     )
 
@@ -1144,8 +1178,8 @@ def test_check_cross_layer_coherence_pass_g80(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "20 trap guards intact" in c.detail
-    assert c.detail.endswith("/81)")
+    assert "21 trap guards intact" in c.detail
+    assert c.detail.endswith("/82)")
 
 
 def test_check_cross_layer_coherence_pass_g81(tmp_path):
@@ -1155,8 +1189,8 @@ def test_check_cross_layer_coherence_pass_g81(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "20 trap guards intact" in c.detail
-    assert c.detail.endswith("/81)")
+    assert "21 trap guards intact" in c.detail
+    assert c.detail.endswith("/82)")
 
 
 def test_check_cross_layer_coherence_fail_g81_extract(tmp_path):
@@ -1192,6 +1226,54 @@ def test_check_cross_layer_coherence_fail_g81_extract(tmp_path):
     )
     assert c.status == "FAIL"
     assert "G-81 regression" in c.detail
+
+
+def test_check_cross_layer_coherence_pass_g82(tmp_path):
+    # G-82 guard: all G-82 markers present → PASS
+    workspace, creater_root = _make_workspace(tmp_path)
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "PASS"
+    assert "21 trap guards intact" in c.detail
+    assert c.detail.endswith("/82)")
+
+
+def test_check_cross_layer_coherence_fail_g82_missing_js(tmp_path):
+    # G-82 guard: target_upload.js missing → G-82 FAIL
+    workspace, creater_root = _make_workspace(tmp_path)
+    js = creater_root / "web" / "static" / "js" / "target_upload.js"
+    js.unlink()
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-82" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g82_missing_partial(tmp_path):
+    # G-82 guard: target_upload_partial.html missing → G-82 FAIL
+    workspace, creater_root = _make_workspace(tmp_path)
+    partial = creater_root / "web" / "templates" / "target_upload_partial.html"
+    partial.unlink()
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-82" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g82_missing_marker(tmp_path):
+    # G-82 guard: Growth-82 marker absent from target.py → FAIL
+    workspace, creater_root = _make_workspace(tmp_path)
+    route = creater_root / "web" / "routes" / "target.py"
+    content = route.read_text(encoding="utf-8").replace("Growth-82", "Growth-XX")
+    route.write_text(content, encoding="utf-8")
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-82" in c.detail
 
 
 def test_format_table_summary_lines():

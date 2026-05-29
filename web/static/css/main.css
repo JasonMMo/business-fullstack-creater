@@ -258,3 +258,25 @@ body {
 .diff-add  { display: block; background: rgba(0,180,0,0.25); color: #b5e7b5; }
 .diff-del  { display: block; background: rgba(220,0,0,0.25);  color: #f5a0a0; }
 .diff-hunk { display: block; background: rgba(100,100,100,0.3); color: #aaa; }
+
+/* Growth-83: fulltest gate */
+.btn-fulltest {
+  background: #1976d2;
+  color: #fff;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.btn-fulltest:disabled { background: #90a4ae; cursor: not-allowed; }
+.fulltest-status { margin-top: 12px; }
+.fulltest-label { font-weight: bold; margin-bottom: 6px; }
+.fulltest-layers { list-style: none; padding: 0; margin: 4px 0; }
+.fulltest-layer { padding: 2px 0; font-family: monospace; font-size: 13px; }
+.fulltest-layer-pass { color: #388e3c; }
+.fulltest-layer-fail { color: #d32f2f; }
+.fulltest-hint { color: #555; font-size: 12px; margin-top: 6px; font-family: monospace; }
+.fulltest-error { color: #d32f2f; font-size: 12px; margin-top: 4px; }
+.badge-green { background: #388e3c; color: #fff; padding: 2px 8px; border-radius: 10px; font-size: 12px; margin-left: 8px; }
+.btn-disabled { opacity: 0.5; pointer-events: none; }

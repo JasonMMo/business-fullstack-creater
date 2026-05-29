@@ -176,3 +176,73 @@ def test_target_upload_post_rejects_invalid_slug(client):
     )
     assert resp.status_code == 422
     assert "슬러그" in resp.text
+
+
+# Growth-82 tests
+
+def test_upload_xhr_returns_partial(client):
+    """XHR 헤더 요청 시 partial HTML 반환 (base.html 없음)."""
+    payload = _build_zip({
+        "pom.xml": _POM_MIN,
+        "src/main/resources/application.yml": _APPLICATION_YML,
+    })
+    resp = client.post(
+        "/target/upload",
+        files={"project_zip": ("acme.zip", payload, "application/zip")},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert resp.status_code == 200
+    assert "extraction-result" in resp.text
+    # partial template does not extend base.html — no DOCTYPE
+    assert "<!DOCTYPE" not in resp.text
+
+
+def test_upload_xhr_shows_diff_when_profile_exists(client, tmp_path):
+    """기존 profiles/<slug>.yaml 이 있을 때 diff 포함 partial 반환."""
+    fake_profiles = tmp_path / "profiles"
+    fake_profiles.mkdir()
+    existing = fake_profiles / "acme.yaml"
+    existing.write_text("# old profile\nversion: 1\n", encoding="utf-8")
+
+    app = client.app
+    original_settings = getattr(app.state, "settings", None)
+
+    class _FakeSettings:
+        profiles_dir = str(fake_profiles)
+
+    app.state.settings = _FakeSettings()
+    try:
+        payload = _build_zip({
+            "pom.xml": _POM_MIN,
+            "src/main/resources/application.yml": _APPLICATION_YML,
+        })
+        resp = client.post(
+            "/target/upload",
+            files={"project_zip": ("acme.zip", payload, "application/zip")},
+            data={"slug": "acme"},
+            headers={"X-Requested-With": "XMLHttpRequest"},
+        )
+    finally:
+        if original_settings is None:
+            try:
+                del app.state.settings
+            except AttributeError:
+                pass
+        else:
+            app.state.settings = original_settings
+
+    assert resp.status_code == 200
+    assert "extraction-result" in resp.text
+    assert "<!DOCTYPE" not in resp.text
+
+
+def test_upload_xhr_422_returns_partial_errors(client):
+    """빈 zip XHR 요청 시 422 + partial errors 반환."""
+    resp = client.post(
+        "/target/upload",
+        files={"project_zip": ("empty.zip", b"", "application/zip")},
+        headers={"X-Requested-With": "XMLHttpRequest"},
+    )
+    assert resp.status_code == 422
+    assert "extraction-errors" in resp.text
+    assert "<!DOCTYPE" not in resp.text

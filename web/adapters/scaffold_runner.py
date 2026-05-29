@@ -49,6 +49,7 @@ class ScaffoldResult(BaseModel):
     stderr: str
     raw_report: Optional[str] = None             # markdown content of scaffold-report.md
     returncode: int
+    lane: str = "jakarta"                        # Growth-83: fulltest_route 가 lane 을 읽기 위해 추가
 
 
 # ---------------------------------------------------------------------------
@@ -213,4 +214,5 @@ def run(request: ScaffoldRequest, *, timeout_sec: int = 300) -> ScaffoldResult:
         stderr=stderr_text,
         raw_report=raw_report,
         returncode=returncode,
+        lane=request.lane,
     )

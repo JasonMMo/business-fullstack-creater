@@ -257,13 +257,52 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
     (creater_root / "web" / "app.py").write_text(
         "from web.routes.ops import router as ops_router\n"
         "from web.routes.target import router as target_router\n"
+        "from web.routes.fulltest import router as fulltest_router\n"
         "application.include_router(ops_router)\n"
-        "application.include_router(target_router)\n",
+        "application.include_router(target_router)\n"
+        "application.include_router(fulltest_router)\n",
+        encoding="utf-8",
+    )
+    # G-83 guard: fulltest_runner.py, fulltest_registry.py, fulltest route
+    # + FULLTEST_NO_LEARNLOG in full_test.py (fulltest.js written after js_dir is created below)
+    (web_adapters / "fulltest_runner.py").write_text(
+        '"""web/adapters/fulltest_runner.py — Growth-83 stub."""\n'
+        "def run(lane, scaffold_dir, *, timeout_sec=600):\n"
+        "    return None\n",
+        encoding="utf-8",
+    )
+    (creater_root / "web" / "fulltest_registry.py").write_text(
+        '"""web/fulltest_registry.py — Growth-83 stub."""\n'
+        "def start(run_id, lane, scaffold_dir): return ('', True)\n"
+        "def get_by_run_id(run_id): return None\n"
+        "def clear(): pass\n",
+        encoding="utf-8",
+    )
+    (web_routes / "fulltest.py").write_text(
+        '"""web/routes/fulltest.py — Growth-83 stub."""\n'
+        "async def fulltest_start(run_id): pass\n"
+        "async def fulltest_status(run_id): pass\n",
+        encoding="utf-8",
+    )
+    # Overwrite full_test.py stub to include FULLTEST_NO_LEARNLOG
+    (scripts / "full_test.py").write_text(
+        "# Growth-83\n"
+        "import os\n"
+        "scaffold_lane = live_overlay.discover_scaffold_lane(scaffold_dir)\n"
+        "url = lane_probe_url(lane, port, entity, scaffold_lane=scaffold_lane)\n"
+        "if not os.environ.get('FULLTEST_NO_LEARNLOG'):\n"
+        "    learn_log.update_label(n, result.label)\n",
         encoding="utf-8",
     )
     # G-82 guard: target_upload.js + target_upload_partial.html stubs
     js_dir = creater_root / "web" / "static" / "js"
     js_dir.mkdir(parents=True, exist_ok=True)
+    # G-83: fulltest.js — written after js_dir is created
+    (js_dir / "fulltest.js").write_text(
+        "// Growth-83: full-test background runner + polling UI\n"
+        "var btn = document.getElementById('fulltest-btn');\n",
+        encoding="utf-8",
+    )
     (js_dir / "target_upload.js").write_text(
         "// Growth-82: XHR upload with progress indicator\n"
         "var xhr = new XMLHttpRequest();\n",
@@ -407,7 +446,7 @@ def test_check_cross_layer_coherence_pass(tmp_path):
     )
     assert c.status == "PASS"
     assert (
-        "21 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82)"
+        "22 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83)"
         in c.detail
     )
 
@@ -1178,8 +1217,8 @@ def test_check_cross_layer_coherence_pass_g80(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "21 trap guards intact" in c.detail
-    assert c.detail.endswith("/82)")
+    assert "22 trap guards intact" in c.detail
+    assert c.detail.endswith("/83)")
 
 
 def test_check_cross_layer_coherence_pass_g81(tmp_path):
@@ -1189,8 +1228,8 @@ def test_check_cross_layer_coherence_pass_g81(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "21 trap guards intact" in c.detail
-    assert c.detail.endswith("/82)")
+    assert "22 trap guards intact" in c.detail
+    assert c.detail.endswith("/83)")
 
 
 def test_check_cross_layer_coherence_fail_g81_extract(tmp_path):
@@ -1235,8 +1274,8 @@ def test_check_cross_layer_coherence_pass_g82(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "21 trap guards intact" in c.detail
-    assert c.detail.endswith("/82)")
+    assert "22 trap guards intact" in c.detail
+    assert c.detail.endswith("/83)")
 
 
 def test_check_cross_layer_coherence_fail_g82_missing_js(tmp_path):
@@ -1274,6 +1313,70 @@ def test_check_cross_layer_coherence_fail_g82_missing_marker(tmp_path):
     )
     assert c.status == "FAIL"
     assert "G-82" in c.detail
+
+
+def test_check_cross_layer_coherence_pass_g83(tmp_path):
+    # G-83 guard: all G-83 markers present → PASS
+    workspace, creater_root = _make_workspace(tmp_path)
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "PASS"
+    assert "22 trap guards intact" in c.detail
+    assert c.detail.endswith("/83)")
+
+
+def test_check_cross_layer_coherence_fail_g83_missing_runner(tmp_path):
+    # G-83 guard: fulltest_runner.py missing → G-83 FAIL
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "web" / "adapters" / "fulltest_runner.py").unlink()
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-83" in c.detail
+    assert "fulltest_runner.py" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g83_missing_no_learnlog_env(tmp_path):
+    # G-83 guard: FULLTEST_NO_LEARNLOG env check absent from full_test.py → G-83 FAIL
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "scripts" / "workflow" / "full_test.py").write_text(
+        "scaffold_lane = live_overlay.discover_scaffold_lane(scaffold_dir)\n"
+        "url = lane_probe_url(lane, port, entity, scaffold_lane=scaffold_lane)\n"
+        "# env check omitted intentionally\n",
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-83" in c.detail
+    assert "FULLTEST_NO_LEARNLOG" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g83_missing_registry(tmp_path):
+    # G-83 guard: fulltest_registry.py missing → G-83 FAIL
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "web" / "fulltest_registry.py").unlink()
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-83" in c.detail
+    assert "fulltest_registry.py" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g83_missing_js(tmp_path):
+    # G-83 guard: fulltest.js missing → G-83 FAIL
+    workspace, creater_root = _make_workspace(tmp_path)
+    (creater_root / "web" / "static" / "js" / "fulltest.js").unlink()
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-83" in c.detail
+    assert "fulltest.js" in c.detail
 
 
 def test_format_table_summary_lines():

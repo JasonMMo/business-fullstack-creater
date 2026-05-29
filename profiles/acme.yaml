@@ -22,6 +22,11 @@ nexacro:
 overlay:
   target_pkg_prefix: com.acme.uiadapter
   shell_app_id: acme-portal
+  # Growth-80 — Keycloak multi-client + LDAP federation (uncomment to activate):
+  # sso_ldap: true
+  # sso_clients:
+  #   - id: acme-app
+  #   - id: acme-admin
   maven:
     group_id: com.acme
     artifact_id_template: "{slug}-shell"
@@ -46,5 +51,13 @@ datasource:
   host: db.acme.internal
   port: 5432
   db: acme_prod
+
+# Growth-80 — LDAP federation (uncomment + set ACME_LDAP_BIND_PW env var):
+# ldap:
+#   host: ldap.acme.internal
+#   port: 389
+#   bind_dn: "cn=admin,dc=acme,dc=internal"
+#   bind_credential: "${ACME_LDAP_BIND_PW}"
+#   users_dn: "ou=people,dc=acme,dc=internal"
 
 domains_seen: []

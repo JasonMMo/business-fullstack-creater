@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}누적 자산 대시보드{% endblock %}
+{% block content %}
+<section class="status-board">
+  <h1>누적 자산 대시보드</h1>
+  <p class="status-intro">이 플랫폼이 사용될수록 쌓인 자산입니다.</p>
+
+  {% if error %}
+  <div class="status-error">{{ error }}</div>
+  {% else %}
+  <div class="status-tile-grid">
+    <div class="status-tile">
+      <div class="status-tile-value">{{ board.domain_count }}</div>
+      <div class="status-tile-label">도메인 (preset)</div>
+      <div class="status-tile-source">learn-log §2</div>
+    </div>
+    <div class="status-tile">
+      <div class="status-tile-value">{{ green_rate.percent }}%</div>
+      <div class="status-tile-label">풀테스트 그린율 ({{ green_rate.verified }}/{{ green_rate.total }} lane)</div>
+      <div class="status-tile-source">learn-log §1</div>
+    </div>
+    <div class="status-tile">
+      <div class="status-tile-value">{{ board.growth_count }}</div>
+      <div class="status-tile-label">Growth 사이클</div>
+      <div class="status-tile-source">learn-log §6</div>
+    </div>
+    <div class="status-tile">
+      <div class="status-tile-value">{{ board.trap_guards_count }}</div>
+      <div class="status-tile-label">교차계층 가드</div>
+      <div class="status-tile-source">diagnose.py</div>
+    </div>
+    <div class="status-tile">
+      <div class="status-tile-value">{{ board.axes_count }}</div>
+      <div class="status-tile-label">복리 누적 축</div>
+      <div class="status-tile-source">skill·ddl·mybatis·nexacro·creater·customer</div>
+    </div>
+    <div class="status-tile">
+      <div class="status-tile-value">{{ board.customer_count }}</div>
+      <div class="status-tile-label">고객 프로필</div>
+      <div class="status-tile-source">profiles/*.yaml</div>
+    </div>
+  </div>
+
+  <div class="status-detail">
+    <div>
+      <h2>라이브 WAS 검증 (lane × runner)</h2>
+      <table class="status-verify-table">
+        <thead><tr><th>Lane</th><th>상태</th><th>비고</th></tr></thead>
+        <tbody>
+          {% for v in board.verification %}
+          <tr>
+            <td>{{ v.lane }}</td>
+            <td class="status-verify-icon">
+              {%- if v.status == "verified" -%}✅
+              {%- elif v.status == "partial" -%}⚠️
+              {%- else -%}—{%- endif -%}
+            </td>
+            <td>{{ v.note }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div>
+      <h2>최근 활동</h2>
+      <ul class="status-latest-list">
+        {% for g in board.latest_growth %}
+        <li>
+          <span class="status-growth-name">{{ g.name }}</span>
+          <span class="status-growth-date">{{ g.date }}</span>
+          {{ g.summary_head }}
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}

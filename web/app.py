@@ -43,12 +43,14 @@ def create_app() -> FastAPI:
     from web.routes.ops import router as ops_router  # noqa: PLC0415
     from web.routes.target import router as target_router  # noqa: PLC0415
     from web.routes.fulltest import router as fulltest_router  # noqa: PLC0415
+    from web.routes.status import router as status_router  # noqa: PLC0415
 
     application.include_router(home_router)
     application.include_router(domain_router)
     application.include_router(ops_router)
     application.include_router(target_router)
     application.include_router(fulltest_router)
+    application.include_router(status_router)
 
     return application
 

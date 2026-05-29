@@ -71,6 +71,21 @@ defaults:
 domains_seen: []                        # Stage 5 PASS 시 orchestrator 가 ASCII slug append.
 ```
 
+## Gradle 멀티 모듈 — `modules:` 필드 (Growth-81)
+
+`settings.gradle(.kts)` 에 `include` 선언이 있는 Gradle 멀티 모듈 프로젝트에서만 자동 생성되는 옵셔널 최상위 필드. 단일 모듈일 때는 생략된다.
+
+```yaml
+# 최상위 옵셔널 — Gradle 멀티 모듈 대상(Growth-81)만 존재
+modules:
+  - slug: api               # ASCII lowercased last colon-segment
+    gradle_path: svc:api    # settings.gradle include path
+    base_package: com.acme.api   # sub-module build.gradle의 group = '...' (없으면 null)
+  - slug: web
+    gradle_path: svc:web
+    base_package: com.acme.web
+```
+
 ## 머지 우선순위
 
 ```

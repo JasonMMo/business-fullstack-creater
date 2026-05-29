@@ -1,4 +1,5 @@
 """4-layer full-test orchestrator with auto-labeling.
+# Growth-83
 
 Layer responsibilities (delegated to existing scripts/CLIs):
   L1: pytest in 4 sibling repos
@@ -11,6 +12,7 @@ This module does NOT reimplement those layers — it orchestrates and labels.
 from __future__ import annotations
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -372,11 +374,12 @@ def run(lane: str, domain: str | None = None) -> FullTestResult:
     # always cleanup after L4
     print(cleanup_runner.format_report(cleanup_runner.run(lane)), file=sys.stderr)
     # update learn-log label on active Growth
-    try:
-        n = learn_log.latest_growth_num()
-        learn_log.update_label(n, result.label)
-    except Exception as e:
-        print(f"[learn-log] label update skipped: {e}", file=sys.stderr)
+    if not os.environ.get("FULLTEST_NO_LEARNLOG"):
+        try:
+            n = learn_log.latest_growth_num()
+            learn_log.update_label(n, result.label)
+        except Exception as e:
+            print(f"[learn-log] label update skipped: {e}", file=sys.stderr)
     return result
 
 

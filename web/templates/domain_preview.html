@@ -2,6 +2,8 @@
 
 {% block title %}산출 결과 — {{ result.slug }} — 고객사 풀스택 생성기{% endblock %}
 
+{% block extra_head %}<script src="/static/js/fulltest.js" defer></script>{% endblock %}
+
 {% block content %}
 <h1>산출 결과 — {{ result.slug }}</h1>
 
@@ -58,8 +60,29 @@
   <p><strong>산출 디렉터리:</strong> <code>{{ result.out_dir }}</code></p>
 </section>
 
-<section class="download-section">
-  <a class="btn-cta" href="/domain/{{ run_id }}/download">산출물 ZIP 다운로드</a>
+<section id="fulltest-section">
+  <h3>4계층 풀테스트</h3>
+  <button id="fulltest-btn" class="btn-fulltest" data-run-id="{{ run_id }}">
+    풀테스트 실행
+  </button>
+  <div id="fulltest-status" class="fulltest-status" style="display:none;">
+    <div id="fulltest-label" class="fulltest-label"></div>
+    <ul id="fulltest-layers" class="fulltest-layers"></ul>
+    <div id="fulltest-hint" class="fulltest-hint"></div>
+    <div id="fulltest-error" class="fulltest-error" style="display:none;"></div>
+  </div>
+</section>
+
+<section id="download-section">
+  {% if result.success %}
+  <a id="download-link"
+     href="/domain/{{ run_id }}/download"
+     class="btn-download {% if not result.success %}btn-disabled{% endif %}"
+     {% if not result.success %}aria-disabled="true"{% endif %}>
+    산출물 ZIP 다운로드
+    <span id="green-badge" class="badge-green" style="display:none;">&#x2705; 풀테스트 그린</span>
+  </a>
+  {% endif %}
   {% if ops_pack_available %}
   <a class="btn-cta btn-ops" href="/domain/{{ run_id }}/ops.zip">Ops Pack 다운로드 (IT-담당자)</a>
   {% endif %}

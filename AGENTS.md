@@ -57,7 +57,7 @@
 
 ## Cross-layer Coherence Guards
 
-`scripts/workflow/diagnose.py` 가 20개 회귀 가드 점검: G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81. 새 cross-layer 결합이 생기면 G-82+ 로 추가.
+`scripts/workflow/diagnose.py` 가 21개 회귀 가드 점검: G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82. 새 cross-layer 결합이 생기면 G-83+ 로 추가.
 
 **G-69 (Growth-69 Web-axis subprocess invariant)**: `web/` 가 `scripts/scaffold_cli.py` 를 subprocess 로 호출하는 형태를 유지해야 한다. web 경로에서 scaffold 로직을 재구현하면 6-axis 누적(skill/ddl/mybatis/nexacro/creater/customer) 이 web 사용자에게만 우회되어 깨진다.
 
@@ -81,7 +81,9 @@
 
 **G-80** (Growth-80 — M3 Slice e+α SSO multi-client + LDAP federation): `scripts/emit_ops_pack.py` 의 `_SSO_LDAP_COMPONENT_TPL` / `_render_client_json` / `sso_ldap` 파라미터 / `org.keycloak.storage.UserStorageProvider` LDAP federation 키 / `Growth-80` 마커 모두 보존되어야 한다. 회귀 시 Keycloak realm.json 의 multi-client array + LDAP user federation block 약속이 깨져 사내 AD 통합 enterprise 요구가 회귀한다.
 
-**G-81** (Growth-81 — M5 Slice C-d Gradle 멀티 모듈 include 파싱): `scripts/extract_target_profile.py` 가 `settings.gradle(.kts)` 의 `include` 선언을 파싱하는 `_GRADLE_INCLUDE_RE` / `_parse_includes` / `_extract_modules` 헬퍼와 `Growth-81` 마커를 유지해야 한다. 회귀 시 Gradle 멀티 모듈 프로젝트의 sub-module 목록(`modules:` 리스트)이 profile 에 첨부되지 않아 사용자가 sub-module 을 수작업으로 기재해야 한다. 검증: `python -m scripts.workflow.diagnose` → "20 trap guards intact (.../80/81)".
+**G-81** (Growth-81 — M5 Slice C-d Gradle 멀티 모듈 include 파싱): `scripts/extract_target_profile.py` 가 `settings.gradle(.kts)` 의 `include` 선언을 파싱하는 `_GRADLE_INCLUDE_RE` / `_parse_includes` / `_extract_modules` 헬퍼와 `Growth-81` 마커를 유지해야 한다. 회귀 시 Gradle 멀티 모듈 프로젝트의 sub-module 목록(`modules:` 리스트)이 profile 에 첨부되지 않아 사용자가 sub-module 을 수작업으로 기재해야 한다. 검증: `python -m scripts.workflow.diagnose` → "21 trap guards intact (.../81/82)".
+
+**G-82 (Growth-82 — M5 Slice C-e `/target/upload` UX 폴리시: XHR progress + diff 뷰)**: `web/routes/target.py` 가 `X-Requested-With` 헤더를 감지해 XHR 모드 시 `target_upload_partial.html` fragment 를 반환해야 한다. `import difflib` + `Growth-82` 마커 유지. `web/static/js/target_upload.js` 가 `XMLHttpRequest` 기반 progress indicator 를 제공해야 한다. `web/templates/target_upload.html` 이 `target_upload.js` 스크립트 참조 + `upload-progress` div 를 포함해야 한다. `web/templates/target_upload_partial.html` 이 `extraction-result` 섹션을 포함해야 한다. 회귀 시 대용량 zip 업로드 시 사용자 피드백 없음 + 기존 profile 과의 diff 표시가 소실된다.
 
 ## Git Commit Rules
 

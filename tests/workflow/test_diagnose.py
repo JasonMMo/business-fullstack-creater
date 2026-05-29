@@ -152,7 +152,7 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
     scripts_dir = creater_root / "scripts"
     scripts_dir.mkdir(parents=True, exist_ok=True)
     (scripts_dir / "extract_target_profile.py").write_text(
-        '"""Growth-70 + Growth-78 extractor stub for diagnose test fixture."""\n'
+        '"""Growth-70 + Growth-78 + Growth-81 extractor stub for diagnose test fixture."""\n'
         "import re\n"
         "_GRADLE_GROUP_RE = re.compile(r'group')\n"
         "_GRADLE_ROOT_NAME_RE = re.compile(r'rootProject.name')\n"
@@ -165,7 +165,11 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
         "def build_profile(project_dir, slug='x'):\n"
         '    return {"version": 1, "customer": {"slug": slug}}\n'
         "def dump_profile(profile):\n"
-        '    return "# Auto-extracted Growth-70\\n"\n',
+        '    return "# Auto-extracted Growth-70\\n"\n'
+        "# Growth-81 multi-module support\n"
+        "_GRADLE_INCLUDE_RE = re.compile(r'include')\n"
+        "def _parse_includes(text): return []\n"
+        "def _extract_modules(d): return []\n",
         encoding="utf-8",
     )
     # G-71 guard: scripts/emit_ops_pack.py emits all 4 ops artifacts +
@@ -369,7 +373,7 @@ def test_check_cross_layer_coherence_pass(tmp_path):
     )
     assert c.status == "PASS"
     assert (
-        "19 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80)"
+        "20 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81)"
         in c.detail
     )
 
@@ -1140,8 +1144,54 @@ def test_check_cross_layer_coherence_pass_g80(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "19 trap guards intact" in c.detail
-    assert c.detail.endswith("/80)")
+    assert "20 trap guards intact" in c.detail
+    assert c.detail.endswith("/81)")
+
+
+def test_check_cross_layer_coherence_pass_g81(tmp_path):
+    # G-81 guard: workspace with all G-81 markers present → PASS
+    workspace, creater_root = _make_workspace(tmp_path)
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "PASS"
+    assert "20 trap guards intact" in c.detail
+    assert c.detail.endswith("/81)")
+
+
+def test_check_cross_layer_coherence_fail_g81_extract(tmp_path):
+    # G-81 guard: include-parser marker absent → G-81 regression fires
+    workspace, creater_root = _make_workspace(tmp_path)
+    scripts_dir = creater_root / "scripts"
+    # Overwrite stub with all G-70/G-78 markers but without the include-parser helper to trigger G-81
+    (scripts_dir / "extract_target_profile.py").write_text(
+        '"""Growth-70 + Growth-78 extractor stub — multi-module helpers absent."""\n'
+        "import re\n"
+        "_GRADLE_GROUP_RE = re.compile(r'group')\n"
+        "_GRADLE_ROOT_NAME_RE = re.compile(r'rootProject.name')\n"
+        "def _gradle_lane(raw): return 'jakarta'\n"
+        "def _find_gradle_build(d):\n"
+        "    # supports build.gradle.kts and build.gradle\n"
+        "    return None\n"
+        "def parse_gradle(p):\n"
+        "    return {'group_id': None}\n"
+        "def build_profile(project_dir, slug='x'):\n"
+        '    return {"version": 1, "customer": {"slug": slug}}\n'
+        "def dump_profile(profile):\n"
+        '    return "# Auto-extracted Growth-70\\n"\n'
+        "# Growth-78 markers\n"
+        "# rootProject.name build.gradle.kts build.gradle Growth-78\n"
+        "# Growth-81 multi-module support\n"
+        "_GRADLE_INCLUDE_RE = re.compile(r'include')\n"
+        "# stub omits the include-parser and module-extractor helpers\n"
+        "def _extract_modules(d): return []\n",
+        encoding="utf-8",
+    )
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-81 regression" in c.detail
 
 
 def test_format_table_summary_lines():

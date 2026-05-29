@@ -1,5 +1,7 @@
 {% extends "base.html" %}
 
+{% block extra_head %}<script src="/static/js/target_upload.js" defer></script>{% endblock %}
+
 {% block title %}기존 프로젝트 업로드 — 고객사 풀스택 생성기{% endblock %}
 
 {% block content %}
@@ -49,8 +51,13 @@
     <button type="submit" name="download" value="1" class="btn-secondary">YAML 다운로드</button>
   </div>
 
+  <div id="upload-progress" class="upload-progress" style="display:none;">
+    <div id="upload-progress-bar" class="upload-progress-bar">0%</div>
+  </div>
+
 </form>
 
+<div id="extraction-result-area">
 {% if result %}
 <section class="extraction-result">
   <h2>추출 결과</h2>
@@ -70,4 +77,5 @@
   </p>
 </section>
 {% endif %}
+</div>
 {% endblock %}

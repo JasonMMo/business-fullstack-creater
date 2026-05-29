@@ -149,12 +149,87 @@ def _find_settings_root_name(project_dir: pathlib.Path) -> Optional[str]:
     return None
 
 
+# Growth-81 — settings.gradle(.kts) `include` parsing for multi-module projects
+# Groovy:  include 'svc:api', 'svc:web'   or   include 'svc:api'
+# Kotlin:  include(":svc:api", ":svc:web")  or  include(":svc:api")
+_GRADLE_INCLUDE_RE = re.compile(
+    r"""^\s*include\s*[\s(]\s*((?:[:'"][^'"]+['"]\s*,?\s*)+)""",
+    re.MULTILINE,
+)
+_GRADLE_INCLUDE_PATH_RE = re.compile(r"""['"]:?([^'"]+)['"]""")
+
+
+def _parse_includes(settings_text: str) -> list:
+    """Return Gradle module paths from settings.gradle(.kts), e.g. ['svc:api', 'svc:web']."""
+    out: list = []
+    for chunk in _GRADLE_INCLUDE_RE.findall(settings_text):
+        for m in _GRADLE_INCLUDE_PATH_RE.findall(chunk):
+            path = m.lstrip(":").strip()
+            if path:
+                out.append(path)
+    # de-dup preserving order
+    seen: set = set()
+    uniq: list = []
+    for p in out:
+        if p not in seen:
+            seen.add(p)
+            uniq.append(p)
+    return uniq
+
+
+def _read_settings_text(project_dir: pathlib.Path) -> Optional[str]:
+    for name in ("settings.gradle.kts", "settings.gradle"):
+        p = project_dir / name
+        if p.exists():
+            return p.read_text(encoding="utf-8", errors="replace")
+    return None
+
+
+def _extract_modules(project_dir: pathlib.Path) -> list:
+    """Return [{slug, gradle_path, base_package}] for each included sub-module.
+
+    `slug` = last colon-segment ASCII-lowered; `gradle_path` is settings.gradle
+    notation ("svc:api"); `base_package` is read from the sub-module's build
+    script `group` if present, otherwise None.
+    """
+    settings_text = _read_settings_text(project_dir)
+    if not settings_text:
+        return []
+    paths = _parse_includes(settings_text)
+    modules: list = []
+    for gp in paths:
+        # filesystem dir: colons → slashes
+        sub_dir = project_dir.joinpath(*gp.split(":"))
+        sub_build = None
+        for name in ("build.gradle.kts", "build.gradle"):
+            cand = sub_dir / name
+            if cand.exists():
+                sub_build = cand
+                break
+        base_pkg = None
+        if sub_build is not None:
+            sub_raw = sub_build.read_text(encoding="utf-8", errors="replace")
+            m = _GRADLE_GROUP_RE.search(sub_raw)
+            if m:
+                base_pkg = m.group(1).strip()
+        slug = gp.rsplit(":", 1)[-1].lower()
+        modules.append({
+            "slug": slug,
+            "gradle_path": gp,
+            "base_package": base_pkg,
+        })
+    return modules
+
+
 def parse_gradle(build_path: pathlib.Path) -> Dict[str, Any]:
     """Return {groupId, artifactId, version, name, description, lane, raw}.
 
     `artifactId` is taken from settings.gradle `rootProject.name` if present,
     otherwise from the project directory name. Description is left empty —
     Gradle has no standardized description field across DSLs.
+
+    Growth-81: if settings.gradle contains `include` declarations, a `modules`
+    key is added with the list of sub-module metadata dicts.
     """
     project_dir = build_path.parent
     raw = build_path.read_text(encoding="utf-8", errors="replace")
@@ -167,7 +242,7 @@ def parse_gradle(build_path: pathlib.Path) -> Dict[str, Any]:
 
     artifact_id = _find_settings_root_name(project_dir) or project_dir.name
 
-    return {
+    result: Dict[str, Any] = {
         "group_id": group_id,
         "artifact_id": artifact_id,
         "version": version,
@@ -176,6 +251,11 @@ def parse_gradle(build_path: pathlib.Path) -> Dict[str, Any]:
         "lane": _gradle_lane(raw),
         "raw": raw,
     }
+    # Growth-81: include 'svc:api' multi-module support
+    modules = _extract_modules(project_dir)
+    if modules:
+        result["modules"] = modules
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -352,7 +432,7 @@ def build_profile(
     if display and len(display) > 80:
         display = display[:77] + "..."
 
-    return {
+    profile: Dict[str, Any] = {
         "version": 1,
         "customer": {
             "slug": slug,
@@ -393,6 +473,10 @@ def build_profile(
         "domains_seen": [],
         "_extracted_from": str(project_dir.resolve()).replace("\\", "/"),
     }
+    # Growth-81: attach sub-module list for multi-module Gradle projects
+    if pom_data.get("modules"):
+        profile["modules"] = pom_data["modules"]
+    return profile
 
 
 # ---------------------------------------------------------------------------

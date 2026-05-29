@@ -57,7 +57,7 @@
 
 ## Cross-layer Coherence Guards
 
-`scripts/workflow/diagnose.py` 가 22개 회귀 가드 점검: G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83. 새 cross-layer 결합이 생기면 G-84+ 로 추가.
+`scripts/workflow/diagnose.py` 가 23개 회귀 가드 점검: G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83/84. 새 cross-layer 결합이 생기면 G-85+ 로 추가.
 
 **G-69 (Growth-69 Web-axis subprocess invariant)**: `web/` 가 `scripts/scaffold_cli.py` 를 subprocess 로 호출하는 형태를 유지해야 한다. web 경로에서 scaffold 로직을 재구현하면 6-axis 누적(skill/ddl/mybatis/nexacro/creater/customer) 이 web 사용자에게만 우회되어 깨진다.
 
@@ -85,7 +85,9 @@
 
 **G-82 (Growth-82 — M5 Slice C-e `/target/upload` UX 폴리시: XHR progress + diff 뷰)**: `web/routes/target.py` 가 `X-Requested-With` 헤더를 감지해 XHR 모드 시 `target_upload_partial.html` fragment 를 반환해야 한다. `import difflib` + `Growth-82` 마커 유지. `web/static/js/target_upload.js` 가 `XMLHttpRequest` 기반 progress indicator 를 제공해야 한다. `web/templates/target_upload.html` 이 `target_upload.js` 스크립트 참조 + `upload-progress` div 를 포함해야 한다. `web/templates/target_upload_partial.html` 이 `extraction-result` 섹션을 포함해야 한다. 회귀 시 대용량 zip 업로드 시 사용자 피드백 없음 + 기존 profile 과의 diff 표시가 소실된다.
 
-**G-83 (Growth-83 — M1 웹 풀테스트 게이트)**: `web/adapters/fulltest_runner.py` 가 `Growth-83` 마커를 포함하고 `scripts.workflow.full_test` 를 subprocess 로 호출해야 한다(G-69 single-source 원칙 — full-test 로직 재구현 금지). `web/fulltest_registry.py` 가 `Growth-83` 마커와 single-flight 락(`_running_run_id`) 을 유지해야 한다. `web/routes/fulltest.py` 가 `fulltest_start` 함수를 노출해야 한다. `web/static/js/fulltest.js` 가 `Growth-83` 마커를 포함해야 한다. `scripts/workflow/full_test.py` 가 `FULLTEST_NO_LEARNLOG` env 체크를 포함해야 한다(웹 컨텍스트에서 learn-log 뮤테이션 차단). 회귀 시 M1 페르소나의 "도메인 정의 → 풀테스트 실행 → 그린 확인 → zip 다운로드" 웹 흐름이 깨진다. 검증: `python -m scripts.workflow.diagnose` → "22 trap guards intact (.../82/83)".
+**G-83 (Growth-83 — M1 웹 풀테스트 게이트)**: `web/adapters/fulltest_runner.py` 가 `Growth-83` 마커를 포함하고 `scripts.workflow.full_test` 를 subprocess 로 호출해야 한다(G-69 single-source 원칙 — full-test 로직 재구현 금지). `web/fulltest_registry.py` 가 `Growth-83` 마커와 single-flight 락(`_running_run_id`) 을 유지해야 한다. `web/routes/fulltest.py` 가 `fulltest_start` 함수를 노출해야 한다. `web/static/js/fulltest.js` 가 `Growth-83` 마커를 포함해야 한다. `scripts/workflow/full_test.py` 가 `FULLTEST_NO_LEARNLOG` env 체크를 포함해야 한다(웹 컨텍스트에서 learn-log 뮤테이션 차단). 회귀 시 M1 페르소나의 "도메인 정의 → 풀테스트 실행 → 그린 확인 → zip 다운로드" 웹 흐름이 깨진다.
+
+**G-84 (Growth-84 — M2 Exec 라이브 대시보드)**: `web/routes/status.py` 가 `status_board` import 와 `_compute_green_rate` 함수를 포함하고 `GET /status` + `GET /status.json` 두 엔드포인트를 노출해야 한다. 데이터는 반드시 `scripts.workflow.status_board.compute()` 를 재사용해야 하며 메트릭 계산을 재구현하면 안 된다(복리 누적 원칙). `web/templates/status.html` 이 `status-tile` 클래스를 포함해야 한다. `web/templates/base.html` 의 nav 에 `/status` 링크가 있어야 한다. `web/app.py` 가 `status_router` 를 include 해야 한다. 회귀 시 CEO 페르소나의 "누적 자산 30초 회독" 대시보드가 소실되고 nav 의 `/status` 링크가 다시 죽은 링크가 된다. 검증: `python -m scripts.workflow.diagnose` → "23 trap guards intact (.../83/84)".
 
 ## Git Commit Rules
 

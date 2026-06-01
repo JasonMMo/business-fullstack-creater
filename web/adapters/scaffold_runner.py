@@ -32,6 +32,7 @@ class ScaffoldRequest(BaseModel):
     preset: Optional[str] = None                 # preset name when wiki_mode=preset
     customer_profile: Optional[str] = None       # profile slug, optional
     package: str = ""                            # Growth-85: Java 패키지명 (비우면 scaffold_cli 기본값)
+    shell_mode: str = "none"                     # Growth-86: none|MDI|SDI — !=none 이면 shell 생성 → ops pack auto-emit
 
 
 class StageResult(BaseModel):
@@ -118,6 +119,15 @@ def _build_argv(
         argv += ["--customer-profile", request.customer_profile]
     if request.package:  # Growth-85: --package 전달 (비전문 사용자 자동 기본값은 라우트에서 채워줌)
         argv += ["--package", request.package]
+    if request.shell_mode and request.shell_mode != "none":
+        # Growth-86: shell 변형 생성 → <out>/shell/pom.xml → orchestrator 가 ops pack
+        # 을 auto-emit (Growth-74). --target-project 을 <out>/shell 로 고정해
+        # emit_ops_pack(shell_subdir="shell") 가 읽는 경로와 정렬한다. 이로써
+        # IT담당자(M-Ops) 가 웹만으로 /domain/{id}/ops.zip 에 도달할 수 있다.
+        argv += [
+            "--shell-mode", request.shell_mode,
+            "--target-project", str(out_dir / "shell"),
+        ]
     return argv
 
 

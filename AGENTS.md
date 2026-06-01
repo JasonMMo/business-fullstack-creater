@@ -57,7 +57,7 @@
 
 ## Cross-layer Coherence Guards
 
-`scripts/workflow/diagnose.py` 가 23개 회귀 가드 점검: G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83/84. 새 cross-layer 결합이 생기면 G-85+ 로 추가.
+`scripts/workflow/diagnose.py` 가 24개 회귀 가드 점검: G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83/84/85. 새 cross-layer 결합이 생기면 G-86+ 로 추가.
 
 **G-69 (Growth-69 Web-axis subprocess invariant)**: `web/` 가 `scripts/scaffold_cli.py` 를 subprocess 로 호출하는 형태를 유지해야 한다. web 경로에서 scaffold 로직을 재구현하면 6-axis 누적(skill/ddl/mybatis/nexacro/creater/customer) 이 web 사용자에게만 우회되어 깨진다.
 
@@ -88,6 +88,8 @@
 **G-83 (Growth-83 — M1 웹 풀테스트 게이트)**: `web/adapters/fulltest_runner.py` 가 `Growth-83` 마커를 포함하고 `scripts.workflow.full_test` 를 subprocess 로 호출해야 한다(G-69 single-source 원칙 — full-test 로직 재구현 금지). `web/fulltest_registry.py` 가 `Growth-83` 마커와 single-flight 락(`_running_run_id`) 을 유지해야 한다. `web/routes/fulltest.py` 가 `fulltest_start` 함수를 노출해야 한다. `web/static/js/fulltest.js` 가 `Growth-83` 마커를 포함해야 한다. `scripts/workflow/full_test.py` 가 `FULLTEST_NO_LEARNLOG` env 체크를 포함해야 한다(웹 컨텍스트에서 learn-log 뮤테이션 차단). 회귀 시 M1 페르소나의 "도메인 정의 → 풀테스트 실행 → 그린 확인 → zip 다운로드" 웹 흐름이 깨진다.
 
 **G-84 (Growth-84 — M2 Exec 라이브 대시보드)**: `web/routes/status.py` 가 `status_board` import 와 `_compute_green_rate` 함수를 포함하고 `GET /status` + `GET /status.json` 두 엔드포인트를 노출해야 한다. 데이터는 반드시 `scripts.workflow.status_board.compute()` 를 재사용해야 하며 메트릭 계산을 재구현하면 안 된다(복리 누적 원칙). `web/templates/status.html` 이 `status-tile` 클래스를 포함해야 한다. `web/templates/base.html` 의 nav 에 `/status` 링크가 있어야 한다. `web/app.py` 가 `status_router` 를 include 해야 한다. 회귀 시 CEO 페르소나의 "누적 자산 30초 회독" 대시보드가 소실되고 nav 의 `/status` 링크가 다시 죽은 링크가 된다. 검증: `python -m scripts.workflow.diagnose` → "23 trap guards intact (.../83/84)".
+
+**G-85 (Growth-85 — M-User 웹 scaffold 폼 + full_test 안전성/L4 좀비 정리)**: (B1) `web/templates/domain_form.html` 에 `name="package"` 입력 필드가 있어야 하고, `web/adapters/scaffold_runner.py` 가 `--package` 를 `_build_argv` 에 전달해야 한다. `web/routes/domain.py` 가 `package` Form 파라미터를 받고, `wiki_mode=preset` + empty preset → 422 검증을 수행하며, `# Growth-85` 마커를 포함해야 한다. (B3) `web/routes/fulltest.py` 가 scaffold 실패/out_dir 부재 시 409 를 반환하는 가드를 포함(`# Growth-85` 마커)해야 한다. `scripts/workflow/full_test.py` 가 explicit domain 경로 부재 시 `find_latest_scaffold()` 로 조용히 폴백하지 않고 `FileNotFoundError` 를 발생시켜야 한다(`# Growth-85` 마커). (B4) `scripts/workflow/live_runner.py` 에 `kill_port_listener(port)` 헬퍼가 있어야 한다(PowerShell Get-NetTCPConnection 기반, JDK 버전 무관). 회귀 시 M-User 페르소나의 "도메인 정의 → 풀테스트 그린 → zip 다운로드" 흐름에서 `--package is required` 에러, 거짓 그린, L4 좀비 WAS 잠금 문제가 재발한다. 검증: `python -m scripts.workflow.diagnose` → "24 trap guards intact (.../84/85)".
 
 ## Git Commit Rules
 

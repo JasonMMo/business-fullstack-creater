@@ -78,7 +78,7 @@ def _remove_untracked_mappers(runner: str, *, repo: Optional[Path] = None) -> tu
     return True, (f"removed {removed} untracked" if removed else "all tracked")
 
 
-def plan_steps(lane: str) -> list[Step]:
+def plan_steps(lane: str, *, port: int = 8080) -> list[Step]:
     runner = resolve_runner(lane)
     jdk_match = "jdk-17" if "17" in runner else "jdk-8"
     runner_dir = NEXACRO_REPO / "samples" / "runners" / runner
@@ -91,6 +91,13 @@ def plan_steps(lane: str) -> list[Step]:
         Step(f"Stop java ({jdk_match})",
              ["powershell", "-NoProfile", "-Command",
               f"Get-Process java -EA SilentlyContinue | Where-Object {{ $_.Path -like '*{jdk_match}*' }} | Stop-Process -Force"]),
+        # Growth-85 B4: jdk-path 필터가 놓치는 좀비 WAS 를 포트 기반으로 보강 종료.
+        # jdk-21 등 다른 버전으로 떠 있는 좀비도 포트 점유 프로세스를 직접 종료.
+        Step(f"Kill port {port} listener",
+             ["powershell", "-NoProfile", "-Command",
+              f"$c = Get-NetTCPConnection -LocalPort {port} -State Listen -EA SilentlyContinue; "
+              f"if ($c) {{ $c.OwningProcess | Sort-Object -Unique | ForEach-Object "
+              f"{{ Stop-Process -Id $_ -Force -EA SilentlyContinue }}; 'killed' }} else {{ 'none' }}"]),
         Step(f"git restore {runner}",
              ["git", "-C", str(NEXACRO_REPO), "restore", f"samples/runners/{runner}/"]),
         Step(f"Remove overlay dirs ({runner})",

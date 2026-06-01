@@ -31,6 +31,7 @@ class ScaffoldRequest(BaseModel):
     wiki_mode: str = "preset"                    # preset | wiki
     preset: Optional[str] = None                 # preset name when wiki_mode=preset
     customer_profile: Optional[str] = None       # profile slug, optional
+    package: str = ""                            # Growth-85: Java 패키지명 (비우면 scaffold_cli 기본값)
 
 
 class StageResult(BaseModel):
@@ -115,6 +116,8 @@ def _build_argv(
         argv += ["--preset", request.preset]
     if request.customer_profile is not None:
         argv += ["--customer-profile", request.customer_profile]
+    if request.package:  # Growth-85: --package 전달 (비전문 사용자 자동 기본값은 라우트에서 채워줌)
+        argv += ["--package", request.package]
     return argv
 
 

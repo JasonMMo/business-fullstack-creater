@@ -25,6 +25,7 @@ _DIALECT_CHOICES = ["hsqldb", "postgres", "mysql"]
 _LANE_CHOICES = ["jakarta", "javax", "nexacro", "vanilla"]
 _PATTERN_CHOICES = ["D2", "D3"]
 _WIKI_MODE_CHOICES = ["preset", "wiki"]
+_SHELL_MODE_CHOICES = ["none", "MDI", "SDI"]  # Growth-86
 
 
 # ---------------------------------------------------------------------------
@@ -61,6 +62,7 @@ async def domain_form_post(
     preset: str = Form(default=""),
     customer_profile: str = Form(default=""),
     package: str = Form(default=""),  # Growth-85: Java 패키지명
+    shell_mode: str = Form(default="none"),  # Growth-86: none|MDI|SDI — !=none 이면 ops pack 생성
 ) -> Response:
     """Validate form, run scaffold, register result, redirect to preview."""
     # Growth-85
@@ -72,6 +74,7 @@ async def domain_form_post(
     preset_val: Optional[str] = preset.strip() or None
     customer_profile_val: Optional[str] = customer_profile.strip() or None
     package = package.strip()
+    shell_mode = shell_mode.strip() or "none"  # Growth-86
 
     # Preserve raw form input for re-render on error
     form_data = {
@@ -84,6 +87,7 @@ async def domain_form_post(
         "preset": preset,
         "customer_profile": customer_profile,
         "package": package,  # Growth-85
+        "shell_mode": shell_mode,  # Growth-86
     }
 
     errors: List[str] = []
@@ -101,6 +105,12 @@ async def domain_form_post(
     if wiki_mode == "preset" and not preset_val:
         errors.append(
             "프리셋 모드에서는 프리셋 이름이 필요합니다. 예: 고객관리 (또는 '직접 정의' 모드를 선택하세요)."
+        )
+
+    # Growth-86: shell-mode 화이트리스트 검증 (none/MDI/SDI 외 거부)
+    if shell_mode not in _SHELL_MODE_CHOICES:
+        errors.append(
+            "shell-mode 는 none / MDI / SDI 중 하나여야 합니다."
         )
 
     if errors:
@@ -127,6 +137,7 @@ async def domain_form_post(
         preset=preset_val,
         customer_profile=customer_profile_val,
         package=package,  # Growth-85
+        shell_mode=shell_mode,  # Growth-86
     )
 
     result = scaffold_runner.run(scaffold_req)

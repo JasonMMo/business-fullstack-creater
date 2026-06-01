@@ -182,6 +182,72 @@ def test_run_omits_customer_profile_when_none(monkeypatch, tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# 4b. Growth-86 — shell-mode → --shell-mode + --target-project=<out>/shell
+# ---------------------------------------------------------------------------
+
+def test_run_passes_shell_mode_and_target_project_when_set(monkeypatch, tmp_path):
+    """shell_mode='MDI' → argv 에 --shell-mode MDI + --target-project <out>/shell (Growth-86)."""
+    from web.adapters import scaffold_runner
+    from web.adapters.scaffold_runner import ScaffoldRequest, run
+
+    captured: List[list] = []
+
+    def fake_run(argv, **kwargs):
+        captured.append(argv)
+        out_dir = tmp_path / "out" / "shellz"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "scaffold-report.md").write_text(_FAKE_REPORT.replace("customer", "shellz"), encoding="utf-8")
+        return _make_completed(returncode=0)
+
+    fake_settings = SimpleNamespace(
+        creater_root=str(tmp_path),
+        scaffold_cli_path="scripts/scaffold_cli.py",
+        scaffold_out_dir="out/",
+    )
+    monkeypatch.setattr(scaffold_runner, "get_settings", lambda: fake_settings)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    req = ScaffoldRequest(domain="고객관리", slug="shellz", shell_mode="MDI")
+    run(req)
+
+    argv = captured[0]
+    assert "--shell-mode" in argv
+    assert argv[argv.index("--shell-mode") + 1] == "MDI"
+    assert "--target-project" in argv
+    target = argv[argv.index("--target-project") + 1]
+    assert target.replace("\\", "/").endswith("out/shellz/shell")
+
+
+def test_run_omits_shell_mode_when_none(monkeypatch, tmp_path):
+    """shell_mode 기본값 'none' → --shell-mode/--target-project 모두 argv 에 없음 (Growth-86)."""
+    from web.adapters import scaffold_runner
+    from web.adapters.scaffold_runner import ScaffoldRequest, run
+
+    captured: List[list] = []
+
+    def fake_run(argv, **kwargs):
+        captured.append(argv)
+        out_dir = tmp_path / "out" / "noshell"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        (out_dir / "scaffold-report.md").write_text(_FAKE_REPORT.replace("customer", "noshell"), encoding="utf-8")
+        return _make_completed(returncode=0)
+
+    fake_settings = SimpleNamespace(
+        creater_root=str(tmp_path),
+        scaffold_cli_path="scripts/scaffold_cli.py",
+        scaffold_out_dir="out/",
+    )
+    monkeypatch.setattr(scaffold_runner, "get_settings", lambda: fake_settings)
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    req = ScaffoldRequest(domain="주문관리", slug="noshell")
+    run(req)
+
+    assert "--shell-mode" not in captured[0]
+    assert "--target-project" not in captured[0]
+
+
+# ---------------------------------------------------------------------------
 # 5. Report parsing
 # ---------------------------------------------------------------------------
 

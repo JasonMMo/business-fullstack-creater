@@ -406,6 +406,21 @@ def _make_workspace(tmp_path: Path) -> tuple[Path, Path]:
                 content + "\ndef kill_port_listener(port):\n    return True, 'none'\n",
                 encoding="utf-8",
             )
+    # G-86 guard stubs: shell-mode 웹 노출 (domain_form select + 라우트 마커 +
+    # scaffold_runner --shell-mode/--target-project)
+    content = domain_form.read_text(encoding="utf-8")
+    if 'name="shell_mode"' not in content:
+        content += '\n<select name="shell_mode"><option value="none">none</option></select>\n'
+        domain_form.write_text(content, encoding="utf-8")
+    content = dr.read_text(encoding="utf-8")
+    if "Growth-86" not in content:
+        dr.write_text(content + "\n# Growth-86\n", encoding="utf-8")
+    content = sr.read_text(encoding="utf-8")
+    if "--shell-mode" not in content or "--target-project" not in content:
+        sr.write_text(
+            content + '\n    argv += ["--shell-mode", request.shell_mode, "--target-project", "x/shell"]\n',
+            encoding="utf-8",
+        )
     return workspace, creater_root
 
 
@@ -521,7 +536,7 @@ def test_check_cross_layer_coherence_pass(tmp_path):
     )
     assert c.status == "PASS"
     assert (
-        "24 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83/84/85)"
+        "25 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83/84/85/86)"
         in c.detail
     )
 
@@ -1292,8 +1307,8 @@ def test_check_cross_layer_coherence_pass_g80(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "24 trap guards intact" in c.detail
-    assert c.detail.endswith("/85)")
+    assert "25 trap guards intact" in c.detail
+    assert c.detail.endswith("/86)")
 
 
 def test_check_cross_layer_coherence_pass_g81(tmp_path):
@@ -1303,8 +1318,8 @@ def test_check_cross_layer_coherence_pass_g81(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "24 trap guards intact" in c.detail
-    assert c.detail.endswith("/85)")
+    assert "25 trap guards intact" in c.detail
+    assert c.detail.endswith("/86)")
 
 
 def test_check_cross_layer_coherence_fail_g81_extract(tmp_path):
@@ -1349,8 +1364,8 @@ def test_check_cross_layer_coherence_pass_g82(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "24 trap guards intact" in c.detail
-    assert c.detail.endswith("/85)")
+    assert "25 trap guards intact" in c.detail
+    assert c.detail.endswith("/86)")
 
 
 def test_check_cross_layer_coherence_fail_g82_missing_js(tmp_path):
@@ -1397,8 +1412,8 @@ def test_check_cross_layer_coherence_pass_g83(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "24 trap guards intact" in c.detail
-    assert c.detail.endswith("/85)")
+    assert "25 trap guards intact" in c.detail
+    assert c.detail.endswith("/86)")
 
 
 def test_check_cross_layer_coherence_fail_g83_missing_runner(tmp_path):
@@ -1461,8 +1476,8 @@ def test_check_cross_layer_coherence_pass_g84(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "24 trap guards intact" in c.detail
-    assert c.detail.endswith("/85)")
+    assert "25 trap guards intact" in c.detail
+    assert c.detail.endswith("/86)")
 
 
 def test_check_cross_layer_coherence_fail_g84_missing_status_route(tmp_path):
@@ -1578,8 +1593,8 @@ def test_check_cross_layer_coherence_pass_g85(tmp_path):
         workspace=workspace, creater_root=creater_root
     )
     assert c.status == "PASS"
-    assert "24 trap guards intact" in c.detail
-    assert c.detail.endswith("/85)")
+    assert "25 trap guards intact" in c.detail
+    assert c.detail.endswith("/86)")
 
 
 def test_check_cross_layer_coherence_fail_g85_missing_package_field(tmp_path):
@@ -1608,3 +1623,42 @@ def test_check_cross_layer_coherence_fail_g85_missing_kill_port_listener(tmp_pat
     assert c.status == "FAIL"
     assert "G-85" in c.detail
     assert "kill_port_listener" in c.detail
+
+
+def test_check_cross_layer_coherence_pass_g86(tmp_path):
+    """G-86: _make_workspace 에 shell_mode 스텁이 포함되므로 PASS + 25 guards."""
+    workspace, creater_root = _make_workspace(tmp_path)
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "PASS"
+    assert "25 trap guards intact" in c.detail
+    assert c.detail.endswith("/86)")
+
+
+def test_check_cross_layer_coherence_fail_g86_missing_shell_mode_field(tmp_path):
+    """G-86: domain_form.html 에서 name=\"shell_mode\" 제거 → G-86 FAIL."""
+    workspace, creater_root = _make_workspace(tmp_path)
+    form = creater_root / "web" / "templates" / "domain_form.html"
+    content = form.read_text(encoding="utf-8").replace('name="shell_mode"', 'name="shell_removed"')
+    form.write_text(content, encoding="utf-8")
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-86" in c.detail
+    assert "shell_mode" in c.detail
+
+
+def test_check_cross_layer_coherence_fail_g86_missing_target_project(tmp_path):
+    """G-86: scaffold_runner.py 에서 --target-project 제거 → G-86 FAIL."""
+    workspace, creater_root = _make_workspace(tmp_path)
+    sr = creater_root / "web" / "adapters" / "scaffold_runner.py"
+    content = sr.read_text(encoding="utf-8").replace("--target-project", "--target-REMOVED")
+    sr.write_text(content, encoding="utf-8")
+    c = diagnose.check_cross_layer_coherence(
+        workspace=workspace, creater_root=creater_root
+    )
+    assert c.status == "FAIL"
+    assert "G-86" in c.detail
+    assert "target-project" in c.detail

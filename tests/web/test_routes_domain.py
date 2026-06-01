@@ -38,8 +38,9 @@ def _valid_form(**overrides) -> dict:
         "lane": "jakarta",
         "default_pattern": "D2",
         "wiki_mode": "preset",
-        "preset": "",
+        "preset": "고객관리",   # Growth-85: B2 검증으로 preset 필수 — 유효값 기본
         "customer_profile": "",
+        "package": "",
     }
     base.update(overrides)
     return base
@@ -185,13 +186,15 @@ def test_post_slug_starting_with_digit_returns_422(client: TestClient, fake_run)
 
 
 # ---------------------------------------------------------------------------
-# Test 8 — POST with empty preset → ScaffoldRequest.preset is None
+# Test 8 — POST with wiki_mode=wiki and empty preset → ScaffoldRequest.preset is None
+# Growth-85: wiki_mode=preset + empty preset は422になるため wiki_mode=wiki で検証
 # ---------------------------------------------------------------------------
 
 def test_post_empty_preset_becomes_none(client: TestClient, fake_run) -> None:
+    # wiki_mode=wiki では preset が空でもエラーにならない — None として渡る
     client.post(
         "/domain/new",
-        data=_valid_form(preset=""),
+        data=_valid_form(wiki_mode="wiki", preset=""),
         follow_redirects=False,
     )
     assert len(fake_run) == 1
@@ -470,3 +473,37 @@ def test_download_zip_top_level_folder_matches_out_dir_basename(
     names = sorted(zf.namelist())
     expected_prefix = out_dir.name + "/"
     assert all(n.startswith(expected_prefix) for n in names)
+
+
+# ---------------------------------------------------------------------------
+# Growth-85 tests
+# ---------------------------------------------------------------------------
+
+def test_domain_form_has_package_field(client: TestClient) -> None:
+    """GET /domain/new 응답에 name="package" 입력 필드가 있어야 한다."""
+    response = client.get("/domain/new")
+    assert response.status_code == 200
+    assert 'name="package"' in response.text
+
+
+def test_scaffold_defaults_package_when_empty(client: TestClient, fake_run) -> None:
+    """package 비고 customer_profile 비면 ScaffoldRequest.package 가
+    com.example.<slug> 로 자동 채워져야 한다 (B1 Growth-85)."""
+    client.post(
+        "/domain/new",
+        data=_valid_form(slug="acme", package="", customer_profile=""),
+        follow_redirects=False,
+    )
+    assert len(fake_run) == 1
+    assert fake_run[0].package == "com.example.acme"
+
+
+def test_preset_mode_requires_preset(client: TestClient, fake_run) -> None:
+    """wiki_mode=preset 이고 preset 이 비어있으면 422 + 프리셋 에러 메시지 (B2 Growth-85)."""
+    response = client.post(
+        "/domain/new",
+        data=_valid_form(wiki_mode="preset", preset=""),
+        follow_redirects=False,
+    )
+    assert response.status_code == 422
+    assert "프리셋 모드에서는 프리셋 이름이 필요합니다" in response.text

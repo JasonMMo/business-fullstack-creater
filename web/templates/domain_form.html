@@ -117,6 +117,17 @@
     <small>고객 고유 관습이 정의된 프로파일 슬러그 (선택 사항).</small>
   </div>
 
+  <div class="form-group">
+    <label for="shell_mode">배포팩 (shell-mode) <small>(IT담당자용 ops pack 생성 — Growth-86)</small></label>
+    <select id="shell_mode" name="shell_mode">
+      {% set _shell = form.shell_mode | default('none') %}
+      <option value="none" {% if _shell == 'none' %}selected{% endif %}>없음 (앱 소스만 생성)</option>
+      <option value="MDI"  {% if _shell == 'MDI'  %}selected{% endif %}>MDI shell + 배포팩 (Dockerfile/compose/SOP)</option>
+      <option value="SDI"  {% if _shell == 'SDI'  %}selected{% endif %}>SDI shell + 배포팩 (Dockerfile/compose/SOP)</option>
+    </select>
+    <small>MDI/SDI 선택 시 standalone shell 과 ops pack 이 함께 생성되어 미리보기에서 <code>/ops.zip</code> 으로 받을 수 있습니다.</small>
+  </div>
+
   <div class="form-actions">
     <button type="submit" class="btn-primary">산출물 생성</button>
   </div>

@@ -411,6 +411,7 @@ curl -i http://localhost:${{APP_PORT:-8080}}/uiadapter/
 | `500 Internal Server Error` | schema 미적용 | `docker compose exec db psql/mysql` 로 schema.sql 수동 실행 |
 | `Connection refused` | 포트 충돌 | `.env` 의 `APP_PORT` 변경 후 `docker compose up -d` 재기동 |
 | Maven 빌드 실패 | 사내 proxy/mirror | `~/.m2/settings.xml` 를 Dockerfile 빌더 단계에 마운트 |
+| `mvn package` 가 nexacro/uiadapter 의존성 해석 실패 | nexacro 1차 jar(`uiadapter*-jakarta-*`, `nexacro*-xapi/xeni`)은 사내 nexus(예: tobesoft) 전용 — 공개 Maven Central 에 없음 | 사내 nexus 접근(VPN/인증) 보장, 또는 빌드 호스트 `~/.m2/repository` 를 빌더 단계에 마운트(`docker compose build` 시 `-v $HOME/.m2:/root/.m2`). 비-nexacro(vanilla) 레인은 공개 의존성만으로 빌드 가능 |
 
 ## 7. 백업 / 업그레이드
 

@@ -815,17 +815,33 @@ def check_cross_layer_coherence(
         elif _needle not in _path.read_text(encoding="utf-8"):
             failures.append(f"G-84 {_label}: '{_needle}' not found in {_path.name}")
 
+    # G-85: M-User 웹 scaffold 폼 package 필드 + preset 검증 + full_test explicit-path
+    # no-fallback + L4 포트 기반 좀비 WAS 정리 (Growth-85).
+    for _label, _rel, _needle in [
+        ("domain_form package field", "web/templates/domain_form.html",    'name="package"'),
+        ("scaffold_runner --package",  "web/adapters/scaffold_runner.py",   "--package"),
+        ("domain route G-85",          "web/routes/domain.py",              "Growth-85"),
+        ("fulltest route guard",       "web/routes/fulltest.py",            "Growth-85"),
+        ("full_test no-fallback/L4",   "scripts/workflow/full_test.py",     "Growth-85"),
+        ("port-based kill helper",     "scripts/workflow/live_runner.py",   "kill_port_listener"),
+    ]:
+        _path = creater_root / _rel
+        if not _path.exists():
+            failures.append(f"G-85 {_label}: {_rel} missing")
+        elif _needle not in _path.read_text(encoding="utf-8"):
+            failures.append(f"G-85 {_label}: '{_needle}' not found in {_rel}")
+
     if failures:
         return Check(
             "cross-layer-coherence",
             "FAIL",
             "; ".join(failures),
-            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83/84) 추적 후 복원",
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83/84/85) 추적 후 복원",
         )
     return Check(
         "cross-layer-coherence",
         "PASS",
-        "23 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83/84)",
+        "24 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83/84/85)",
     )
 
 

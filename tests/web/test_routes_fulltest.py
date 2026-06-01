@@ -20,11 +20,15 @@ from web.fulltest_registry import FullTestJob, JobStatus
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_scaffold_result(slug: str = "customer", lane: str = "jakarta") -> ScaffoldResult:
+def _make_scaffold_result(
+    slug: str = "customer",
+    lane: str = "jakarta",
+    out_dir: str | None = None,
+) -> ScaffoldResult:
     return ScaffoldResult(
         success=True,
         slug=slug,
-        out_dir=f"/tmp/out/{slug}",
+        out_dir=out_dir or f"/tmp/out/{slug}",
         stages=[StageResult(name="stage1", status="OK")],
         stdout="",
         stderr="",
@@ -58,9 +62,14 @@ def _clear_registries():
 
 
 @pytest.fixture
-def registered_run_id() -> str:
-    """Register a scaffold result and return its run_id."""
-    result = _make_scaffold_result()
+def registered_run_id(tmp_path) -> str:
+    """Register a scaffold result and return its run_id.
+
+    Growth-85 B3: out_dir 은 실제로 존재해야 fulltest 가드를 통과한다.
+    """
+    out = tmp_path / "customer"
+    out.mkdir()
+    result = _make_scaffold_result(out_dir=str(out))
     return run_registry.register(result)
 
 
@@ -156,3 +165,44 @@ def test_fulltest_status_404(client: TestClient) -> None:
     response = client.get("/domain/no_such_run/fulltest/status")
     assert response.status_code == 404
     assert "풀테스트 잡이 없습니다" in response.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Growth-85 B3: scaffold 실패/산출물 없음 → fulltest 409 가드
+# ---------------------------------------------------------------------------
+
+def test_fulltest_409_when_scaffold_failed(client: TestClient) -> None:
+    """scaffold success=False 이면 풀테스트 시작 시 409 (B3 Growth-85)."""
+    failed_result = ScaffoldResult(
+        success=False,
+        slug="failslug",
+        out_dir="/tmp/out/failslug",   # 존재하지 않는 경로
+        stages=[],
+        stdout="",
+        stderr="scaffold failed",
+        returncode=1,
+        lane="jakarta",
+    )
+    run_id = run_registry.register(failed_result)
+    response = client.post(f"/domain/{run_id}/fulltest")
+    assert response.status_code == 409
+    assert "scaffold" in response.json()["detail"]
+
+
+def test_fulltest_409_when_out_dir_missing(client: TestClient, tmp_path) -> None:
+    """scaffold success=True 이지만 out_dir 이 디스크에 없으면 409 (B3 Growth-85)."""
+    missing_dir = str(tmp_path / "nonexistent")
+    ok_result = ScaffoldResult(
+        success=True,
+        slug="missingdir",
+        out_dir=missing_dir,
+        stages=[StageResult(name="stage1", status="OK")],
+        stdout="",
+        stderr="",
+        returncode=0,
+        lane="jakarta",
+    )
+    run_id = run_registry.register(ok_result)
+    response = client.post(f"/domain/{run_id}/fulltest")
+    assert response.status_code == 409
+    assert "scaffold" in response.json()["detail"]

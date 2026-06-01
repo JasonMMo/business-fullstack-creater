@@ -507,3 +507,44 @@ def test_preset_mode_requires_preset(client: TestClient, fake_run) -> None:
     )
     assert response.status_code == 422
     assert "프리셋 모드에서는 프리셋 이름이 필요합니다" in response.text
+
+
+# ---------------------------------------------------------------------------
+# Growth-86 — shell-mode 웹 노출 (M-Ops ops.zip 웹 완주)
+# ---------------------------------------------------------------------------
+
+def test_domain_form_has_shell_mode_field(client: TestClient) -> None:
+    """GET /domain/new 응답에 name="shell_mode" select 가 있어야 한다 (Growth-86)."""
+    response = client.get("/domain/new")
+    assert response.status_code == 200
+    assert 'name="shell_mode"' in response.text
+
+
+def test_shell_mode_defaults_to_none(client: TestClient, fake_run) -> None:
+    """shell_mode 미전송 시 ScaffoldRequest.shell_mode 는 'none' (M-User 기존 동작 보존)."""
+    client.post("/domain/new", data=_valid_form(), follow_redirects=False)
+    assert len(fake_run) == 1
+    assert fake_run[0].shell_mode == "none"
+
+
+def test_shell_mode_passthrough(client: TestClient, fake_run) -> None:
+    """shell_mode=MDI 전송 시 ScaffoldRequest.shell_mode 로 그대로 전달돼야 한다 (Growth-86)."""
+    client.post(
+        "/domain/new",
+        data=_valid_form(shell_mode="MDI"),
+        follow_redirects=False,
+    )
+    assert len(fake_run) == 1
+    assert fake_run[0].shell_mode == "MDI"
+
+
+def test_shell_mode_invalid_returns_422(client: TestClient, fake_run) -> None:
+    """shell_mode 가 화이트리스트(none/MDI/SDI) 밖이면 422 (Growth-86)."""
+    response = client.post(
+        "/domain/new",
+        data=_valid_form(shell_mode="BOGUS"),
+        follow_redirects=False,
+    )
+    assert response.status_code == 422
+    assert "shell-mode" in response.text
+    assert len(fake_run) == 0

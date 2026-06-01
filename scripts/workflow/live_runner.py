@@ -116,3 +116,30 @@ def stop_runner(handle: LiveRunnerHandle, timeout_sec: float = 10.0) -> None:
             proc.wait(timeout=timeout_sec)
         except subprocess.TimeoutExpired:
             pass
+
+
+def kill_port_listener(port: int) -> tuple[bool, str]:
+    """Kill whatever process listens on *port* (JDK-version-agnostic).
+
+    Growth-85: cleanup 의 jdk-path 필터가 jdk 버전 불일치 좀비를 놓쳐
+    L4 repackage 가 jar 잠금으로 영구 실패하던 문제 해결. 포트 점유 프로세스를
+    직접 종료한다. 리스너가 없으면 no-op (성공).
+
+    Windows PowerShell Get-NetTCPConnection 기반. powershell 없는 환경에서는
+    (True, 'none') 반환으로 안전하게 no-op.
+    """
+    ps = (
+        f"$c = Get-NetTCPConnection -LocalPort {port} -State Listen "
+        f"-ErrorAction SilentlyContinue; "
+        f"if ($c) {{ $c.OwningProcess | Sort-Object -Unique | ForEach-Object "
+        f"{{ Stop-Process -Id $_ -Force -ErrorAction SilentlyContinue }}; 'killed' }}"
+        f" else {{ 'none' }}"
+    )
+    try:
+        p = subprocess.run(
+            ["powershell", "-NoProfile", "-Command", ps],
+            capture_output=True, text=True, timeout=30,
+        )
+        return True, (p.stdout or "").strip() or "ok"
+    except Exception as e:
+        return False, str(e)

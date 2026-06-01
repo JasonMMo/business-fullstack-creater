@@ -244,6 +244,12 @@ def run_l4_live(
     result = live_overlay.apply_overlay(runner_dir, plan)
     print(f"[L4] overlay applied: {len(result.files_written)} written, {len(result.files_edited)} edited")
 
+    # Growth-85 B4: mvn rebuild 직전 포트 점유 좀비 WAS 선제 종료.
+    # cleanup_runner 의 jdk-path 필터가 jdk 버전 불일치 좀비를 놓쳐
+    # repackage 시 "Unable to rename .jar to .jar.original" 잠금 오류가 발생하던 트랩.
+    _kill_ok, _kill_msg = live_runner.kill_port_listener(8080)
+    print(f"[L4] kill_port_listener(8080): ok={_kill_ok} msg={_kill_msg!r}", file=sys.stderr)
+
     if not _mvn_rebuild_runner(runner_dir):
         return (False, False)
 
@@ -354,9 +360,22 @@ def _finalize(layers: dict[str, bool], lane: str, scaffold: Path | None) -> Full
 def run(lane: str, domain: str | None = None) -> FullTestResult:
     # Fail fast on bad lane — don't burn L1/L2/L3 only to crash inside L4
     resolve_runner(lane)
-    scaffold = Path(domain) if domain and Path(domain).exists() else find_latest_scaffold()
-    if scaffold is None:
-        raise FileNotFoundError("no scaffold directory found (pass [domain] or run /scaffold first)")
+    # Growth-85: explicit domain 이 주어졌는데 경로가 없으면 폴백하지 말고 에러.
+    # 이전: Path(domain).exists() 가 False 이면 find_latest_scaffold() 로 조용히 폴백해
+    # scaffold 실패 시에도 다른 scaffold 에서 거짓 L1-L3 그린을 내는 트랩이 있었다.
+    if domain:
+        scaffold = Path(domain)
+        if not scaffold.exists():
+            raise FileNotFoundError(
+                f"scaffold not found: {domain} "
+                "(Growth-85: explicit path must exist, no silent fallback)"
+            )
+    else:
+        scaffold = find_latest_scaffold()
+        if scaffold is None:
+            raise FileNotFoundError(
+                "no scaffold directory found (pass [domain] or run /scaffold first)"
+            )
     layers: dict[str, bool] = {}
     layers["L1"] = run_l1_pytest()
     if not layers["L1"]:

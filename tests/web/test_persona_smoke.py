@@ -64,6 +64,7 @@ def test_persona_journey_smoke(client: TestClient, monkeypatch, tmp_path):
     assert r2.status_code == 200
 
     # 3. POST valid form → 303 redirect to preview
+    # Growth-85 B2: wiki_mode=preset requires non-empty preset
     r3 = client.post(
         "/domain/new",
         data={
@@ -73,6 +74,7 @@ def test_persona_journey_smoke(client: TestClient, monkeypatch, tmp_path):
             "lane": "jakarta",
             "default_pattern": "D2",
             "wiki_mode": "preset",
+            "preset": "고객관리",
         },
         follow_redirects=False,
     )

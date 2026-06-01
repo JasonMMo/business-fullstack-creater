@@ -60,8 +60,10 @@ async def domain_form_post(
     wiki_mode: str = Form(default="preset"),
     preset: str = Form(default=""),
     customer_profile: str = Form(default=""),
+    package: str = Form(default=""),  # Growth-85: Java 패키지명
 ) -> Response:
     """Validate form, run scaffold, register result, redirect to preview."""
+    # Growth-85
     templates = request.app.state.templates
 
     # Normalise
@@ -69,6 +71,7 @@ async def domain_form_post(
     slug = slug.strip()
     preset_val: Optional[str] = preset.strip() or None
     customer_profile_val: Optional[str] = customer_profile.strip() or None
+    package = package.strip()
 
     # Preserve raw form input for re-render on error
     form_data = {
@@ -80,6 +83,7 @@ async def domain_form_post(
         "wiki_mode": wiki_mode,
         "preset": preset,
         "customer_profile": customer_profile,
+        "package": package,  # Growth-85
     }
 
     errors: List[str] = []
@@ -93,6 +97,12 @@ async def domain_form_post(
             "슬러그는 소문자 알파벳으로 시작하고 소문자·숫자·하이픈·언더스코어만 허용됩니다."
         )
 
+    # B2 Growth-85: wiki_mode=preset 인데 preset 이 비어있으면 명확한 에러
+    if wiki_mode == "preset" and not preset_val:
+        errors.append(
+            "프리셋 모드에서는 프리셋 이름이 필요합니다. 예: 고객관리 (또는 '직접 정의' 모드를 선택하세요)."
+        )
+
     if errors:
         return templates.TemplateResponse(
             request,
@@ -100,6 +110,11 @@ async def domain_form_post(
             {"errors": errors, "form": form_data},
             status_code=422,
         )
+
+    # B1 Growth-85: customer_profile 도 없고 package 도 비면 자동 기본값 설정
+    # (비전문 사용자가 Java 패키지명을 몰라도 scaffold 가 동작하도록)
+    if not package and not customer_profile_val:
+        package = f"com.example.{slug}"
 
     # Build ScaffoldRequest and call runner
     scaffold_req = ScaffoldRequest(
@@ -111,6 +126,7 @@ async def domain_form_post(
         wiki_mode=wiki_mode,
         preset=preset_val,
         customer_profile=customer_profile_val,
+        package=package,  # Growth-85
     )
 
     result = scaffold_runner.run(scaffold_req)

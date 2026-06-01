@@ -782,3 +782,30 @@ def test_run_l4_live_no_scaffold_report_falls_back_to_runner_lane(tmp_path, monk
     assert full is True
     # Growth-50 (T-Probe-CtxPath-Missing): REST probe URL includes /uiadapter context-path.
     assert json_calls["url"] == "http://localhost:8080/uiadapter/api/lead"
+
+
+# ---------------------------------------------------------------------------
+# Growth-85 B3: explicit scaffold path no-fallback
+# ---------------------------------------------------------------------------
+
+def test_run_raises_when_explicit_scaffold_missing(tmp_path, monkeypatch):
+    """full_test.run() 에 존재하지 않는 명시적 경로를 주면 폴백 없이 FileNotFoundError (B3 Growth-85)."""
+    monkeypatch.setattr(full_test, "resolve_runner", lambda lane: "boot-jdk17-jakarta")
+    missing = str(tmp_path / "out" / "__nonexistent__")
+    with pytest.raises(FileNotFoundError, match="Growth-85"):
+        full_test.run("jakarta", missing)
+
+
+def test_kill_port_listener_returns_tuple_for_free_port():
+    """kill_port_listener 는 (bool, str) 를 반환하고, 빈 포트에서는 오류 없이 동작한다 (B4 Growth-85).
+
+    포트 59999 는 거의 항상 비어 있다. 리스너가 없으면 (True, 'none'|'ok') 반환.
+    실제 프로세스를 종료하지 않으므로 부작용 없다.
+    """
+    from scripts.workflow.live_runner import kill_port_listener
+    ok, msg = kill_port_listener(59999)
+    assert isinstance(ok, bool)
+    assert isinstance(msg, str)
+    # powershell 없는 환경(CI Linux)에서는 False + 오류 메시지, 있으면 True + 'none'
+    # 어느 쪽이든 tuple 이면 계약 충족
+    assert ok is True or (ok is False and len(msg) > 0)

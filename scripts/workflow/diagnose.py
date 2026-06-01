@@ -831,17 +831,33 @@ def check_cross_layer_coherence(
         elif _needle not in _path.read_text(encoding="utf-8"):
             failures.append(f"G-85 {_label}: '{_needle}' not found in {_rel}")
 
+    # G-86: M-Ops 웹 shell-mode 노출 — domain_form shell_mode select + 라우트 전달
+    # + scaffold_runner --shell-mode/--target-project (Growth-86). 회귀 시 웹
+    # 페르소나(IT담당자)가 ops.zip 에 도달하는 경로가 다시 끊긴다 (shell 미생성 →
+    # ops pack auto-emit 안 됨 → /domain/{id}/ops.zip 항상 409).
+    for _label, _rel, _needle in [
+        ("domain_form shell_mode field",     "web/templates/domain_form.html",   'name="shell_mode"'),
+        ("domain route G-86",                "web/routes/domain.py",             "Growth-86"),
+        ("scaffold_runner --shell-mode",     "web/adapters/scaffold_runner.py",  "--shell-mode"),
+        ("scaffold_runner --target-project", "web/adapters/scaffold_runner.py",  "--target-project"),
+    ]:
+        _path = creater_root / _rel
+        if not _path.exists():
+            failures.append(f"G-86 {_label}: {_rel} missing")
+        elif _needle not in _path.read_text(encoding="utf-8"):
+            failures.append(f"G-86 {_label}: '{_needle}' not found in {_rel}")
+
     if failures:
         return Check(
             "cross-layer-coherence",
             "FAIL",
             "; ".join(failures),
-            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83/84/85) 추적 후 복원",
+            hint="learn-log §4 트랩 회귀 — 해당 Growth commit (G-47/48/50/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83/84/85/86) 추적 후 복원",
         )
     return Check(
         "cross-layer-coherence",
         "PASS",
-        "24 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83/84/85)",
+        "25 trap guards intact (G-47/48/50a/50b/58/61/62/63/69/70/71/72/74/75/76/77/78/79/80/81/82/83/84/85/86)",
     )
 
 

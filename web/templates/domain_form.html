@@ -94,6 +94,18 @@
   </div>
 
   <div class="form-group">
+    <label for="package">Java 패키지 <small>(비우면 com.example.&lt;슬러그&gt; 자동)</small></label>
+    <input
+      type="text"
+      id="package"
+      name="package"
+      value="{{ form.package | default('') }}"
+      placeholder="com.example.customer"
+    >
+    <small>생성될 Java 소스의 기본 패키지명입니다.</small>
+  </div>
+
+  <div class="form-group">
     <label for="customer_profile">고객 프로파일</label>
     <input
       type="text"

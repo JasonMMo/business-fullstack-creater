@@ -6,6 +6,8 @@ GET  /domain/{run_id}/fulltest/status   → 잡 상태 폴링 (JSON)
 """
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import JSONResponse
 
@@ -17,9 +19,20 @@ router = APIRouter(prefix="/domain")
 @router.post("/{run_id}/fulltest", status_code=202)
 async def fulltest_start(run_id: str) -> JSONResponse:
     """Start a background full-test for the given scaffold run."""
+    # Growth-85
     result = run_registry.get(run_id)
     if result is None:
         raise HTTPException(status_code=404, detail="해당 실행 결과를 찾을 수 없습니다.")
+
+    # B3 Growth-85: scaffold 가 실패했거나 산출물 디렉터리가 없으면 풀테스트 차단
+    if not result.success or not Path(result.out_dir).exists():
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "scaffold 가 실패했거나 산출물이 없어 풀테스트를 실행할 수 없습니다. "
+                "도메인 정의를 다시 시도해 주세요."
+            ),
+        )
 
     lane = getattr(result, "lane", "jakarta")
     scaffold_dir = result.out_dir
